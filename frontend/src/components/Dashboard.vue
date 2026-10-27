@@ -50,6 +50,9 @@
             <n-tag v-else size="small" round>학습 구간</n-tag>
             <span class="muted small">{{ dayLabel }}</span>
           </div>
+          <n-alert v-if="excludedNote" type="warning" :show-icon="false" class="excluded">
+            실측 제외: {{ excludedNote }} — 그래프에 실제 승차가 표시되지 않습니다
+          </n-alert>
           <div class="hour-row">
             <n-button size="small" circle @click="togglePlay" :title="playing ? '정지' : '시간대 재생'">
               {{ playing ? '❚❚' : '▶' }}
@@ -98,7 +101,7 @@
             <div class="chart-foot">
               <template v-if="hourRow">
                 <b>{{ hour }}시</b> · 모델 예측 <b class="num">{{ fmtNum(hourRow.pred) }}</b>명 · 전주 같은 시간 {{ fmtNum(hourRow.baseline) }}명 ·
-                실제 {{ hourRow.actual != null ? fmtNum(hourRow.actual) + '명' : '없음 (향후 예측)' }}
+                실제 {{ hourRow.actual != null ? fmtNum(hourRow.actual) + '명' : isForecastDate ? '없음 (향후 예측)' : '없음 (원천 결측·이상일)' }}
                 <div class="muted">그래프를 클릭하면 해당 시간으로 이동합니다</div>
               </template>
               <span v-else class="muted">{{ hour }}시는 운행 데이터가 없습니다</span>
@@ -175,6 +178,13 @@ const playing = ref(false)
 let timer = null
 
 const missingDates = computed(() => new Set(meta.value?.dates.missing_dates || []))
+// 원천 이상으로 실측을 뺀 날 (예: 승차 집계 누락, 파업 추정)
+const excludedNote = computed(() => {
+  const ex = meta.value?.dates.excluded?.[date.value]
+  if (!ex) return ''
+  const reasons = [...new Set(Object.values(ex))]
+  return reasons.map((r) => `${r} (${Object.keys(ex).filter((k) => ex[k] === r).join(', ')}번)`).join(' · ')
+})
 const fmtNum = (v) => (v == null ? '-' : Math.round(v).toLocaleString())
 const currentDomain = computed(() => domains.value.find((d) => d.name === domain.value))
 const selectedMeta = computed(() => meta.value?.routes.find((r) => r.route === selected.value))
@@ -294,6 +304,7 @@ onBeforeUnmount(() => clearInterval(timer))
 .block { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
 .block-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--ink-2); }
 .date-tags { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.excluded { font-size: 12px; margin-bottom: 8px; }
 .small { font-size: 12px; }
 .hour-row { display: flex; align-items: center; gap: 10px; }
 .hour-label { font-weight: 700; font-size: 18px; width: 44px; text-align: right; }

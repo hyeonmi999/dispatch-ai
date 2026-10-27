@@ -73,9 +73,49 @@ class BusDataset:
         df.loc[~date_str.isin(has_boarding), "boarding"] = np.nan
         df.loc[~date_str.isin(has_dispatch), "trips"] = np.nan
 
+        # 행은 있지만 값이 통째로 빈 날(집계 누락)·운행 중단일은 0명이 아니라 결측으로 처리
+        self.anomalies = self.find_anomalies(b, d)
+        key = df["date"].dt.strftime("%Y%m%d") + "|" + df["route"]
+        for reason, col in [("승차 집계 누락", "boarding"), ("운행 중단(파업 등 추정)", "boarding"), ("운행 집계 누락", "trips")]:
+            bad = self.anomalies[self.anomalies["reason"] == reason]
+            df.loc[key.isin(bad["date"] + "|" + bad["route"]), col] = np.nan
+
         # 운행도 승차도 없는 시간대(심야 등)는 예측 대상이 아니므로 제외
         df = df[(df["trips"].fillna(0) > 0) | (df["boarding"].fillna(0) > 0)]
         return df.sort_values(keys).reset_index(drop=True)
+
+    @staticmethod
+    def find_anomalies(b: pd.DataFrame, d: pd.DataFrame) -> pd.DataFrame:
+        """노선·날짜 단위 원천 데이터 이상 탐지 (학습·평가·베이스라인에서 제외)
+
+        - 승차 집계 누락 : 승차 행은 있는데 24시간 값이 모두 빈칸, 버스는 정상 운행
+                           (예: 2026-09-29, 10-01 — 원래 빈칸=0명 규칙을 적용하면 하루 승객 0명으로 학습됨)
+        - 운행 집계 누락 : 운행횟수 행은 있는데 값이 모두 빈칸
+        - 운행 중단      : 운행횟수 또는 승차가 같은 요일 중앙값의 20%·10% 미만 (예: 2026-01-13~14, 파업 추정)
+                           (추석 연휴 최저치가 평소의 약 29%라 공휴일은 걸리지 않음)
+        """
+        hb = [f"승차_승객_수_{h:02d}시" for h in HOURS]
+        hd = [f"버스운행횟수_{h:02d}시" for h in HOURS]
+        keys = ["기준_날짜", "노선명"]
+        bs = (b.assign(b_filled=b[hb].notna().sum(axis=1), riders=b[hb].sum(axis=1))
+              .groupby(keys)[["b_filled", "riders"]].sum())
+        ds = (d.assign(d_filled=d[hd].notna().sum(axis=1), trips=d[hd].sum(axis=1))
+              .groupby(keys)[["d_filled", "trips"]].sum())
+        x = ds.join(bs, how="outer").reset_index()
+        x["dow"] = pd.to_datetime(x["기준_날짜"], format="%Y%m%d").dt.day_of_week
+        normal = x[x["trips"] > 0].groupby(["노선명", "dow"])["trips"].median().rename("trips_median")
+        riders = x[x["riders"] > 0].groupby(["노선명", "dow"])["riders"].median().rename("riders_median")
+        x = x.join(normal, on=["노선명", "dow"]).join(riders, on=["노선명", "dow"])
+
+        stopped = ((x["d_filled"] > 0) & (x["trips"] < 0.2 * x["trips_median"])) | \
+                  ((x["b_filled"] > 0) & (x["riders"] < 0.1 * x["riders_median"]))
+        rules = [
+            ("운행 중단(파업 등 추정)", stopped),
+            ("승차 집계 누락", (x["b_filled"] == 0) & ~stopped),
+            ("운행 집계 누락", (x["d_filled"] == 0) & ~stopped),
+        ]
+        out = [pd.DataFrame({"date": x.loc[m, "기준_날짜"], "route": x.loc[m, "노선명"], "reason": r}) for r, m in rules]
+        return pd.concat(out, ignore_index=True).astype(str)
 
     # ------------------------------------------------
     # 2. 구간 재차인원 → long

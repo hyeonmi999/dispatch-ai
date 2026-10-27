@@ -31,3 +31,20 @@ def test_metrics_saved_with_baseline_and_improvement():
     for key in ("stop_hour", "route_hour"):
         assert {"model_mae", "baseline_mae", "improvement_pct"} <= set(m[key])
     assert m["stop_hour"]["model_mae"] < m["stop_hour"]["baseline_mae"]
+
+
+def test_blank_source_day_is_missing_not_zero():
+    """승차 값이 하루 통째로 빈 날(버스는 정상 운행)은 0명이 아니라 결측으로 분류"""
+    import numpy as np
+    from app.domains.bus.data import BusDataset
+
+    hb = {f"승차_승객_수_{h:02d}시": 10.0 for h in range(24)}
+    hd = {f"버스운행횟수_{h:02d}시": 5.0 for h in range(24)}
+    days = [f"202609{d:02d}" for d in range(1, 30)]
+    b = pd.DataFrame([{"기준_날짜": d, "노선명": "1", **hb} for d in days])
+    d = pd.DataFrame([{"기준_날짜": x, "노선명": "1", **hd} for x in days])
+    b.loc[b["기준_날짜"] == "20260929", list(hb)] = np.nan      # 집계 누락
+    d.loc[d["기준_날짜"] == "20260915", list(hd)] = 0.2         # 운행 거의 없음
+    b.loc[b["기준_날짜"] == "20260915", list(hb)] = 0.1
+    found = dict(zip(BusDataset.find_anomalies(b, d)["date"], BusDataset.find_anomalies(b, d)["reason"]))
+    assert found == {"20260929": "승차 집계 누락", "20260915": "운행 중단(파업 등 추정)"}

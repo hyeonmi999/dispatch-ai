@@ -115,7 +115,8 @@ class BusForecaster(Forecaster):
         feats["split"] = np.where(feats["date"] >= valid_start, "valid",
                                   np.where(feats["date"] >= es_start, "early_stop", "train"))
 
-        metrics = self._evaluate(feats[feats["split"] == "valid"])
+        # 정답이 없는 행(원천 결측·이상일)은 평가에서 제외
+        metrics = self._evaluate(feats[(feats["split"] == "valid") & feats["boarding"].notna()])
         metrics.update({
             "data_mode": self.ds.mode,
             "train_period": [f"{train['date'].min():%Y-%m-%d}", f"{train['date'].max():%Y-%m-%d}"],
@@ -139,6 +140,8 @@ class BusForecaster(Forecaster):
             "valid_start": f"{valid_start:%Y-%m-%d}",
             "es_start": f"{es_start:%Y-%m-%d}",
             "metrics": metrics,
+            # 원천 이상으로 학습·평가에서 뺀 노선·날짜 (화면에 사유 표시)
+            "excluded_route_days": self.ds.anomalies.to_dict("records"),
         }
         (self.model_dir / "meta.json").write_text(json.dumps(self.meta, ensure_ascii=False, indent=2))
         (self.model_dir / "metrics.json").write_text(json.dumps(metrics, ensure_ascii=False, indent=2))
@@ -257,7 +260,16 @@ class BusForecaster(Forecaster):
             "max_date": self.meta["last_observed_date"],
             "max_forecast_date": f"{d.max():%Y-%m-%d}",
             "valid_start": self.meta.get("valid_start"),
+            "excluded": self.excluded_by_date(),
         }
+
+    def excluded_by_date(self) -> dict:
+        """{'2026-09-29': {'143': '승차 집계 누락', ...}, ...}"""
+        out: dict = {}
+        for r in self.meta.get("excluded_route_days", []):
+            day = f"{r['date'][:4]}-{r['date'][4:6]}-{r['date'][6:]}"
+            out.setdefault(day, {})[r["route"]] = r["reason"]
+        return out
 
     def day_frame(self, date: pd.Timestamp, route: str | None = None) -> tuple[pd.DataFrame, bool]:
         """하루치 정류장·시간대 실제값/예측값/베이스라인. (frame, is_future)"""

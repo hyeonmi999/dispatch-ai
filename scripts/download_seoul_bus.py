@@ -11,6 +11,10 @@ zip 하나씩 받아서 대상 노선만 걸러 parquet 조각으로 저장하�
 사용 예)
     python scripts/download_seoul_bus.py
     python scripts/download_seoul_bus.py --routes 143 272 --datasets OA-21219
+    # 과거 1년 추가 (작년 같은 주 비교용) → boarding_history.parquet 등으로 따로 저장
+    python scripts/download_seoul_bus.py --datasets OA-21219 OA-21220 \
+        --seqs 2408 2409 2410 2411 2412 2501 2502 2503 2504 2505 2506 2507 2508 2509 \
+        --min-date 20240826 --max-date 20250928 --suffix _history
 """
 
 import argparse
@@ -127,12 +131,12 @@ def process(inf_id, seq, route_ids):
 # 4. 조각 병합 (중복 날짜 제거, 시간대 컬럼 숫자 변환)
 # =========================================================
 
-def merge_parts(inf_id, route_ids):
+def merge_parts(inf_id, route_ids, seqs, min_date=MIN_DATE, max_date="99999999", suffix=""):
     cfg = DATASETS[inf_id]
-    parts = sorted(PARTS_DIR.glob(f"{cfg['name']}_*.parquet"))
-    df = pd.concat([pd.read_parquet(p) for p in parts], ignore_index=True)
+    parts = [PARTS_DIR / f"{cfg['name']}_{seq}.parquet" for seq in seqs]
+    df = pd.concat([pd.read_parquet(p) for p in parts if p.exists()], ignore_index=True)
 
-    df = df[df["노선_ID"].isin(route_ids) & (df["기준_날짜"] >= MIN_DATE)]
+    df = df[df["노선_ID"].isin(route_ids) & df["기준_날짜"].between(min_date, max_date)]
     df = df.drop_duplicates(subset=cfg["key"], keep="last")
 
     num_cols = [c for c in df.columns if c not in ID_COLS]
@@ -140,7 +144,7 @@ def merge_parts(inf_id, route_ids):
     df.insert(1, "노선명", df["노선_ID"].map(route_ids))
     df = df.sort_values(cfg["key"]).reset_index(drop=True)
 
-    out = OUT_DIR / f"{cfg['name']}.parquet"
+    out = OUT_DIR / f"{cfg['name']}{suffix}.parquet"
     df.to_parquet(out, index=False)
     print(f"📦 {out.relative_to(ROOT)}: {len(df):,}행, "
           f"{df['기준_날짜'].min()} ~ {df['기준_날짜'].max()}, 날짜 {df['기준_날짜'].nunique()}일")
@@ -154,6 +158,10 @@ def main():
     parser = argparse.ArgumentParser(description="서울 버스 승객/운행 데이터 다운로드")
     parser.add_argument("--routes", nargs="+", default=DEFAULT_ROUTES, help="노선번호 (예: 143 272)")
     parser.add_argument("--datasets", nargs="+", default=list(DATASETS), choices=list(DATASETS))
+    parser.add_argument("--seqs", nargs="+", default=None, help="받을 파일 seq (월간 YYMM / 주간 YYMMDD). 기본: 데이터셋별 설정")
+    parser.add_argument("--min-date", default=MIN_DATE)
+    parser.add_argument("--max-date", default="99999999")
+    parser.add_argument("--suffix", default="", help="출력 파일명 접미사 (예: _history)")
     args = parser.parse_args()
 
     route_ids = resolve_route_ids(args.routes)
@@ -161,9 +169,10 @@ def main():
 
     for inf_id in args.datasets:
         print(f"\n===== {inf_id} ({DATASETS[inf_id]['name']}) =====")
-        for seq in DATASETS[inf_id]["seqs"]:
+        seqs = args.seqs or DATASETS[inf_id]["seqs"]
+        for seq in seqs:
             process(inf_id, seq, route_ids)
-        merge_parts(inf_id, route_ids)
+        merge_parts(inf_id, route_ids, seqs, args.min_date, args.max_date, args.suffix)
 
 
 if __name__ == "__main__":
