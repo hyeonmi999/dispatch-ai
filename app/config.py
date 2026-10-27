@@ -30,6 +30,11 @@ MODELS_DIR = ROOT / "models"
 VECTORSTORE_DIR = ROOT / "vectorstore"
 HF_CACHE_DIR = ROOT / "hf_models"
 
+# 모델(Qwen3, bge-m3)을 한 번 받아 두면 Hugging Face Hub 접속 없이 로컬 캐시만 사용
+# (Hub 확인 요청·safetensors 변환 스레드 때문에 시작/종료가 지연되는 문제 방지)
+if all((HF_CACHE_DIR / f"models--{m}").exists() for m in ("BAAI--bge-m3", "Qwen--Qwen3-1.7B")):
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+
 
 # ==================================================
 # 2. API 키 / DB
@@ -59,7 +64,7 @@ REPETITION_PENALTY = 1.1
 
 # RAG 검색: 코사인 유사도가 이 값보다 낮으면 "근거 없음"으로 판단
 RAG_TOP_K = 4
-RAG_SCORE_THRESHOLD = {"bge": 0.50, "openai": 0.35}
+RAG_SCORE_THRESHOLD = {"bge": 0.55, "openai": 0.35}
 NOT_FOUND_ANSWER = "제공된 규정 문서에서 근거를 찾을 수 없음"
 
 

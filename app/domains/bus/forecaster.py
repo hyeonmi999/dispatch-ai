@@ -15,7 +15,13 @@
 #   models/bus/<mode>/meta.json       피처·카테고리·분할일·지표
 #   models/bus/<mode>/metrics.json    평가 지표
 #   models/bus/<mode>/load_profile.parquet  승차 → 구간 재차인원 환산 비율
-#   data/processed/bus_<mode>_store.parquet 전체 기간 실제값·예측값·베이스라인 (API 조회용)
+#   data/processed/bus_<mode>_store.parquet 전체 기간 실제값·예측값·베이스라인 + 향후 7일 예측 (API 조회용)
+#
+# 배치 추론 구조
+#   API 서버는 XGBoost를 불러오지 않고 store만 읽습니다.
+#   (macOS에서 xgboost와 torch가 서로 다른 OpenMP 런타임을 써서 한 프로세스에 함께 로드하면
+#    segfault가 나므로, 예측은 학습 스크립트에서 미리 계산 → 서버는 조회만)
+#   향후 7일 예측은 "1주 전 같은 요일의 운행횟수 = 배차 계획"으로 가정해 미리 생성합니다.
 
 import json
 import time
@@ -43,7 +49,6 @@ class BusForecaster(Forecaster):
         self.meta: dict = {}
         self.store: pd.DataFrame | None = None
         self.profile: pd.DataFrame | None = None
-        self._future_cache: dict[pd.Timestamp, pd.DataFrame] = {}
 
     @property
     def model_version(self) -> str:
@@ -138,16 +143,21 @@ class BusForecaster(Forecaster):
         (self.model_dir / "meta.json").write_text(json.dumps(self.meta, ensure_ascii=False, indent=2))
         (self.model_dir / "metrics.json").write_text(json.dumps(metrics, ensure_ascii=False, indent=2))
 
-        store = feats[STORE_COLS].copy()
+        self.model, self.store = model, feats[STORE_COLS].copy()
+        self.meta["last_observed_date"] = f"{self.store['date'].max():%Y-%m-%d}"
+        forecasts = [self._future_frame(self.store["date"].max() + pd.Timedelta(days=k))
+                     for k in range(1, FORECAST_HORIZON_DAYS + 1)]
+        store = pd.concat([self.store, *forecasts], ignore_index=True)
         store.to_parquet(self.store_path, index=False)
+        (self.model_dir / "meta.json").write_text(json.dumps(self.meta, ensure_ascii=False, indent=2))
+        print(f"      향후 {FORECAST_HORIZON_DAYS}일 예측 {sum(len(f) for f in forecasts):,}행 생성 (배치 추론)")
         profile = self._build_load_profile(long, feats)
         profile.to_parquet(self.model_dir / "load_profile.parquet", index=False)
 
         self._print_metrics(metrics)
         print(f"⏱️ 총 {time.time() - t0:.0f}s")
 
-        self.model, self.store, self.profile = model, store, profile
-        self._future_cache.clear()
+        self.store, self.profile = store, profile
         return metrics
 
     # ------------------------------------------------
@@ -217,23 +227,17 @@ class BusForecaster(Forecaster):
     # ==================================================
 
     def load(self) -> bool:
-        from xgboost import XGBRegressor
-
-        model_path = self.model_dir / "model.json"
-        if not (model_path.exists() and self.store_path.exists()):
+        """서버용 로드: XGBoost 없이 예측 결과(store)와 메타만 읽습니다."""
+        if not (self.store_path.exists() and (self.model_dir / "meta.json").exists()):
             return False
-        model = XGBRegressor()
-        model.load_model(model_path)
-        self.model = model
         self.meta = json.loads((self.model_dir / "meta.json").read_text())
         self.store = pd.read_parquet(self.store_path)
         self.profile = pd.read_parquet(self.model_dir / "load_profile.parquet")
-        self._future_cache.clear()
         print(f"✅ 버스 예측 모델 로드: {self.model_version} | store {len(self.store):,}행")
         return True
 
     def ready(self) -> bool:
-        return self.model is not None and self.store is not None
+        return self.store is not None
 
     def metrics(self) -> dict:
         return self.meta.get("metrics", {})
@@ -246,34 +250,25 @@ class BusForecaster(Forecaster):
         d = self.store["date"]
         return {
             "min_date": f"{d.min() + pd.Timedelta(days=max(LAG_DAYS)):%Y-%m-%d}",
-            "max_date": f"{d.max():%Y-%m-%d}",
-            "max_forecast_date": f"{d.max() + pd.Timedelta(days=FORECAST_HORIZON_DAYS):%Y-%m-%d}",
+            "max_date": self.meta["last_observed_date"],
+            "max_forecast_date": f"{d.max():%Y-%m-%d}",
             "valid_start": self.meta.get("valid_start"),
         }
 
     def day_frame(self, date: pd.Timestamp, route: str | None = None) -> tuple[pd.DataFrame, bool]:
         """하루치 정류장·시간대 실제값/예측값/베이스라인. (frame, is_future)"""
         date = pd.Timestamp(date).normalize()
-        max_date = self.store["date"].max()
-
-        if date <= max_date:
-            frame = self.store[self.store["date"] == date]
-            is_future = False
-        elif date <= max_date + pd.Timedelta(days=FORECAST_HORIZON_DAYS):
-            frame = self._future_frame(date)
-            is_future = True
-        else:
-            raise ValueError(f"예측 가능 범위를 벗어났습니다 (최대 {max_date + pd.Timedelta(days=FORECAST_HORIZON_DAYS):%Y-%m-%d})")
+        if date > self.store["date"].max():
+            raise ValueError(f"예측 가능 범위를 벗어났습니다 (최대 {self.store['date'].max():%Y-%m-%d})")
+        frame = self.store[self.store["date"] == date]
+        is_future = date > pd.Timestamp(self.meta["last_observed_date"])
 
         if route is not None:
             frame = frame[frame["route"] == route]
         return frame, is_future
 
     def _future_frame(self, date: pd.Timestamp) -> pd.DataFrame:
-        """데이터 마지막 날 이후 최대 7일: 1주 전 같은 요일의 정류장·시간대 구성과 운행횟수를 계획값으로 사용"""
-        if date in self._future_cache:
-            return self._future_cache[date]
-
+        """(학습 시 배치 추론) 데이터 마지막 날 이후 날짜: 1주 전 같은 요일의 정류장·시간대 구성과 운행횟수를 계획값으로 사용"""
         template = pd.DataFrame()
         for back in (7, 14, 21):
             template = self.store[self.store["date"] == date - pd.Timedelta(days=back)]
@@ -286,7 +281,6 @@ class BusForecaster(Forecaster):
         feats["pred"] = np.clip(self.model.predict(feats[FEATURES]), 0, None).astype("float32")
         feats["split"] = "forecast"
         frame = feats[STORE_COLS]
-        self._future_cache[date] = frame
         return frame
 
     def profile_for(self, route: str, daytype: str) -> pd.DataFrame:

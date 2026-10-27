@@ -74,11 +74,13 @@ def get_embedder(name: str):
             embedder = OpenAIEmbeddings(model=OPENAI_EMBEDDING_MODEL_NAME, api_key=OPENAI_API_KEY)
         else:
             from langchain_huggingface import HuggingFaceEmbeddings
-            print(f"BGE-M3 임베딩 로딩: {BGE_EMBEDDING_MODEL_NAME} ({llm_module.DEVICE})")
+            print(f"BGE-M3 임베딩 로딩: {BGE_EMBEDDING_MODEL_NAME} ({llm_module.get_device()})")
             embedder = HuggingFaceEmbeddings(
                 model_name=BGE_EMBEDDING_MODEL_NAME,
                 cache_folder=str(HF_CACHE_DIR),
-                model_kwargs={"device": llm_module.DEVICE},
+                # bge-m3는 pytorch_model.bin만 있어 transformers가 safetensors 변환 스레드를 띄우고
+                # 그 스레드 때문에 프로세스 종료가 멈추는 문제가 있어 변환을 끕니다.
+                model_kwargs={"device": llm_module.get_device(), "model_kwargs": {"use_safetensors": False}},
                 encode_kwargs={"normalize_embeddings": True},
             )
         _embedders[name] = embedder

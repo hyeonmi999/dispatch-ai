@@ -11,8 +11,6 @@
 
 import threading
 
-import torch
-
 from app.config import (
     HF_CACHE_DIR,
     HF_TOKEN,
@@ -33,13 +31,23 @@ class LLMConfigError(Exception):
 # ==================================================
 # 1. 실행 장치 선택
 # ==================================================
+# torch는 필요할 때만 import 합니다.
+# (macOS에서 xgboost와 torch를 한 프로세스에 함께 로드하면 OpenMP 충돌로 segfault
+#  → 학습 스크립트는 torch 없이, API 서버는 xgboost 없이 동작하도록 분리)
 
-if torch.cuda.is_available():
-    DEVICE = "cuda"
-elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-    DEVICE = "mps"
-else:
-    DEVICE = "cpu"
+_device = {"name": None}
+
+
+def get_device() -> str:
+    if _device["name"] is None:
+        import torch
+        if torch.cuda.is_available():
+            _device["name"] = "cuda"
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            _device["name"] = "mps"
+        else:
+            _device["name"] = "cpu"
+    return _device["name"]
 
 
 # ==================================================
@@ -52,7 +60,10 @@ _local_lock = threading.Lock()
 
 def load_local_llm():
     """Qwen3 Tokenizer와 Causal Language Model을 한 번만 로드합니다."""
+    import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    DEVICE = get_device()
 
     with _local_lock:
         if _local["model"] is not None:
@@ -89,6 +100,8 @@ def is_local_loaded() -> bool:
 
 
 def generate_local(system: str, user: str, max_new_tokens: int = MAX_NEW_TOKENS) -> str:
+    import torch
+
     tokenizer, model = load_local_llm()
 
     messages = [
@@ -151,7 +164,7 @@ def generate(provider: str, system: str, user: str, max_new_tokens: int = MAX_NE
 
 def llm_status() -> dict:
     return {
-        "device": DEVICE,
+        "device": get_device(),
         "default": "qwen",
         "qwen": {"model": LOCAL_MODEL_NAME, "loaded": is_local_loaded()},
         "openai": {"model": OPENAI_MODEL_NAME, "configured": bool(OPENAI_API_KEY)},
