@@ -65,6 +65,9 @@ const option = computed(() => {
     animationDuration: 300,
     grid: { left: 40, right: 16, top: 24, bottom: 30 },
     tooltip: {
+      // 차트 카드는 크기 고정을 위해 overflow: hidden → 툴팁은 body에 띄워 잘리지 않게
+      appendTo: 'body',
+      extraCssText: 'z-index: 2000; max-width: 320px; white-space: normal;',
       trigger: 'item',
       formatter: (p) => {
         const s = stops[p.dataIndex]

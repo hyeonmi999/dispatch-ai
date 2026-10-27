@@ -35,6 +35,9 @@ const option = computed(() => ({
   grid: { left: 48, right: 16, top: 34, bottom: 26 },
   legend: { top: 0, right: 0, icon: 'roundRect', itemWidth: 14, itemHeight: 3, textStyle: { color: INK.text } },
   tooltip: {
+    // 차트 카드는 크기 고정을 위해 overflow: hidden → 툴팁은 body에 띄워 잘리지 않게
+    appendTo: 'body',
+    extraCssText: 'z-index: 2000; max-width: 320px; white-space: normal;',
     trigger: 'axis',
     axisPointer: { type: 'line', lineStyle: { color: INK.axis } },
     valueFormatter: (v) => (v == null ? '-' : `${Math.round(v).toLocaleString()}명`),
