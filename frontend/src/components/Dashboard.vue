@@ -134,6 +134,8 @@
           :llm="llm"
           :embedding="embedding"
           :db-available="!!health?.db?.available"
+          @select-route="(r) => (selected = r)"
+          @goto="goto"
         />
       </aside>
     </main>
@@ -195,6 +197,14 @@ const excludedNote = computed(() => {
   const reasons = [...new Set(Object.values(ex))]
   return reasons.map((r) => `${r} (${Object.keys(ex).filter((k) => ex[k] === r).join(', ')}번)`).join(' · ')
 })
+// 권고 이력에서 저장된 권고를 열면 그 권고의 노선·날짜·시간으로 이동
+function goto({ route, date: d, hour: h }) {
+  if (playing.value) togglePlay()
+  selected.value = route
+  date.value = d
+  hour.value = h
+}
+
 // '지금' 버튼: 오늘 날짜 + 현재 시각으로 이동 (예측 범위 안일 때)
 const canGoNow = computed(() => !!meta.value && !isDateDisabled(new Date(today + 'T00:00:00').getTime()))
 function goNow() {

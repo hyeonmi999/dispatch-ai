@@ -94,6 +94,23 @@ async def list_advisories(domain: str | None, limit: int = 20) -> list[dict]:
     } for r in rows]
 
 
+async def get_advisory(advisory_id: int) -> dict | None:
+    """저장된 권고 1건 (생성 당시 응답 전체 + 현재 검토 상태)"""
+    if not db.state["available"]:
+        return None
+    async with db.SessionLocal() as session:
+        r = await session.get(AdvisoryLog, advisory_id)
+    if r is None:
+        return None
+    payload = dict(r.payload or {})
+    payload.update({
+        "advisory_id": r.id, "review_status": r.review_status, "reviewer": r.reviewer,
+        "reviewer_note": r.reviewer_note, "created_at": f"{r.created_at}",
+        "reviewed_at": f"{r.reviewed_at}" if r.reviewed_at else None, "db_saved": True,
+    })
+    return payload
+
+
 async def review_advisory(advisory_id: int, status: str, reviewer: str, note: str) -> bool:
     if not db.state["available"]:
         return False

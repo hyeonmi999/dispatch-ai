@@ -51,13 +51,48 @@
       <n-tab-pane name="advise" tab="배차 권고">
         <div class="advise-ctl">
           <n-switch v-model:value="useLlm" size="small" />
-          <span class="small">규정 요약 생성 (LLM, 10~30초)</span>
-          <n-button type="primary" size="small" :loading="adviceLoading" :disabled="hourRow?.max_congestion == null" @click="runAdvise" style="margin-left: auto">
-            권고 생성
+          <span class="small">규정 요약 (LLM, 유형당 10~30초)</span>
+          <n-button type="primary" size="small" :loading="adviceLoading" @click="runAdviseAll" style="margin-left: auto">
+            {{ hour }}시 전체 노선 권고
           </n-button>
         </div>
-        <AdviceCard v-if="advice" :key="advice.advisory_id ?? `${advice.route}-${advice.date}-${advice.hour}`" :advice="advice" :db-available="dbAvailable" @reviewed="loadHistory" />
-        <n-empty v-else-if="!adviceLoading" :description="hourRow?.max_congestion != null ? '노선·시간대를 고른 뒤 \'권고 생성\'을 누르세요' : '이 시간대는 운행이 없어 권고를 만들 수 없습니다'" />
+
+        <template v-if="batch">
+          <div class="batch-head">
+            <b>{{ batch.date }} {{ batch.hour }}시</b>
+            <n-tag v-if="batch.summary.increase" size="small" type="error" round>증차 {{ batch.summary.increase }}</n-tag>
+            <n-tag v-if="batch.summary.increase_limited" size="small" type="warning" round>별도 대책 {{ batch.summary.increase_limited }}</n-tag>
+            <n-tag v-if="batch.summary.decrease" size="small" type="info" round>감차 검토 {{ batch.summary.decrease }}</n-tag>
+            <n-tag v-if="batch.summary.keep" size="small" type="success" round>유지 {{ batch.summary.keep }}</n-tag>
+          </div>
+          <div class="muted tiny">노선을 누르면 지도에서 선택되고 상세 근거가 열립니다 · 모두 담당자 검토 필요</div>
+          <div v-for="a in batch.items" :key="a.route" class="brow-wrap">
+            <div
+              class="brow"
+              :class="{ active: a.route === route?.route, off: a.status !== 'ok' }"
+              @click="a.status === 'ok' && emit('select-route', a.route)"
+            >
+              <span class="dot" :style="{ background: levelColor(a.congestion?.level || '정보없음') }"></span>
+              <b class="rno">{{ a.route }}</b>
+              <template v-if="a.status === 'ok'">
+                <span class="num small">{{ fmtCongestion(a.congestion.ratio) }}</span>
+                <span class="num small ink2">{{ a.current.interval_min }}→<b>{{ a.recommendation.recommended_interval_min }}</b>분</span>
+                <span class="num small ink2" v-if="a.recommendation.extra_buses">{{ a.recommendation.extra_buses > 0 ? '+' : '' }}{{ a.recommendation.extra_buses }}대</span>
+                <n-tag size="small" :type="ACTION_TYPES[a.recommendation.action]" class="act">{{ actionLabel(a.recommendation.action) }}</n-tag>
+              </template>
+              <span v-else class="muted small">운행 없음</span>
+            </div>
+            <AdviceCard
+              v-if="a.status === 'ok' && a.route === route?.route"
+              :key="a.advisory_id ?? a.route"
+              :advice="a"
+              :db-available="dbAvailable"
+              class="inline-card"
+              @reviewed="loadHistory"
+            />
+          </div>
+        </template>
+        <n-empty v-else-if="!adviceLoading" :description="`'${hour}시 전체 노선 권고'를 누르면 노선마다 증차·유지·감차 권고가 만들어집니다`" />
       </n-tab-pane>
 
       <n-tab-pane name="ask" tab="규정 Q&A">
@@ -66,7 +101,14 @@
 
       <n-tab-pane name="history" tab="권고 이력">
         <div v-if="!dbAvailable" class="muted small">MariaDB 미연결 — 이력이 저장되지 않습니다.</div>
-        <div v-for="h in history" :key="h.id" class="hist">
+        <template v-if="saved">
+          <div class="saved-head">
+            <n-button size="tiny" quaternary @click="saved = null">← 목록</n-button>
+            <span class="small"><b>저장된 권고 #{{ saved.advisory_id }}</b> · {{ saved.created_at?.slice(0, 16) }} 생성</span>
+          </div>
+          <AdviceCard :key="'saved-' + saved.advisory_id" :advice="saved" :db-available="dbAvailable" @reviewed="loadHistory" />
+        </template>
+        <div v-else v-for="h in history" :key="h.id" class="hist" @click="openSaved(h.id)">
           <div>
             <b>#{{ h.id }} {{ h.target }}번</b> {{ h.date }} {{ h.hour }}시
             <span class="muted small">· {{ actionLabel(h.action) }}</span>
@@ -77,7 +119,7 @@
             <span v-if="h.reviewer" class="muted"> {{ h.reviewer }}</span>
           </div>
         </div>
-        <n-empty v-if="dbAvailable && !history.length" description="저장된 권고가 없습니다" />
+        <n-empty v-if="dbAvailable && !history.length && !saved" description="저장된 권고가 없습니다" />
       </n-tab-pane>
     </n-tabs>
   </section>
@@ -86,7 +128,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { NAlert, NButton, NEmpty, NProgress, NSwitch, NTabPane, NTabs, NTag, useMessage } from 'naive-ui'
-import { api, errorMessage, fmtCongestion, levelColor } from '../api'
+import { ACTION_TYPES, api, errorMessage, fmtCongestion, levelColor } from '../api'
 import AdviceCard from './AdviceCard.vue'
 import AskPanel from './AskPanel.vue'
 
@@ -100,12 +142,14 @@ const props = defineProps({
   dbAvailable: { type: Boolean, default: false },
 })
 
+const emit = defineEmits(['select-route', 'goto'])
 const message = useMessage()
 const tab = ref('advise')
 const useLlm = ref(true)
-const advice = ref(null)
+const batch = ref(null)
 const adviceLoading = ref(false)
 const history = ref([])
+const saved = ref(null)
 
 const level = computed(() => props.hourRow?.level)
 const interval = computed(() => (props.hourRow?.trips ? (60 / props.hourRow.trips).toFixed(1) : '-'))
@@ -126,23 +170,38 @@ const STATUS = { pending: ['검토 대기', 'warning'], approved: ['승인', 'su
 const statusLabel = (s) => STATUS[s]?.[0] || s
 const statusType = (s) => STATUS[s]?.[1] || 'default'
 
-const contextKey = () => `${props.route?.route}|${props.date}|${props.hour}`
+const contextKey = () => `${props.date}|${props.hour}`
 
-async function runAdvise() {
+// 선택한 날짜·시간대의 전체 노선 권고 (증차 필요 → 별도 대책 → 감차 검토 → 유지 순)
+async function runAdviseAll() {
   adviceLoading.value = true
   const key = contextKey()
   try {
-    const result = await api.advise('bus', {
-      route: props.route.route, date: props.date, hour: props.hour,
-      llm: props.llm, embedding: props.embedding, use_llm: useLlm.value,
+    const result = await api.adviseAll({
+      date: props.date, hour: props.hour, llm: props.llm, embedding: props.embedding, use_llm: useLlm.value,
     })
-    // LLM 응답(10~30초)을 기다리는 사이 노선·시간을 바꿨다면 지난 결과는 표시하지 않음
-    if (key === contextKey()) advice.value = result
+    // LLM 응답을 기다리는 사이 날짜·시간을 바꿨다면 지난 결과는 표시하지 않음
+    if (key === contextKey()) {
+      batch.value = result
+      const top = result.items.find((a) => a.status === 'ok')
+      if (top && !result.items.some((a) => a.route === props.route?.route && a.status === 'ok')) emit('select-route', top.route)
+    }
     loadHistory()
   } catch (e) {
     message.error(errorMessage(e))
   } finally {
     adviceLoading.value = false
+  }
+}
+
+// 이력 항목 클릭: 저장된 권고 전체를 불러오고, 지도·날짜·시간도 그 권고 시점으로 이동
+async function openSaved(id) {
+  try {
+    const item = await api.advisory(id)
+    saved.value = item
+    emit('goto', { route: item.route, date: item.date, hour: item.hour })
+  } catch (e) {
+    message.error(errorMessage(e))
   }
 }
 
@@ -155,7 +214,7 @@ async function loadHistory() {
   }
 }
 
-watch(() => [props.route?.route, props.date, props.hour], () => (advice.value = null))
+watch(() => [props.date, props.hour], () => (batch.value = null))
 watch(tab, (t) => t === 'history' && loadHistory())
 </script>
 
@@ -175,5 +234,16 @@ watch(tab, (t) => t === 'history' && loadHistory())
 .need { margin-top: 10px; font-size: 13px; }
 .tabs-block { flex: 1; }
 .advise-ctl { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.hist { padding: 8px 0; border-bottom: 1px solid #f0efe9; font-size: 13px; }
+.hist { padding: 8px 6px; border-bottom: 1px solid #f0efe9; font-size: 13px; cursor: pointer; border-radius: 6px; }
+.hist:hover { background: #f4f3ef; }
+.saved-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.batch-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 4px 0; }
+.brow { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; }
+.brow:hover { background: #f4f3ef; }
+.brow.active { border-color: var(--accent); background: #eef4fc; }
+.brow.off { cursor: default; opacity: 0.6; }
+.brow .rno { width: 34px; }
+.brow .act { margin-left: auto; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.inline-card { margin: 6px 0 10px; }
 </style>

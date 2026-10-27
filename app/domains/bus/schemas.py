@@ -13,6 +13,14 @@ class BusPredictRequest(BaseModel):
     hour: int | None = Field(None, ge=0, le=23, description="지정하면 해당 시간대 정류장별 예측도 반환")
 
 
+class BusAdviseAllRequest(BaseModel):
+    date: dt.date = Field(..., examples=["2026-10-28"])
+    hour: int = Field(..., ge=0, le=23, examples=[8])
+    llm: str = Field("qwen")
+    embedding: str = Field("bge")
+    use_llm: bool = Field(False, description="True면 권고 유형별 규정 요약을 LLM으로 생성 (유형당 10~30초)")
+
+
 class BusAdviseRequest(BaseModel):
     route: str = Field(..., examples=["143"])
     date: dt.date = Field(..., examples=["2026-10-14"])

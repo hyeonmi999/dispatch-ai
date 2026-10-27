@@ -118,6 +118,16 @@ async def advisories(domain: str | None = None, limit: int = 20):
     return {"db": db.state, "items": await repo.list_advisories(domain, limit)}
 
 
+@router.get("/advisories/{advisory_id}", tags=["이력"])
+async def advisory_detail(advisory_id: int):
+    if not db.state["available"]:
+        raise HTTPException(503, f"DB에 연결되지 않았습니다: {db.state['error']}")
+    item = await repo.get_advisory(advisory_id)
+    if item is None:
+        raise HTTPException(404, f"권고 이력을 찾을 수 없습니다: {advisory_id}")
+    return item
+
+
 @router.post("/advisories/{advisory_id}/review", tags=["이력"])
 async def review(advisory_id: int, req: ReviewRequest):
     if not db.state["available"]:

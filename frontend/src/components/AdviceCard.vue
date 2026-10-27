@@ -79,7 +79,8 @@ const props = defineProps({
 const emit = defineEmits(['reviewed'])
 const message = useMessage()
 const a = computed(() => props.advice)
-const reviewed = ref(null)
+// 저장된 권고를 다시 열면 기존 검토 결과를 그대로 표시
+const reviewed = ref(props.advice.review_status && props.advice.review_status !== 'pending' ? props.advice.review_status : null)
 const canReview = computed(() => props.dbAvailable && a.value.advisory_id != null)
 const STATUS = { approved: '승인', held: '보류', rejected: '반려' }
 

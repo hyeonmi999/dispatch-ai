@@ -252,6 +252,39 @@ class BusAdvisor(Advisor):
         advice["model_version"] = self.fc.model_version
         return self.finalize(advice, evidence, base_conf)
 
+    def advise_all(self, routes: list[str], date, hour: int, llm: str, embedding: str, use_llm: bool) -> list[dict]:
+        """선택한 시간대의 전체 노선 권고 (증차 필요 → 감차 가능 → 유지 순)
+
+        규정 근거는 권고 유형별로 한 번만 조회해 노선끼리 공유 (LLM 호출 최소화)
+        """
+        evidence_cache: dict[str, dict] = {}
+        by_route = self.fc.metrics().get("by_route", {})
+        items = []
+        for route in routes:
+            try:
+                advice = self.analyze_hour(route, date, hour)
+            except ValueError as e:
+                items.append({"route": route, "date": f"{pd.Timestamp(date):%Y-%m-%d}", "hour": hour,
+                              "status": "no_service", "detail": str(e)})
+                continue
+            action = advice["recommendation"]["action"]
+            if action not in evidence_cache:
+                evidence_cache[action] = self.evidence(EVIDENCE_QUESTIONS[action], llm=llm, embedding=embedding, use_llm=use_llm)
+            m = by_route.get(route, {})
+            base_conf = 1 - m["model_mae"] / m["mean_actual"] if m.get("mean_actual") else 0.6
+            if advice["is_forecast"]:
+                base_conf -= 0.05
+            advice["model_version"] = self.fc.model_version
+            advice["status"] = "ok"
+            items.append(self.finalize(advice, evidence_cache[action], base_conf))
+
+        priority = {"increase": 0, "increase_limited": 1, "decrease": 2, "keep": 3}
+        return sorted(items, key=lambda a: (
+            a.get("status") != "ok",
+            priority.get(a.get("recommendation", {}).get("action"), 9),
+            -(a.get("congestion", {}).get("ratio") or 0),
+        ))
+
     # ==================================================
     # 4. 지도용 개요
     # ==================================================

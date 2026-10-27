@@ -62,3 +62,16 @@ def test_openai_without_key_gives_clear_error(client, monkeypatch):
     monkeypatch.setattr(llm, "OPENAI_API_KEY", "")
     r = client.post("/api/bus/ask", json={"question": "노선버스 운행횟수를 늘리는 사업계획 변경 절차는?", "llm": "openai"})
     assert r.status_code == 400 and "OPENAI_API_KEY" in r.json()["detail"]
+
+
+def test_advise_all_routes_sorted_by_urgency(client):
+    m = meta(client)
+    r = client.post("/api/bus/advise/all", json={"date": m["dates"]["max_date"], "hour": 8, "use_llm": False})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    ok = [i for i in body["items"] if i["status"] == "ok"]
+    assert {i["route"] for i in body["items"]} == {x["route"] for x in m["routes"]}
+    assert sum(body["summary"].values()) == len(ok)
+    order = {"increase": 0, "increase_limited": 1, "decrease": 2, "keep": 3}
+    ranks = [order[i["recommendation"]["action"]] for i in ok]
+    assert ranks == sorted(ranks) and all(i["needs_review"] for i in ok)

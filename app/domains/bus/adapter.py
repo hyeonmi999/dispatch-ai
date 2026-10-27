@@ -13,12 +13,14 @@ import sys
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 
 from app.core.domain import DomainAdapter
 from app.domains.bus.advisor import BusAdvisor, _num, congestion_level
 from app.domains.bus.data import BusDataset
 from app.domains.bus.forecaster import BusForecaster
-from app.domains.bus.schemas import BusAdviseRequest, BusPredictRequest
+from app.db import repository as repo
+from app.domains.bus.schemas import BusAdviseAllRequest, BusAdviseRequest, BusPredictRequest
 
 
 class BusAdapter(DomainAdapter):
@@ -215,6 +217,22 @@ class BusAdapter(DomainAdapter):
                     "congestion": _num(c, 3), "level": congestion_level(c) if c is not None and pd.notna(c) else None,
                 })
             return {"route": route, "date": f"{day['date']:%Y-%m-%d}", "hour": hour, "stops": rows}
+
+        @r.post("/advise/all", summary="선택 시간대 전체 노선 배차 권고 (needs_review)")
+        async def advise_all(req: BusAdviseAllRequest):
+            self._require_model()
+            items = await run_in_threadpool(
+                self.advisor.advise_all, self.dataset.routes, req.date, req.hour, req.llm, req.embedding, req.use_llm,
+            )
+            for item in items:
+                if item.get("status") == "ok":
+                    item["domain"] = "bus"
+                    item["advisory_id"] = await repo.save_advisory("bus", item, req.llm)
+                    item["db_saved"] = item["advisory_id"] is not None
+            ok = [i for i in items if i.get("status") == "ok"]
+            summary = {a: sum(1 for i in ok if i["recommendation"]["action"] == a)
+                       for a in ("increase", "increase_limited", "decrease", "keep")}
+            return {"date": f"{req.date:%Y-%m-%d}", "hour": req.hour, "summary": summary, "items": items}
 
         @r.get("/overview", summary="전체 노선 구간별 혼잡도 (지도)")
         def overview(date: dt.date = Query(...), hour: int = Query(..., ge=0, le=23)):
