@@ -74,7 +74,7 @@
               <div class="muted small ellipsis">{{ r.start }} ↔ {{ r.end }}</div>
             </div>
             <div class="route-side">
-              <div class="num">{{ r.max_congestion != null ? r.max_congestion.toFixed(2) : '-' }}</div>
+              <div class="num">{{ fmtCongestion(r.max_congestion) }}</div>
               <div class="small" :style="{ color: '#52514e' }">{{ r.level || '-' }}</div>
             </div>
           </div>
@@ -88,12 +88,12 @@
         <div class="map-wrap">
           <MapView :geometries="geometries" :overview="overview" :selected="selected" @select="(r) => (selected = r)" />
           <div v-if="hotspotCount" class="map-banner">
-            🔴 {{ date }} {{ hour }}시 · 혼잡 구간 {{ hotspotCount }}곳 (혼잡도 0.8 이상)
+            🔴 {{ hour }}시 혼잡 구간 {{ hotspotCount }}곳
           </div>
         </div>
         <div class="charts">
           <div class="chart-card">
-            <div class="chart-title">{{ selected }}번 시간대별 승차 인원 (노선 전체) · 실제 vs 모델 vs 베이스라인</div>
+            <div class="chart-title">{{ selected }}번 시간대별 승차 인원 (노선 전체)</div>
             <ForecastChart :hours="timeseries?.hours || []" :hour="hour" @hour="(h) => (hour = h)" />
           </div>
           <div class="chart-card">
@@ -129,7 +129,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   NAlert, NButton, NDatePicker, NRadioButton, NRadioGroup, NSelect, NSlider, NSpin, NTag, useMessage,
 } from 'naive-ui'
-import { api, errorMessage, levelColor } from '../api'
+import { api, errorMessage, fmtCongestion, levelColor } from '../api'
 import ComingSoon from './ComingSoon.vue'
 import ForecastChart from './ForecastChart.vue'
 import MapView from './MapView.vue'
@@ -166,6 +166,7 @@ const selected = ref(null)
 const playing = ref(false)
 let timer = null
 
+const missingDates = computed(() => new Set(meta.value?.dates.missing_dates || []))
 const currentDomain = computed(() => domains.value.find((d) => d.name === domain.value))
 const selectedMeta = computed(() => meta.value?.routes.find((r) => r.route === selected.value))
 const hourRow = computed(() => timeseries.value?.hours.find((h) => h.hour === hour.value) || null)
@@ -192,41 +193,42 @@ function isDateDisabled(ts) {
   if (!meta.value) return true
   const d = new Date(ts)
   const s = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  return s < meta.value.dates.min_date || s > meta.value.dates.max_forecast_date
+  return s < meta.value.dates.min_date || s > meta.value.dates.max_forecast_date || missingDates.value.has(s)
 }
 
 // 기본 날짜: 데이터 마지막 날 이전의 가장 최근 화요일 (평일 출근 혼잡을 바로 보이도록)
 function defaultDate(maxDate) {
   const d = new Date(maxDate + 'T00:00:00')
-  while (d.getDay() !== 2) d.setDate(d.getDate() - 1)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const fmt = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
+  while (d.getDay() !== 2 || missingDates.value.has(fmt(d))) d.setDate(d.getDate() - 1)
+  return fmt(d)
 }
 
-async function loadOverview() {
+// 노선·시간을 빠르게 바꾸면 응답 순서가 뒤바뀔 수 있어, 가장 마지막 요청의 응답만 반영
+const latest = { overview: 0, timeseries: 0, stops: 0 }
+async function fetchLatest(key, target, request, onError) {
+  const id = ++latest[key]
+  try {
+    const data = await request()
+    if (id === latest[key]) target.value = data
+  } catch (e) {
+    if (id === latest[key]) {
+      target.value = null
+      onError?.(e)
+    }
+  }
+}
+function loadOverview() {
   if (!date.value) return
-  try {
-    overview.value = await api.overview(date.value, hour.value)
-  } catch (e) {
-    overview.value = null
-    message.warning(errorMessage(e))
-  }
+  fetchLatest('overview', overview, () => api.overview(date.value, hour.value), (e) => message.warning(errorMessage(e)))
 }
-async function loadTimeseries() {
+function loadTimeseries() {
   if (!date.value || !selected.value) return
-  try {
-    timeseries.value = await api.timeseries(selected.value, date.value)
-  } catch (e) {
-    timeseries.value = null
-    message.warning(errorMessage(e))
-  }
+  fetchLatest('timeseries', timeseries, () => api.timeseries(selected.value, date.value), (e) => message.warning(errorMessage(e)))
 }
-async function loadStops() {
+function loadStops() {
   if (!date.value || !selected.value) return
-  try {
-    stops.value = await api.stops(selected.value, date.value, hour.value)
-  } catch {
-    stops.value = null
-  }
+  fetchLatest('stops', stops, () => api.stops(selected.value, date.value, hour.value))
 }
 
 function togglePlay() {
@@ -240,12 +242,9 @@ function togglePlay() {
   }
 }
 
-watch([date, hour], () => {
-  loadOverview()
-  loadStops()
-})
+watch([date, hour], loadOverview)
+watch([date, hour, selected], loadStops)
 watch([date, selected], loadTimeseries)
-watch(selected, loadStops)
 
 onMounted(async () => {
   try {
@@ -306,18 +305,23 @@ onBeforeUnmount(() => clearInterval(timer))
 .map-banner {
   position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 500;
   background: rgba(255, 255, 255, 0.95); border: 1px solid #f0c9c9; color: #8f1f1f;
-  padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600;
+  padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; white-space: nowrap;
 }
-.charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; height: 270px; }
-.chart-card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; min-width: 0; }
-.chart-title { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.charts {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr);
+  gap: 12px; height: 290px; flex: none;
+}
+.chart-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+  display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
+}
+.chart-title { font-size: 13px; font-weight: 600; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .loading { flex: 1; display: grid; place-items: center; padding: 40px; }
 
 @media (max-width: 1200px) {
   .grid { grid-template-columns: 1fr; overflow-y: auto; }
   .map-wrap { min-height: 420px; }
-  .charts { grid-template-columns: 1fr; height: auto; }
-  .chart-card { height: 270px; }
+  .charts { grid-template-columns: minmax(0, 1fr); grid-template-rows: 290px 290px; height: auto; }
   .topbar { flex-wrap: wrap; }
 }
 </style>

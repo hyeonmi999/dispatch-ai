@@ -17,7 +17,7 @@
       <div class="cell">
         <div class="lbl">혼잡도</div>
         <div class="big num">
-          {{ a.congestion.ratio.toFixed(2) }} → <b>{{ a.recommendation.expected_congestion.toFixed(2) }}</b>
+          {{ fmtCongestion(a.congestion.ratio) }} → <b>{{ fmtCongestion(a.recommendation.expected_congestion) }}</b>
         </div>
         <div class="tiny">{{ a.congestion.level }} → {{ levelOf(a.recommendation.expected_congestion) }}</div>
       </div>
@@ -69,7 +69,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { NAlert, NButton, NProgress, NTag, useMessage } from 'naive-ui'
-import { ACTION_TYPES, api, errorMessage } from '../api'
+import { ACTION_TYPES, api, errorMessage, fmtCongestion } from '../api'
 import SourceList from './SourceList.vue'
 
 const props = defineProps({

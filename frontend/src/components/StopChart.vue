@@ -1,10 +1,12 @@
 <template>
   <template v-if="stops.length">
-    <v-chart class="chart" :option="option" autoresize />
+    <div class="chart-box">
+      <v-chart class="chart" :option="option" autoresize />
+    </div>
     <div class="runs">
       <template v-if="runs.length">
         <span v-for="(r, i) in runs.slice(0, 3)" :key="i" class="run">
-          <b>{{ BADGES[i] }}</b> {{ r.from }} → {{ r.to }} <span class="muted num">최대 {{ r.peak.toFixed(2) }}</span>
+          <b>{{ BADGES[i] }}</b> {{ r.from }} → {{ r.to }} <span class="muted num">최대 {{ fmtCongestion(r.peak) }}</span>
         </span>
         <span v-if="runs.length > 3" class="muted">외 {{ runs.length - 3 }}곳</span>
       </template>
@@ -16,7 +18,7 @@
 
 <script setup>
 // 정류장 순서별 구간 혼잡도
-// - x축: 기점과 회차 종점(종착역 2곳)만 이름 표시
+// - x축: 정류장 순서 번호, 회차 지점은 점선
 // - 혼잡도 0.8 이상이 이어지는 구간은 음영 + 번호, 아래에 "시작역 → 끝역"
 import { computed } from 'vue'
 import VChart from 'vue-echarts'
@@ -24,7 +26,7 @@ import { use } from 'echarts/core'
 import { BarChart } from 'echarts/charts'
 import { GridComponent, MarkAreaComponent, MarkLineComponent, TooltipComponent } from 'echarts/components'
 import { SVGRenderer } from 'echarts/renderers'
-import { levelColor } from '../api'
+import { fmtCongestion, levelColor } from '../api'
 import { turnSeq } from '../routeShape'
 
 use([BarChart, GridComponent, MarkAreaComponent, MarkLineComponent, TooltipComponent, SVGRenderer])
@@ -69,28 +71,20 @@ const option = computed(() => {
         const s = stops[p.dataIndex]
         const next = stops[p.dataIndex + 1]
         return `<b>${s.name}${next ? ' → ' + next.name : ''}</b><br/>` +
-          `${s.direction ? '→ ' + s.direction + ' 방면 · ' : ''}혼잡도 ${s.congestion != null ? s.congestion.toFixed(2) : '-'} (${s.level || '-'})` +
+          `${s.direction ? '→ ' + s.direction + ' 방면 · ' : ''}혼잡도 ${fmtCongestion(s.congestion)} (${s.level || '-'})` +
           `<br/>예측 승차 ${s.pred ?? '-'}명` + (s.actual != null ? ` · 실제 ${s.actual}명` : '')
       },
     },
     xAxis: {
       type: 'category',
-      data: stops.map((_, i) => i),
+      data: stops.map((s) => s.seq),
       axisLine: { lineStyle: { color: INK.axis } },
       axisTick: { show: false },
-      axisLabel: {
-        interval: 0,
-        color: INK.text,
-        fontWeight: 600,
-        formatter: (i) => {
-          const idx = Number(i)
-          if (idx === 0) return `${stops[0].name}`
-          if (idx === t) return `${stops[t].name}`
-          return ''
-        },
-        align: 'center',
-        hideOverlap: true,
-      },
+      axisLabel: { color: INK.muted, interval: 9 },
+      name: '정류장 순서',
+      nameLocation: 'middle',
+      nameGap: 18,
+      nameTextStyle: { color: INK.muted, fontSize: 11 },
     },
     yAxis: {
       type: 'value',
@@ -131,7 +125,8 @@ const option = computed(() => {
 </script>
 
 <style scoped>
-.chart { flex: 1; min-height: 0; }
+.chart-box { position: relative; flex: 1; min-height: 0; min-width: 0; }
+.chart { position: absolute; inset: 0; }
 .empty { flex: 1; display: grid; place-items: center; font-size: 13px; }
 .runs { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ink-2); padding-top: 2px; }
 .run b { color: #8f1f1f; }

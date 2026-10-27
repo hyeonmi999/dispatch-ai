@@ -45,3 +45,6 @@ export const ACTION_TYPES = {
   decrease: 'info',
   keep: 'success',
 }
+
+// 혼잡도 표시: 반올림하면 0.798이 "0.80 보통"처럼 단계와 어긋나 보여서 소수 둘째 자리에서 버림
+export const fmtCongestion = (v) => (v == null ? '-' : (Math.floor(v * 100) / 100).toFixed(2))

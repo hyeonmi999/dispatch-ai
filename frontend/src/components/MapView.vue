@@ -6,7 +6,7 @@
 // 서울 지도 위 노선도: 정류장 구간마다 혼잡도 색, 혼잡 구간은 빨간 점 깜빡임
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import L from 'leaflet'
-import { LEVEL_COLORS, levelColor } from '../api'
+import { LEVEL_COLORS, fmtCongestion, levelColor } from '../api'
 import { routeShape } from '../routeShape'
 
 const props = defineProps({
@@ -73,7 +73,7 @@ function draw() {
         weight: active ? 7 : 4,
         opacity: active ? 1 : 0.55,
       })
-      const fmt = (x) => (x ? `${x.congestion.toFixed(2)} (${x.level})` : '-')
+      const fmt = (x) => (x ? `${fmtCongestion(x.congestion)} (${x.level})` : '-')
       line.bindTooltip(
         `<b>${route}번</b> ${names.get(seg.seq) || ''} 부근<br/>` +
           `→ ${shape.directions.up || '상행'}: ${fmt(up)}<br/>` +
@@ -121,7 +121,7 @@ function draw() {
         icon: L.divIcon({ className: '', html: '<div class="hotspot-pulse"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
         zIndexOffset: 1000,
       })
-        .bindTooltip(`<b>${r.route}번 혼잡</b><br/>${h.name}<br/>혼잡도 ${h.congestion.toFixed(2)}`)
+        .bindTooltip(`<b>${r.route}번 혼잡</b><br/>${h.name}<br/>혼잡도 ${fmtCongestion(h.congestion)}`)
         .on('click', () => emit('select', r.route))
         .addTo(hotspotLayer)
     }

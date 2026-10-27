@@ -25,7 +25,7 @@
       </div>
       <div class="stat">
         <div class="lbl">최대 혼잡도</div>
-        <div class="val num" :style="{ color: '#0b0b0b' }">{{ hourRow?.max_congestion?.toFixed(2) ?? '-' }}</div>
+        <div class="val num" :style="{ color: '#0b0b0b' }">{{ fmtCongestion(hourRow?.max_congestion) }}</div>
         <n-progress
           type="line"
           :percentage="Math.min(100, (hourRow?.max_congestion || 0) * 100)"
@@ -52,12 +52,12 @@
         <div class="advise-ctl">
           <n-switch v-model:value="useLlm" size="small" />
           <span class="small">규정 요약 생성 (LLM, 10~30초)</span>
-          <n-button type="primary" size="small" :loading="adviceLoading" @click="runAdvise" style="margin-left: auto">
+          <n-button type="primary" size="small" :loading="adviceLoading" :disabled="hourRow?.max_congestion == null" @click="runAdvise" style="margin-left: auto">
             권고 생성
           </n-button>
         </div>
-        <AdviceCard v-if="advice" :advice="advice" :db-available="dbAvailable" @reviewed="loadHistory" />
-        <n-empty v-else-if="!adviceLoading" description="노선·시간대를 고른 뒤 '권고 생성'을 누르세요" />
+        <AdviceCard v-if="advice" :key="advice.advisory_id ?? `${advice.route}-${advice.date}-${advice.hour}`" :advice="advice" :db-available="dbAvailable" @reviewed="loadHistory" />
+        <n-empty v-else-if="!adviceLoading" :description="hourRow?.max_congestion != null ? '노선·시간대를 고른 뒤 \'권고 생성\'을 누르세요' : '이 시간대는 운행이 없어 권고를 만들 수 없습니다'" />
       </n-tab-pane>
 
       <n-tab-pane name="ask" tab="규정 Q&A">
@@ -72,7 +72,7 @@
             <span class="muted small">· {{ actionLabel(h.action) }}</span>
           </div>
           <div class="small ink2">
-            {{ h.current_interval }}분 → {{ h.recommended_interval }}분 · 혼잡도 {{ h.congestion?.toFixed(2) }} ·
+            {{ h.current_interval }}분 → {{ h.recommended_interval }}분 · 혼잡도 {{ fmtCongestion(h.congestion) }} ·
             <n-tag size="tiny" :type="statusType(h.review_status)">{{ statusLabel(h.review_status) }}</n-tag>
             <span v-if="h.reviewer" class="muted"> {{ h.reviewer }}</span>
           </div>
@@ -86,7 +86,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { NAlert, NButton, NEmpty, NProgress, NSwitch, NTabPane, NTabs, NTag, useMessage } from 'naive-ui'
-import { api, errorMessage, levelColor } from '../api'
+import { api, errorMessage, fmtCongestion, levelColor } from '../api'
 import AdviceCard from './AdviceCard.vue'
 import AskPanel from './AskPanel.vue'
 
@@ -115,9 +115,9 @@ const n = (v) => (v == null ? '-' : Math.round(v).toLocaleString())
 const need = computed(() => {
   const c = props.hourRow?.max_congestion
   if (c == null) return { type: 'default', label: '정보 없음', text: '이 시간대 운행 데이터가 없습니다.' }
-  if (c >= 0.8) return { type: 'error', label: '높음', text: `최대 혼잡도 ${c.toFixed(2)} — 배차간격 단축(증차) 검토 대상입니다.` }
-  if (c < 0.25) return { type: 'info', label: '낮음 (감차 검토)', text: `최대 혼잡도 ${c.toFixed(2)} — 수요 대비 운행이 많습니다.` }
-  return { type: 'success', label: '보통', text: `최대 혼잡도 ${c.toFixed(2)} — 현행 배차로 수용 가능합니다.` }
+  if (c >= 0.8) return { type: 'error', label: '높음', text: `최대 혼잡도 ${fmtCongestion(c)} — 배차간격 단축(증차) 검토 대상입니다.` }
+  if (c < 0.25) return { type: 'info', label: '낮음 (감차 검토)', text: `최대 혼잡도 ${fmtCongestion(c)} — 수요 대비 운행이 많습니다.` }
+  return { type: 'success', label: '보통', text: `최대 혼잡도 ${fmtCongestion(c)} — 현행 배차로 수용 가능합니다.` }
 })
 
 const ACTIONS = { increase: '증차', increase_limited: '별도 대책', decrease: '감차 검토', keep: '현행 유지' }
@@ -126,13 +126,18 @@ const STATUS = { pending: ['검토 대기', 'warning'], approved: ['승인', 'su
 const statusLabel = (s) => STATUS[s]?.[0] || s
 const statusType = (s) => STATUS[s]?.[1] || 'default'
 
+const contextKey = () => `${props.route?.route}|${props.date}|${props.hour}`
+
 async function runAdvise() {
   adviceLoading.value = true
+  const key = contextKey()
   try {
-    advice.value = await api.advise('bus', {
+    const result = await api.advise('bus', {
       route: props.route.route, date: props.date, hour: props.hour,
       llm: props.llm, embedding: props.embedding, use_llm: useLlm.value,
     })
+    // LLM 응답(10~30초)을 기다리는 사이 노선·시간을 바꿨다면 지난 결과는 표시하지 않음
+    if (key === contextKey()) advice.value = result
     loadHistory()
   } catch (e) {
     message.error(errorMessage(e))

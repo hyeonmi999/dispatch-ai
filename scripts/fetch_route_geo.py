@@ -13,11 +13,11 @@
 
 import argparse
 import json
-import math
 import re
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import requests
 
@@ -42,14 +42,35 @@ def call_api(operation, route_id):
     return [dict(re.findall(r"<(\w+)>([^<]*)</\1>", item)) for item in items]
 
 
-def nearest_index(path, lat, lng, start):
-    """정류소 좌표와 가장 가까운 경로점 인덱스 (경로 진행 방향으로만 탐색)"""
-    best, best_d = start, math.inf
-    for i in range(start, len(path)):
-        d = (path[i][0] - lat) ** 2 + (path[i][1] - lng) ** 2
-        if d < best_d:
-            best, best_d = i, d
-    return best
+def align_stops_to_path(path, stops):
+    """정류소를 경로점에 순서대로 매칭 (단조 증가 + 전체 거리 합 최소, 동적 계획법)
+
+    가장 가까운 점만 고르면 왕복 노선에서 기점 근처 정류소가 경로 맨 끝
+    '돌아오는 길'에 붙어 버려, 이후 구간이 모두 직선으로 그려지는 문제가 생깁니다.
+    정류소 순서 = 경로 진행 순서라는 조건을 걸고 전체 오차가 최소가 되도록 맞춥니다.
+    """
+    P = np.array(path)
+    S = np.array([[s["lat"], s["lng"]] for s in stops])
+    # 정류소 × 경로점 거리(km)
+    cost = np.hypot((S[:, None, 0] - P[None, :, 0]) * 111, (S[:, None, 1] - P[None, :, 1]) * 88)
+
+    n, m = cost.shape
+    dp = np.empty_like(cost)
+    arg = np.empty((n, m), dtype=int)
+    dp[0] = cost[0]
+    for i in range(1, n):
+        # 이전 정류소의 위치 k ≤ j 중 최소값 (prefix minimum)
+        best_prev = np.minimum.accumulate(dp[i - 1])
+        best_arg = np.zeros(m, dtype=int)
+        for j in range(1, m):
+            best_arg[j] = j if dp[i - 1][j] <= best_prev[j - 1] else best_arg[j - 1]
+        dp[i] = cost[i] + best_prev
+        arg[i] = best_arg
+
+    idx = [int(np.argmin(dp[-1]))]
+    for i in range(n - 1, 0, -1):
+        idx.append(int(arg[i][idx[-1]]))
+    return idx[::-1]
 
 
 def build_route_geo(route_name, route_id):
@@ -71,11 +92,8 @@ def build_route_geo(route_name, route_id):
         for s in sorted(stations, key=lambda s: int(s["seq"]))
     ]
 
-    # 정류소마다 가장 가까운 경로점 → 정류소 i ~ i+1 사이 경로를 구간 좌표로 사용
-    idx, cursor = [], 0
-    for stop in stops:
-        cursor = nearest_index(path, stop["lat"], stop["lng"], cursor)
-        idx.append(cursor)
+    # 정류소 i ~ i+1 사이 경로를 구간 좌표로 사용
+    idx = align_stops_to_path(path, stops)
 
     segments = []
     for i in range(len(stops) - 1):

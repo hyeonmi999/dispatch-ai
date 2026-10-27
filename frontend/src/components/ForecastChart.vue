@@ -1,5 +1,8 @@
 <template>
-  <v-chart class="chart" :option="option" autoresize @click="onClick" />
+  <!-- 차트는 박스 안에 절대 위치: SVG 고정 크기가 레이아웃을 다시 키우는 피드백 방지 -->
+  <div class="chart-box">
+    <v-chart class="chart" :option="option" autoresize @click="onClick" />
+  </div>
 </template>
 
 <script setup>
@@ -60,13 +63,6 @@ const option = computed(() => ({
       symbol: 'circle',
       symbolSize: 4,
       showSymbol: false,
-      markLine: {
-        silent: true,
-        symbol: 'none',
-        data: [{ xAxis: props.hour }],
-        lineStyle: { color: '#0b0b0b', type: 'solid', width: 1 },
-        label: { formatter: `${props.hour}시`, color: '#0b0b0b' },
-      },
     },
     {
       name: '모델 예측',
@@ -75,6 +71,14 @@ const option = computed(() => ({
       lineStyle: { width: 2, color: COLORS.pred },
       itemStyle: { color: COLORS.pred },
       showSymbol: false,
+      // 선택 시간 표시선은 항상 값이 있는 예측 계열에 붙임 (향후 예측 날짜는 실제값이 없음)
+      markLine: {
+        silent: true,
+        symbol: 'none',
+        data: [{ xAxis: props.hour }],
+        lineStyle: { color: '#0b0b0b', type: 'solid', width: 1 },
+        label: { formatter: `${props.hour}시`, color: '#0b0b0b' },
+      },
     },
     {
       name: '베이스라인',
@@ -93,5 +97,6 @@ function onClick(p) {
 </script>
 
 <style scoped>
-.chart { flex: 1; min-height: 0; }
+.chart-box { position: relative; flex: 1; min-height: 0; min-width: 0; }
+.chart { position: absolute; inset: 0; }
 </style>

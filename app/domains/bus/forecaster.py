@@ -248,7 +248,11 @@ class BusForecaster(Forecaster):
 
     def date_range(self) -> dict:
         d = self.store["date"]
+        # 원천 파일에 없는 날짜 (화면 달력에서 선택 불가 처리)
+        have = set(d.dt.normalize().unique())
+        observed = pd.date_range(d.min(), pd.Timestamp(self.meta["last_observed_date"]))
         return {
+            "missing_dates": [f"{x:%Y-%m-%d}" for x in observed if x not in have],
             "min_date": f"{d.min() + pd.Timedelta(days=max(LAG_DAYS)):%Y-%m-%d}",
             "max_date": self.meta["last_observed_date"],
             "max_forecast_date": f"{d.max():%Y-%m-%d}",
