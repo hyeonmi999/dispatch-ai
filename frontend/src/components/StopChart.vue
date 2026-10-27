@@ -1,73 +1,138 @@
 <template>
-  <v-chart v-if="stops.length" class="chart" :option="option" autoresize />
+  <template v-if="stops.length">
+    <v-chart class="chart" :option="option" autoresize />
+    <div class="runs">
+      <template v-if="runs.length">
+        <span v-for="(r, i) in runs.slice(0, 3)" :key="i" class="run">
+          <b>{{ BADGES[i] }}</b> {{ r.from }} → {{ r.to }} <span class="muted num">최대 {{ r.peak.toFixed(2) }}</span>
+        </span>
+        <span v-if="runs.length > 3" class="muted">외 {{ runs.length - 3 }}곳</span>
+      </template>
+      <span v-else class="muted">혼잡 구간(0.8 이상) 없음</span>
+    </div>
+  </template>
   <div v-else class="empty muted">이 시간대 운행 데이터가 없습니다</div>
 </template>
 
 <script setup>
-// 정류장 순서별 구간 혼잡도 (막대 색 = 혼잡 단계, 0.8 증차 기준선)
+// 정류장 순서별 구간 혼잡도
+// - x축: 기점과 회차 종점(종착역 2곳)만 이름 표시
+// - 혼잡도 0.8 이상이 이어지는 구간은 음영 + 번호, 아래에 "시작역 → 끝역"
 import { computed } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { BarChart } from 'echarts/charts'
-import { GridComponent, MarkLineComponent, TooltipComponent } from 'echarts/components'
+import { GridComponent, MarkAreaComponent, MarkLineComponent, TooltipComponent } from 'echarts/components'
 import { SVGRenderer } from 'echarts/renderers'
 import { levelColor } from '../api'
+import { turnSeq } from '../routeShape'
 
-use([BarChart, GridComponent, MarkLineComponent, TooltipComponent, SVGRenderer])
+use([BarChart, GridComponent, MarkAreaComponent, MarkLineComponent, TooltipComponent, SVGRenderer])
 
 const props = defineProps({ stops: { type: Array, default: () => [] } })
-const INK = { muted: '#898781', grid: '#e1e0d9', axis: '#c3c2b7' }
+const INK = { muted: '#898781', grid: '#e1e0d9', axis: '#c3c2b7', text: '#52514e' }
+const HIGH = 0.8
+const BADGES = ['①', '②', '③']
 
-const option = computed(() => ({
-  animationDuration: 300,
-  grid: { left: 40, right: 16, top: 24, bottom: 26 },
-  tooltip: {
-    trigger: 'item',
-    formatter: (p) => {
-      const s = props.stops[p.dataIndex]
-      return `<b>${s.seq}. ${s.name}</b><br/>혼잡도 ${s.congestion != null ? s.congestion.toFixed(2) : '-'} (${s.level || '-'})<br/>예측 승차 ${s.pred ?? '-'}명` +
-        (s.actual != null ? ` · 실제 ${s.actual}명` : '')
-    },
-  },
-  xAxis: {
-    type: 'category',
-    data: props.stops.map((s) => s.seq),
-    axisLine: { lineStyle: { color: INK.axis } },
-    axisTick: { show: false },
-    axisLabel: { color: INK.muted, interval: 9 },
-    name: '정류장 순서',
-    nameLocation: 'middle',
-    nameGap: 18,
-    nameTextStyle: { color: INK.muted, fontSize: 11 },
-  },
-  yAxis: {
-    type: 'value',
-    name: '혼잡도',
-    nameTextStyle: { color: INK.muted, align: 'right' },
-    splitLine: { lineStyle: { color: INK.grid } },
-    axisLabel: { color: INK.muted },
-  },
-  series: [
-    {
-      type: 'bar',
-      barCategoryGap: '15%',
-      data: props.stops.map((s) => ({
-        value: s.congestion,
-        itemStyle: { color: levelColor(s.level), borderRadius: [2, 2, 0, 0] },
-      })),
-      markLine: {
-        silent: true,
-        symbol: 'none',
-        data: [{ yAxis: 0.8 }],
-        lineStyle: { color: '#d03b3b', type: 'dashed' },
-        label: { formatter: '증차 기준 0.8', position: 'insideEndTop', color: '#8f1f1f' },
+const turnIndex = computed(() => {
+  const seq = turnSeq(props.stops)
+  const i = props.stops.findIndex((s) => s.seq === seq)
+  return i >= 0 ? i : props.stops.length - 1
+})
+
+// 혼잡도 0.8 이상이 연속된 구간 (구간 i는 정류장 i → i+1)
+const runs = computed(() => {
+  const out = []
+  let cur = null
+  props.stops.forEach((s, i) => {
+    const hot = s.congestion != null && s.congestion >= HIGH
+    if (hot && !cur) cur = { start: i, end: i, peak: s.congestion }
+    else if (hot) Object.assign(cur, { end: i, peak: Math.max(cur.peak, s.congestion) })
+    if ((!hot || i === props.stops.length - 1) && cur) {
+      const endStop = props.stops[cur.end + 1] || props.stops[cur.end]
+      out.push({ ...cur, from: props.stops[cur.start].name, to: endStop.name })
+      cur = null
+    }
+  })
+  return out.sort((a, b) => b.peak - a.peak)
+})
+
+const option = computed(() => {
+  const t = turnIndex.value
+  const stops = props.stops
+  return {
+    animationDuration: 300,
+    grid: { left: 40, right: 16, top: 24, bottom: 30 },
+    tooltip: {
+      trigger: 'item',
+      formatter: (p) => {
+        const s = stops[p.dataIndex]
+        const next = stops[p.dataIndex + 1]
+        return `<b>${s.name}${next ? ' → ' + next.name : ''}</b><br/>` +
+          `${s.direction ? '→ ' + s.direction + ' 방면 · ' : ''}혼잡도 ${s.congestion != null ? s.congestion.toFixed(2) : '-'} (${s.level || '-'})` +
+          `<br/>예측 승차 ${s.pred ?? '-'}명` + (s.actual != null ? ` · 실제 ${s.actual}명` : '')
       },
     },
-  ],
-}))
+    xAxis: {
+      type: 'category',
+      data: stops.map((_, i) => i),
+      axisLine: { lineStyle: { color: INK.axis } },
+      axisTick: { show: false },
+      axisLabel: {
+        interval: 0,
+        color: INK.text,
+        fontWeight: 600,
+        formatter: (i) => {
+          const idx = Number(i)
+          if (idx === 0) return `${stops[0].name}`
+          if (idx === t) return `${stops[t].name}`
+          return ''
+        },
+        align: 'center',
+        hideOverlap: true,
+      },
+    },
+    yAxis: {
+      type: 'value',
+      name: '혼잡도',
+      nameTextStyle: { color: INK.muted, align: 'right' },
+      splitLine: { lineStyle: { color: INK.grid } },
+      axisLabel: { color: INK.muted },
+    },
+    series: [
+      {
+        type: 'bar',
+        barCategoryGap: '15%',
+        data: stops.map((s) => ({
+          value: s.congestion,
+          itemStyle: { color: levelColor(s.level), borderRadius: [2, 2, 0, 0] },
+        })),
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          data: [
+            { yAxis: HIGH, lineStyle: { color: '#d03b3b', type: 'dashed' }, label: { formatter: '증차 기준 0.8', position: 'insideEndTop', color: '#8f1f1f' } },
+            { xAxis: t, lineStyle: { color: '#898781', type: 'dotted' }, label: { formatter: '회차', position: 'end', color: INK.text } },
+          ],
+        },
+        markArea: {
+          silent: true,
+          itemStyle: { color: 'rgba(208, 59, 59, 0.10)' },
+          data: runs.value.map((r, i) => [
+            { xAxis: r.start, name: BADGES[i] || '' },
+            { xAxis: Math.min(r.end + 1, stops.length - 1) },
+          ]),
+          label: { position: 'insideTop', color: '#8f1f1f', fontWeight: 700 },
+        },
+      },
+    ],
+  }
+})
 </script>
 
 <style scoped>
 .chart { flex: 1; min-height: 0; }
 .empty { flex: 1; display: grid; place-items: center; font-size: 13px; }
+.runs { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ink-2); padding-top: 2px; }
+.run b { color: #8f1f1f; }
 </style>

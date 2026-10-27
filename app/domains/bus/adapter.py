@@ -207,8 +207,10 @@ class BusAdapter(DomainAdapter):
             for r in fh.itertuples():
                 key = (r.stop_id, int(r.stop_seq))
                 c = seg["congestion"].get(key) if key in seg.index else None
+                geo_stop = names.get(key, {})
                 rows.append({
-                    "seq": int(r.stop_seq), "stop_id": r.stop_id, "name": names.get(key, {}).get("name", r.stop_id),
+                    "seq": int(r.stop_seq), "stop_id": r.stop_id, "name": geo_stop.get("name", r.stop_id),
+                    "direction": geo_stop.get("direction"), "is_turn": bool(geo_stop.get("is_turn")),
                     "pred": _num(r.pred), "actual": _num(r.boarding), "baseline": _num(r.baseline),
                     "congestion": _num(c, 3), "level": congestion_level(c) if c is not None and pd.notna(c) else None,
                 })

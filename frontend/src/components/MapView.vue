@@ -7,6 +7,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import L from 'leaflet'
 import { LEVEL_COLORS, levelColor } from '../api'
+import { routeShape } from '../routeShape'
 
 const props = defineProps({
   geometries: { type: Object, default: () => ({}) },
@@ -20,6 +21,14 @@ let map = null
 let routeLayer = null
 let hotspotLayer = null
 let fitted = false
+
+// 노선별 상·하행 구조는 좌표가 바뀔 때만 다시 계산
+const shapes = new Map()
+function shapeOf(route) {
+  const geo = props.geometries[route]
+  if (shapes.get(route)?.geo !== geo) shapes.set(route, { geo, shape: routeShape(geo) })
+  return shapes.get(route).shape
+}
 
 function segmentLookup(route) {
   const r = props.overview?.routes.find((x) => x.route === route)
@@ -38,30 +47,46 @@ function draw() {
     const geo = props.geometries[route]
     const active = route === props.selected
     const segs = segmentLookup(route)
+    const shape = shapeOf(route)
+    const names = new Map(geo.stops.map((s) => [s.seq, s.name]))
 
-    // 바탕 경로 (흰 테두리 효과)
-    L.polyline(geo.path, { color: '#ffffff', weight: active ? 11 : 7, opacity: active ? 0.95 : 0.6 }).addTo(routeLayer)
-
+    // 상행·하행 구간 혼잡도를 지도에 그리는 상행 구간 하나로 모음
+    const merged = new Map(shape.outbound.map((o) => [o.seq, { up: null, down: null }]))
     for (const seg of geo.segments) {
+      const target = merged.get(shape.mapTo.get(seg.seq))
       const s = segs.get(seg.seq)
-      const level = s?.level || '정보없음'
+      if (!target || !s || s.congestion == null) continue
+      const side = seg.seq < shape.turn ? 'up' : 'down'
+      if (!target[side] || s.congestion > target[side].congestion) target[side] = s
+    }
+
+    // 바탕 경로 (흰 테두리 효과) - 상행 경로 하나만
+    const outPath = shape.outbound.flatMap((o) => o.coords)
+    L.polyline(outPath, { color: '#ffffff', weight: active ? 11 : 7, opacity: active ? 0.95 : 0.6 }).addTo(routeLayer)
+
+    for (const seg of shape.outbound) {
+      const { up, down } = merged.get(seg.seq)
+      const worst = [up, down].filter(Boolean).sort((a, b) => b.congestion - a.congestion)[0]
+      const level = worst?.level || '정보없음'
       const line = L.polyline(seg.coords, {
         color: levelColor(level),
         weight: active ? 7 : 4,
         opacity: active ? 1 : 0.55,
       })
+      const fmt = (x) => (x ? `${x.congestion.toFixed(2)} (${x.level})` : '-')
       line.bindTooltip(
-        `<b>${route}번</b> · 구간 ${seg.seq}<br/>혼잡도 ${s?.congestion != null ? s.congestion.toFixed(2) : '-'} (${level})` +
-          (s?.per_bus != null ? `<br/>버스 1대당 약 ${Math.round(s.per_bus)}명` : ''),
+        `<b>${route}번</b> ${names.get(seg.seq) || ''} 부근<br/>` +
+          `→ ${shape.directions.up || '상행'}: ${fmt(up)}<br/>` +
+          `→ ${shape.directions.down || '하행'}: ${fmt(down)}`,
         { sticky: true },
       )
       line.on('click', () => emit('select', route))
       line.addTo(routeLayer)
     }
-    geo.path.forEach((p) => bounds.push(p))
+    outPath.forEach((p) => bounds.push(p))
 
     // 노선 번호 라벨
-    const mid = geo.path[Math.floor(geo.path.length / 4)]
+    const mid = outPath[Math.floor(outPath.length / 2)]
     L.marker(mid, {
       icon: L.divIcon({
         className: '',
@@ -74,7 +99,7 @@ function draw() {
       .addTo(routeLayer)
 
     if (active) {
-      for (const st of geo.stops) {
+      for (const st of geo.stops.filter((s) => s.seq <= shape.turn)) {
         L.circleMarker([st.lat, st.lng], { radius: 3, color: '#52514e', weight: 1, fillColor: '#fff', fillOpacity: 1 })
           .bindTooltip(`${st.name} (${st.seq})`)
           .addTo(routeLayer)
@@ -82,11 +107,17 @@ function draw() {
     }
   }
 
-  // 혼잡 지점(혼잡도 0.8 이상) 깜빡임
+  // 혼잡 지점(혼잡도 0.8 이상) 깜빡임 - 하행 지점도 지도에 그린 상행 선 위로 옮김
   for (const r of props.overview?.routes || []) {
+    const geo = props.geometries[r.route]
+    if (!geo) continue
+    const shape = shapeOf(r.route)
+    const drawn = new Map(shape.outbound.map((o) => [o.seq, o]))
     for (const h of r.hotspots) {
-      if (h.lat == null) continue
-      L.marker([h.lat, h.lng], {
+      const seg = drawn.get(shape.mapTo.get(h.seq))
+      const pos = seg ? seg.coords[Math.floor(seg.coords.length / 2)] : h.lat != null ? [h.lat, h.lng] : null
+      if (!pos) continue
+      L.marker(pos, {
         icon: L.divIcon({ className: '', html: '<div class="hotspot-pulse"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
         zIndexOffset: 1000,
       })
