@@ -311,6 +311,16 @@ class KnowledgeBase:
             return self._result(question, NOT_FOUND_ANSWER, False, [], llm, embedding, t0,
                                 note=f"유사도 임계값({threshold}) 이상 근거 없음 (최고 {best})")
 
+        # 같은 조항이 여러 Chunk로 검색되면 하나의 근거로 합침 (출처 중복 표시 방지)
+        merged: dict[tuple, dict] = {}
+        for h in relevant:
+            key = (h["document"], h["article"])
+            if key in merged:
+                merged[key]["text"] += "\n" + h["text"].split("\n", 1)[-1]
+            else:
+                merged[key] = dict(h)
+        relevant = list(merged.values())
+
         sources = [self._source(i, h) for i, h in enumerate(relevant, start=1)]
 
         # 2) LLM 없이 근거 조항만 필요한 경우 (예: 권고 카드에 빠르게 첨부)

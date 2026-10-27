@@ -1,0 +1,36 @@
+:root {
+  --page: #f6f6f3;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --line: #e1e0d9;
+  --accent: #2a78d6;
+}
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; margin: 0; }
+body {
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif;
+  background: var(--page);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.muted { color: var(--muted); }
+.ink2 { color: var(--ink-2); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* 혼잡 지점 깜빡임 */
+.hotspot-pulse {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: rgba(208, 59, 59, 0.9);
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 0 rgba(208, 59, 59, 0.6);
+  animation: pulse 1.6s infinite;
+}
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(208, 59, 59, 0.55); }
+  70% { box-shadow: 0 0 0 14px rgba(208, 59, 59, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(208, 59, 59, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .hotspot-pulse { animation: none; } }
+.leaflet-container { font-family: inherit; background: #eceae4; }
