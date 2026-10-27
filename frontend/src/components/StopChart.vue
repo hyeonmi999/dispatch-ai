@@ -1,19 +1,18 @@
 <template>
-  <template v-if="stops.length">
-    <div class="chart-box">
-      <v-chart class="chart" :option="option" autoresize />
-    </div>
-    <div class="runs">
-      <template v-if="runs.length">
-        <span v-for="(r, i) in runs.slice(0, 3)" :key="i" class="run">
-          <b>{{ BADGES[i] }}</b> {{ r.from }} → {{ r.to }} <span class="muted num">최대 {{ fmtCongestion(r.peak) }}</span>
-        </span>
-        <span v-if="runs.length > 3" class="muted">외 {{ runs.length - 3 }}곳</span>
-      </template>
-      <span v-else class="muted">혼잡 구간(0.8 이상) 없음</span>
-    </div>
-  </template>
-  <div v-else class="empty muted">이 시간대 운행 데이터가 없습니다</div>
+  <!-- 차트 영역은 고정, 혼잡 구간 목록은 아래 고정 높이 칸에서 스크롤 (목록이 길어져도 차트 크기 유지) -->
+  <div class="chart-box">
+    <v-chart v-if="stops.length" class="chart" :option="option" autoresize />
+    <div v-else class="empty muted">이 시간대 운행 데이터가 없습니다</div>
+  </div>
+  <div class="chart-foot">
+    <template v-if="runs.length">
+      <div class="muted foot-head">혼잡 구간 {{ runs.length }}곳 (혼잡도 0.8 이상, 높은 순)</div>
+      <div v-for="(r, i) in runs" :key="i" class="run">
+        <b>{{ BADGES[i] || i + 1 + '.' }}</b> {{ r.from }} → {{ r.to }} <span class="muted num">최대 {{ fmtCongestion(r.peak) }}</span>
+      </div>
+    </template>
+    <span v-else-if="stops.length" class="muted">혼잡 구간(0.8 이상) 없음</span>
+  </div>
 </template>
 
 <script setup>
@@ -34,7 +33,7 @@ use([BarChart, GridComponent, MarkAreaComponent, MarkLineComponent, TooltipCompo
 const props = defineProps({ stops: { type: Array, default: () => [] } })
 const INK = { muted: '#898781', grid: '#e1e0d9', axis: '#c3c2b7', text: '#52514e' }
 const HIGH = 0.8
-const BADGES = ['①', '②', '③']
+const BADGES = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩']
 
 const turnIndex = computed(() => {
   const seq = turnSeq(props.stops)
@@ -127,7 +126,8 @@ const option = computed(() => {
 <style scoped>
 .chart-box { position: relative; flex: 1; min-height: 0; min-width: 0; }
 .chart { position: absolute; inset: 0; }
-.empty { flex: 1; display: grid; place-items: center; font-size: 13px; }
-.runs { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ink-2); padding-top: 2px; }
+.empty { position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; }
+.foot-head { font-size: 11px; }
+.run { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .run b { color: #8f1f1f; }
 </style>

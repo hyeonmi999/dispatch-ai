@@ -34,3 +34,9 @@ body {
 }
 @media (prefers-reduced-motion: reduce) { .hotspot-pulse { animation: none; } }
 .leaflet-container { font-family: inherit; background: #eceae4; }
+
+/* 차트 카드 아래 고정 높이 설명 칸 (내용이 늘어도 차트 크기 유지, 넘치면 스크롤) */
+.chart-foot {
+  flex: none; height: 58px; overflow-y: auto; margin-top: 4px; padding-top: 4px;
+  border-top: 1px solid #efeee8; font-size: 12px; line-height: 1.5; color: var(--ink-2);
+}

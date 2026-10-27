@@ -95,6 +95,14 @@
           <div class="chart-card">
             <div class="chart-title">{{ selected }}번 시간대별 승차 인원 (노선 전체)</div>
             <ForecastChart :hours="timeseries?.hours || []" :hour="hour" @hour="(h) => (hour = h)" />
+            <div class="chart-foot">
+              <template v-if="hourRow">
+                <b>{{ hour }}시</b> · 모델 예측 <b class="num">{{ fmtNum(hourRow.pred) }}</b>명 · 전주 같은 시간 {{ fmtNum(hourRow.baseline) }}명 ·
+                실제 {{ hourRow.actual != null ? fmtNum(hourRow.actual) + '명' : '없음 (향후 예측)' }}
+                <div class="muted">그래프를 클릭하면 해당 시간으로 이동합니다</div>
+              </template>
+              <span v-else class="muted">{{ hour }}시는 운행 데이터가 없습니다</span>
+            </div>
           </div>
           <div class="chart-card">
             <div class="chart-title">{{ selected }}번 {{ hour }}시 정류장 구간별 혼잡도</div>
@@ -167,6 +175,7 @@ const playing = ref(false)
 let timer = null
 
 const missingDates = computed(() => new Set(meta.value?.dates.missing_dates || []))
+const fmtNum = (v) => (v == null ? '-' : Math.round(v).toLocaleString())
 const currentDomain = computed(() => domains.value.find((d) => d.name === domain.value))
 const selectedMeta = computed(() => meta.value?.routes.find((r) => r.route === selected.value))
 const hourRow = computed(() => timeseries.value?.hours.find((h) => h.hour === hour.value) || null)
@@ -309,7 +318,7 @@ onBeforeUnmount(() => clearInterval(timer))
 }
 .charts {
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr);
-  gap: 12px; height: 290px; flex: none;
+  gap: 12px; height: 320px; flex: none;
 }
 .chart-card {
   background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
@@ -321,7 +330,7 @@ onBeforeUnmount(() => clearInterval(timer))
 @media (max-width: 1200px) {
   .grid { grid-template-columns: 1fr; overflow-y: auto; }
   .map-wrap { min-height: 420px; }
-  .charts { grid-template-columns: minmax(0, 1fr); grid-template-rows: 290px 290px; height: auto; }
+  .charts { grid-template-columns: minmax(0, 1fr); grid-template-rows: 320px 320px; height: auto; }
   .topbar { flex-wrap: wrap; }
 }
 </style>
