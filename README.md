@@ -279,7 +279,9 @@ python -m pytest -q      # 합성 데이터 기준 11개: 시간순 분할·lag 
 | POST | `/api/{domain}/ask` | 규정 질의응답 `{"question":"…","llm":"qwen","embedding":"bge"}` → 답변 + 출처(문서명·조항·쪽) / 근거 없으면 `found:false`, "찾을 수 없음" |
 | POST | `/api/{domain}/advise` | 배차 권고 `{"route":"143","date":"2026-10-13","hour":7,"use_llm":true}` → 예상 승객·혼잡도·권고 간격·추가 차량·근거·신뢰도·`needs_review` |
 | POST | `/api/bus/advise/all` | 선택 시간대 **전체 노선** 권고 `{"date":"2026-10-28","hour":8}` → 증차 필요 → 별도 대책 → 감차 검토 → 유지 순 (규정 근거는 권고 유형별 1회 조회) |
-| GET | `/api/advisories` | 권고 이력 (MariaDB) |
+| GET | `/api/advisories/batches` | 권고 이력 — 시간대별 "전체 노선 권고" 묶음 (권고 유형별 건수, 검토 진행) |
+| GET | `/api/advisories/batches/{id}` | 묶음 1건의 노선별 저장된 권고 (현재 검토 상태 반영) |
+| GET | `/api/advisories` | 개별 권고 이력 (MariaDB) |
 | GET | `/api/advisories/{id}` | 저장된 권고 1건 (생성 당시 응답 전체 + 검토 상태) |
 | POST | `/api/advisories/{id}/review` | 담당자 검토 `{"status":"approved|held|rejected"}` |
 | GET | `/api/bus/meta`, `/api/bus/overview`, `/api/bus/routes/{route}/geometry·timeseries·stops` | 지도·차트용 |
@@ -290,7 +292,7 @@ python -m pytest -q      # 합성 데이터 기준 11개: 시간순 분할·lag 
 
 ## 7. 프론트엔드 (Vue 3 + Vite)
 
-화면 구성: 도메인 선택(물류·서비스 "준비 중") · LLM/임베딩 선택 · 날짜·시간 슬라이더(재생, "지금" 버튼) · **서울 지도 노선도(구간별 혼잡도 색, 혼잡 지점 빨간 점)** · 노선 목록 · 모델 성능 카드 · 24시간 실제/모델/베이스라인 그래프(아무 곳 클릭 → 해당 시간) · 정류장 구간별 혼잡도 · 선택 노선 배차 현황·추가 배차 필요성 · **배차 권고 탭: 선택 시간대 전체 노선 권고 목록**(노선 클릭 → 지도 선택 + 근거·신뢰도·승인/보류/반려 카드) · 규정 Q&A · **권고 이력**(항목 클릭 → 저장된 권고 상세 + 그 시점으로 지도 이동)
+화면 구성: 도메인 선택(물류·서비스 "준비 중") · LLM/임베딩 선택 · 날짜·시간 슬라이더(재생, "지금" 버튼) · **서울 지도 노선도(구간별 혼잡도 색, 혼잡 지점 빨간 점)** · 노선 목록 · 모델 성능 카드 · 24시간 실제/모델/베이스라인 그래프(아무 곳 클릭 → 해당 시간) · 정류장 구간별 혼잡도 · 선택 노선 배차 현황·추가 배차 필요성 · **배차 권고 탭: 선택 시간대 전체 노선 권고 목록**(노선 클릭 → 지도 선택 + 근거·신뢰도·승인/보류/반려 카드) · 규정 Q&A · **권고 이력**(시간대별 묶음 1건씩 · 클릭 → 그 시간대 노선별 저장된 권고 + 날짜·시간 이동, 검토 진행 n/5)
 
 ### UI 템플릿·라이브러리 선택 이유
 조사한 후보 (2026-10 기준, GitHub API·npm 확인)
@@ -344,7 +346,7 @@ python -m pytest -q      # 합성 데이터 기준 11개: 시간순 분할·lag 
 | /advise: 예상 승객·혼잡도·권고 간격·근거·needs_review | ✅ |
 | Qwen3 ↔ OpenAI 전환, 키 없으면 명확한 오류 | ✅ 400 `OPENAI_API_KEY가 설정되지 않았습니다…` |
 | logistics·field_service "미구현" 응답 | ✅ 501 |
-| 예측·권고 MariaDB 저장 | ✅ `prediction_log`, `advisory_log`, `qa_log` |
+| 예측·권고 MariaDB 저장 | ✅ `prediction_log`, `advisory_log`, `advisory_batch`, `qa_log` |
 | GitHub private, .env·데이터·모델 미커밋 | ✅ `.gitignore` |
 
 ---

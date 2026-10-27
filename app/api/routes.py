@@ -8,7 +8,8 @@
 #   POST /api/{domain}/predict         수요 예측
 #   POST /api/{domain}/ask             규정 질의응답 (RAG)
 #   POST /api/{domain}/advise          배차 권고 (예측 + 규정 근거, needs_review)
-#   GET  /api/advisories               권고 이력 (MariaDB)
+#   GET  /api/advisories               권고 이력 (MariaDB, 개별)
+#   GET  /api/advisories/batches       권고 이력 (시간대별 전체 노선 묶음)
 #   POST /api/advisories/{id}/review   담당자 검토 결과 기록
 
 from fastapi import APIRouter, Body, HTTPException
@@ -116,6 +117,21 @@ async def advise(domain: str, payload: dict = Body(..., examples=[{"route": "143
 @router.get("/advisories", tags=["이력"])
 async def advisories(domain: str | None = None, limit: int = 20):
     return {"db": db.state, "items": await repo.list_advisories(domain, limit)}
+
+
+@router.get("/advisories/batches", tags=["이력"], summary="권고 이력 (시간대별 전체 노선 권고 묶음)")
+async def advisory_batches(domain: str | None = None, limit: int = 20):
+    return {"db": db.state, "items": await repo.list_batches(domain, limit)}
+
+
+@router.get("/advisories/batches/{batch_id}", tags=["이력"], summary="묶음 1건의 노선별 권고")
+async def advisory_batch(batch_id: int):
+    if not db.state["available"]:
+        raise HTTPException(503, f"DB에 연결되지 않았습니다: {db.state['error']}")
+    item = await repo.get_batch(batch_id)
+    if item is None:
+        raise HTTPException(404, f"권고 묶음을 찾을 수 없습니다: {batch_id}")
+    return item
 
 
 @router.get("/advisories/{advisory_id}", tags=["이력"])

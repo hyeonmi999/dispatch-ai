@@ -63,6 +63,20 @@ class AdvisoryLog(Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class AdvisoryBatch(Base):
+    """'전체 노선 권고' 1회 실행 = 묶음 1건 (권고 이력의 대표 항목)"""
+    __tablename__ = "advisory_batch"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    domain: Mapped[str] = mapped_column(String(30), index=True)
+    target_date: Mapped[datetime] = mapped_column(Date)
+    hour: Mapped[int] = mapped_column(Integer)
+    llm: Mapped[str] = mapped_column(String(20), default="")
+    summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)        # {"increase": 3, "keep": 2, ...}
+    advisory_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)   # 이 묶음에 속한 advisory_log.id
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class QALog(Base):
     __tablename__ = "qa_log"
 

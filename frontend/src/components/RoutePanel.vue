@@ -57,41 +57,14 @@
           </n-button>
         </div>
 
-        <template v-if="batch">
-          <div class="batch-head">
-            <b>{{ batch.date }} {{ batch.hour }}시</b>
-            <n-tag v-if="batch.summary.increase" size="small" type="error" round>증차 {{ batch.summary.increase }}</n-tag>
-            <n-tag v-if="batch.summary.increase_limited" size="small" type="warning" round>별도 대책 {{ batch.summary.increase_limited }}</n-tag>
-            <n-tag v-if="batch.summary.decrease" size="small" type="info" round>감차 검토 {{ batch.summary.decrease }}</n-tag>
-            <n-tag v-if="batch.summary.keep" size="small" type="success" round>유지 {{ batch.summary.keep }}</n-tag>
-          </div>
-          <div class="muted tiny">노선을 누르면 지도에서 선택되고 상세 근거가 열립니다 · 모두 담당자 검토 필요</div>
-          <div v-for="a in batch.items" :key="a.route" class="brow-wrap">
-            <div
-              class="brow"
-              :class="{ active: a.route === route?.route, off: a.status !== 'ok' }"
-              @click="a.status === 'ok' && emit('select-route', a.route)"
-            >
-              <span class="dot" :style="{ background: levelColor(a.congestion?.level || '정보없음') }"></span>
-              <b class="rno">{{ a.route }}</b>
-              <template v-if="a.status === 'ok'">
-                <span class="num small">{{ fmtCongestion(a.congestion.ratio) }}</span>
-                <span class="num small ink2">{{ a.current.interval_min }}→<b>{{ a.recommendation.recommended_interval_min }}</b>분</span>
-                <span class="num small ink2" v-if="a.recommendation.extra_buses">{{ a.recommendation.extra_buses > 0 ? '+' : '' }}{{ a.recommendation.extra_buses }}대</span>
-                <n-tag size="small" :type="ACTION_TYPES[a.recommendation.action]" class="act">{{ actionLabel(a.recommendation.action) }}</n-tag>
-              </template>
-              <span v-else class="muted small">운행 없음</span>
-            </div>
-            <AdviceCard
-              v-if="a.status === 'ok' && a.route === route?.route"
-              :key="a.advisory_id ?? a.route"
-              :advice="a"
-              :db-available="dbAvailable"
-              class="inline-card"
-              @reviewed="loadHistory"
-            />
-          </div>
-        </template>
+        <BatchAdvice
+          v-if="batch"
+          :batch="batch"
+          :selected-route="route?.route"
+          :db-available="dbAvailable"
+          @select-route="(r) => emit('select-route', r)"
+          @reviewed="loadHistory"
+        />
         <n-empty v-else-if="!adviceLoading" :description="`'${hour}시 전체 노선 권고'를 누르면 노선마다 증차·유지·감차 권고가 만들어집니다`" />
       </n-tab-pane>
 
@@ -101,25 +74,35 @@
 
       <n-tab-pane name="history" tab="권고 이력">
         <div v-if="!dbAvailable" class="muted small">MariaDB 미연결 — 이력이 저장되지 않습니다.</div>
-        <template v-if="saved">
+        <template v-if="savedBatch">
           <div class="saved-head">
-            <n-button size="tiny" quaternary @click="saved = null">← 목록</n-button>
-            <span class="small"><b>저장된 권고 #{{ saved.advisory_id }}</b> · {{ saved.created_at?.slice(0, 16) }} 생성</span>
+            <n-button size="tiny" quaternary @click="savedBatch = null">← 목록</n-button>
+            <span class="small muted">{{ savedBatch.created_at?.slice(0, 16) }} 생성 · 저장된 권고</span>
           </div>
-          <AdviceCard :key="'saved-' + saved.advisory_id" :advice="saved" :db-available="dbAvailable" @reviewed="loadHistory" />
+          <BatchAdvice
+            :batch="savedBatch"
+            :selected-route="route?.route"
+            :db-available="dbAvailable"
+            @select-route="(r) => emit('select-route', r)"
+            @reviewed="loadHistory"
+          />
         </template>
-        <div v-else v-for="h in history" :key="h.id" class="hist" @click="openSaved(h.id)">
-          <div>
-            <b>#{{ h.id }} {{ h.target }}번</b> {{ h.date }} {{ h.hour }}시
-            <span class="muted small">· {{ actionLabel(h.action) }}</span>
+        <template v-else>
+          <div v-for="h in history" :key="h.id" class="hist" @click="openBatch(h)">
+            <div class="hist-top">
+              <b>{{ h.date }} {{ h.hour }}시</b> <span class="muted small">전체 노선 {{ h.count }}개</span>
+              <span class="muted small hist-time">{{ h.created_at.slice(5, 16) }}</span>
+            </div>
+            <div class="hist-tags">
+              <n-tag v-if="h.summary.increase" size="tiny" type="error">증차 {{ h.summary.increase }}</n-tag>
+              <n-tag v-if="h.summary.increase_limited" size="tiny" type="warning">별도 대책 {{ h.summary.increase_limited }}</n-tag>
+              <n-tag v-if="h.summary.decrease" size="tiny" type="info">감차 {{ h.summary.decrease }}</n-tag>
+              <n-tag v-if="h.summary.keep" size="tiny" type="success">유지 {{ h.summary.keep }}</n-tag>
+              <span class="muted small">검토 {{ h.count - (h.reviews.pending || 0) }}/{{ h.count }}</span>
+            </div>
           </div>
-          <div class="small ink2">
-            {{ h.current_interval }}분 → {{ h.recommended_interval }}분 · 혼잡도 {{ fmtCongestion(h.congestion) }} ·
-            <n-tag size="tiny" :type="statusType(h.review_status)">{{ statusLabel(h.review_status) }}</n-tag>
-            <span v-if="h.reviewer" class="muted"> {{ h.reviewer }}</span>
-          </div>
-        </div>
-        <n-empty v-if="dbAvailable && !history.length && !saved" description="저장된 권고가 없습니다" />
+          <n-empty v-if="dbAvailable && !history.length" description="'전체 노선 권고'를 만들면 시간대별로 여기에 쌓입니다" />
+        </template>
       </n-tab-pane>
     </n-tabs>
   </section>
@@ -128,8 +111,8 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { NAlert, NButton, NEmpty, NProgress, NSwitch, NTabPane, NTabs, NTag, useMessage } from 'naive-ui'
-import { ACTION_TYPES, api, errorMessage, fmtCongestion, levelColor } from '../api'
-import AdviceCard from './AdviceCard.vue'
+import { api, errorMessage, fmtCongestion, levelColor } from '../api'
+import BatchAdvice from './BatchAdvice.vue'
 import AskPanel from './AskPanel.vue'
 
 const props = defineProps({
@@ -149,7 +132,7 @@ const useLlm = ref(true)
 const batch = ref(null)
 const adviceLoading = ref(false)
 const history = ref([])
-const saved = ref(null)
+const savedBatch = ref(null)
 
 const level = computed(() => props.hourRow?.level)
 const interval = computed(() => (props.hourRow?.trips ? (60 / props.hourRow.trips).toFixed(1) : '-'))
@@ -164,11 +147,6 @@ const need = computed(() => {
   return { type: 'success', label: '보통', text: `최대 혼잡도 ${fmtCongestion(c)} — 현행 배차로 수용 가능합니다.` }
 })
 
-const ACTIONS = { increase: '증차', increase_limited: '별도 대책', decrease: '감차 검토', keep: '현행 유지' }
-const actionLabel = (a) => ACTIONS[a] || a
-const STATUS = { pending: ['검토 대기', 'warning'], approved: ['승인', 'success'], held: ['보류', 'default'], rejected: ['반려', 'error'] }
-const statusLabel = (s) => STATUS[s]?.[0] || s
-const statusType = (s) => STATUS[s]?.[1] || 'default'
 
 const contextKey = () => `${props.date}|${props.hour}`
 
@@ -194,12 +172,12 @@ async function runAdviseAll() {
   }
 }
 
-// 이력 항목 클릭: 저장된 권고 전체를 불러오고, 지도·날짜·시간도 그 권고 시점으로 이동
-async function openSaved(id) {
+// 이력 항목(시간대 묶음) 클릭: 그 시간대의 노선별 저장된 권고를 열고, 날짜·시간도 그 시점으로 이동
+async function openBatch(h) {
   try {
-    const item = await api.advisory(id)
-    saved.value = item
-    emit('goto', { route: item.route, date: item.date, hour: item.hour })
+    savedBatch.value = await api.advisoryBatch(h.id)
+    const top = savedBatch.value.items[0]
+    emit('goto', { route: top?.route || props.route?.route, date: h.date, hour: h.hour })
   } catch (e) {
     message.error(errorMessage(e))
   }
@@ -208,7 +186,7 @@ async function openSaved(id) {
 async function loadHistory() {
   if (!props.dbAvailable) return
   try {
-    history.value = (await api.advisories('bus')).items
+    history.value = (await api.advisoryBatches('bus')).items
   } catch {
     history.value = []
   }
@@ -235,15 +213,10 @@ watch(tab, (t) => t === 'history' && loadHistory())
 .tabs-block { flex: 1; }
 .advise-ctl { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .hist { padding: 8px 6px; border-bottom: 1px solid #f0efe9; font-size: 13px; cursor: pointer; border-radius: 6px; }
+.hist-top { display: flex; align-items: baseline; gap: 6px; }
+.hist-time { margin-left: auto; }
+.hist-tags { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
 .hist:hover { background: #f4f3ef; }
 .saved-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.batch-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 4px 0; }
-.brow { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; }
-.brow:hover { background: #f4f3ef; }
-.brow.active { border-color: var(--accent); background: #eef4fc; }
-.brow.off { cursor: default; opacity: 0.6; }
-.brow .rno { width: 34px; }
-.brow .act { margin-left: auto; }
-.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-.inline-card { margin: 6px 0 10px; }
+
 </style>

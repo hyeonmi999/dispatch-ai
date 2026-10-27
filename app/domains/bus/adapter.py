@@ -232,7 +232,10 @@ class BusAdapter(DomainAdapter):
             ok = [i for i in items if i.get("status") == "ok"]
             summary = {a: sum(1 for i in ok if i["recommendation"]["action"] == a)
                        for a in ("increase", "increase_limited", "decrease", "keep")}
-            return {"date": f"{req.date:%Y-%m-%d}", "hour": req.hour, "summary": summary, "items": items}
+            # 권고 이력에는 '이 시간대 전체 노선 권고' 1건으로 묶어서 표시
+            ids = [i["advisory_id"] for i in ok if i.get("advisory_id")]
+            batch_id = await repo.save_batch("bus", f"{req.date:%Y-%m-%d}", req.hour, req.llm, summary, ids) if ids else None
+            return {"batch_id": batch_id, "date": f"{req.date:%Y-%m-%d}", "hour": req.hour, "summary": summary, "items": items}
 
         @r.get("/overview", summary="전체 노선 구간별 혼잡도 (지도)")
         def overview(date: dt.date = Query(...), hour: int = Query(..., ge=0, le=23)):

@@ -8,7 +8,7 @@ import datetime as dt
 from sqlalchemy import select
 
 from app.db import database as db
-from app.db.database import AdvisoryLog, PredictionLog, QALog
+from app.db.database import AdvisoryBatch, AdvisoryLog, PredictionLog, QALog
 
 
 async def _add(row):
@@ -61,6 +61,64 @@ async def save_advisory(domain: str, result: dict, llm: str) -> int | None:
         evidence=result.get("evidence"),
         payload=result,
     ))
+
+
+async def save_batch(domain: str, date: str, hour: int, llm: str, summary: dict, advisory_ids: list[int]) -> int | None:
+    return await _add(AdvisoryBatch(
+        domain=domain, target_date=dt.date.fromisoformat(date), hour=hour, llm=llm,
+        summary=summary, advisory_ids=advisory_ids,
+    ))
+
+
+async def _review_counts(session, ids: list[int]) -> dict:
+    if not ids:
+        return {}
+    rows = (await session.execute(select(AdvisoryLog.review_status).where(AdvisoryLog.id.in_(ids)))).scalars().all()
+    out: dict = {}
+    for s in rows:
+        out[s] = out.get(s, 0) + 1
+    return out
+
+
+async def list_batches(domain: str | None, limit: int = 20) -> list[dict]:
+    """권고 이력 대표 항목: '{날짜} {시}시 전체 노선 권고' 단위"""
+    if not db.state["available"]:
+        return []
+    async with db.SessionLocal() as session:
+        q = select(AdvisoryBatch).order_by(AdvisoryBatch.id.desc()).limit(limit)
+        if domain:
+            q = q.where(AdvisoryBatch.domain == domain)
+        rows = (await session.execute(q)).scalars().all()
+        return [{
+            "id": b.id, "domain": b.domain, "date": f"{b.target_date}", "hour": b.hour, "llm": b.llm,
+            "summary": b.summary or {}, "count": len(b.advisory_ids or []),
+            "reviews": await _review_counts(session, b.advisory_ids or []),
+            "created_at": f"{b.created_at}",
+        } for b in rows]
+
+
+async def get_batch(batch_id: int) -> dict | None:
+    """묶음 1건 + 노선별 저장된 권고 전체(현재 검토 상태 반영)"""
+    if not db.state["available"]:
+        return None
+    async with db.SessionLocal() as session:
+        b = await session.get(AdvisoryBatch, batch_id)
+        if b is None:
+            return None
+        ids = b.advisory_ids or []
+        rows = (await session.execute(select(AdvisoryLog).where(AdvisoryLog.id.in_(ids)))).scalars().all() if ids else []
+    by_id = {r.id: r for r in rows}
+    items = []
+    for i in ids:                                   # 저장 순서(긴급도 순) 유지
+        r = by_id.get(i)
+        if r is None:
+            continue
+        p = dict(r.payload or {})
+        p.update({"advisory_id": r.id, "review_status": r.review_status, "reviewer": r.reviewer,
+                  "reviewer_note": r.reviewer_note, "db_saved": True, "status": "ok"})
+        items.append(p)
+    return {"batch_id": b.id, "date": f"{b.target_date}", "hour": b.hour, "llm": b.llm,
+            "summary": b.summary or {}, "created_at": f"{b.created_at}", "items": items}
 
 
 async def save_qa(domain: str, result: dict) -> int | None:

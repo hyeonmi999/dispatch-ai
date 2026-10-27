@@ -96,7 +96,7 @@ async function review(status) {
     await api.review(a.value.advisory_id, { status, reviewer: '배차 담당자', note: '' })
     reviewed.value = status
     message.success(`권고 #${a.value.advisory_id} ${STATUS[status]} 처리됨`)
-    emit('reviewed')
+    emit('reviewed', status)
   } catch (e) {
     message.error(errorMessage(e))
   }
