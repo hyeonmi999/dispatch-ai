@@ -16,7 +16,7 @@
       <div class="stat">
         <div class="lbl">예측 승차</div>
         <div class="val num">{{ n(hourRow?.pred) }}<span>명/h</span></div>
-        <div class="muted tiny">실제 {{ n(hourRow?.actual) }} · 전주 {{ n(hourRow?.baseline) }}</div>
+        <div class="muted tiny">실제 {{ n(hourRow?.actual) }} · 작년 같은 요일 {{ n(hourRow?.baseline) }}</div>
       </div>
       <div class="stat">
         <div class="lbl">운행 (현재)</div>

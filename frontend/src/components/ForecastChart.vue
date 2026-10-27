@@ -6,7 +6,7 @@
 </template>
 
 <script setup>
-// 24시간 노선 전체 승차: 실제 vs 모델 예측 vs 베이스라인(전주 같은 요일·시간)
+// 24시간 노선 전체 승차: 실제 vs 모델 예측 vs 베이스라인(작년 같은 요일·시간)
 import { computed } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
@@ -84,7 +84,7 @@ const option = computed(() => ({
       },
     },
     {
-      name: '베이스라인',
+      name: '작년 같은 요일',
       type: 'line',
       data: byHour.value.map((h) => h.baseline ?? null),
       lineStyle: { width: 2, color: COLORS.baseline, type: 'dashed' },

@@ -15,15 +15,20 @@ def test_time_ordered_split_no_leakage():
     assert last["valid"].max() < last["forecast"].min()
 
 
-def test_lags_only_use_past_week_or_older():
+def test_lags_only_use_values_at_least_21_days_old():
+    """공개 시차 대응: 모든 lag 피처는 예측일 기준 21일 이상 과거 값 (21일 앞까지 예측 가능)"""
+    from app.domains.bus.features import FEATURES, HORIZON_DAYS, LAG_DAYS, YEAR_LAG_DAYS
+
+    assert min(LAG_DAYS + YEAR_LAG_DAYS) >= HORIZON_DAYS == 21
+    assert not any(f in FEATURES for f in ("lag7", "lag14"))
+
     hist = pd.DataFrame({
         "route": "r", "stop_id": "s", "stop_seq": 1, "hour": 8,
-        "date": pd.date_range("2026-01-01", periods=30), "boarding": range(30),
+        "date": pd.date_range("2026-01-01", periods=60), "boarding": range(60),
     })
-    target = hist[hist["date"] == "2026-01-29"].drop(columns="boarding")
+    target = hist[hist["date"] == "2026-02-28"].drop(columns="boarding")   # 59번째 날
     out = add_lags(target, hist).iloc[0]
-    # 1/29 기준 lag7 = 1/22 값(21), lag28 = 1/1 값(0) → 1주 이내 값은 쓰지 않음
-    assert out["lag7"] == 21 and out["lag14"] == 14 and out["lag28"] == 0
+    assert out["lag21"] == 37 and out["lag42"] == 16 and pd.isna(out["lag364"])
 
 
 def test_metrics_saved_with_baseline_and_improvement():

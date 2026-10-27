@@ -45,6 +45,7 @@
             style="width: 100%"
           />
           <div class="date-tags">
+            <n-tag v-if="date === today" size="small" type="success" round>오늘</n-tag>
             <n-tag v-if="isForecastDate" size="small" type="info" round>향후 예측 (실측 없음)</n-tag>
             <n-tag v-else-if="isValidDate" size="small" round>검증 구간 · 실측과 비교</n-tag>
             <n-tag v-else size="small" round>학습 구간</n-tag>
@@ -53,6 +54,10 @@
           <n-alert v-if="excludedNote" type="warning" :show-icon="false" class="excluded">
             실측 제외: {{ excludedNote }} — 그래프에 실제 승차가 표시되지 않습니다
           </n-alert>
+          <div class="muted small freshness">
+            실측 ~{{ meta.dates.max_date.slice(5) }} · 예측 ~{{ meta.dates.max_forecast_date.slice(5) }}
+            <span title="서울시 승객 데이터는 주 단위로 8일 뒤 공개되어, 실측 마지막 날 + 21일까지 예측합니다">ⓘ</span>
+          </div>
           <div class="hour-row">
             <n-button size="small" circle @click="togglePlay" :title="playing ? '정지' : '시간대 재생'">
               {{ playing ? '❚❚' : '▶' }}
@@ -100,7 +105,7 @@
             <ForecastChart :hours="timeseries?.hours || []" :hour="hour" @hour="(h) => (hour = h)" />
             <div class="chart-foot">
               <template v-if="hourRow">
-                <b>{{ hour }}시</b> · 모델 예측 <b class="num">{{ fmtNum(hourRow.pred) }}</b>명 · 전주 같은 시간 {{ fmtNum(hourRow.baseline) }}명 ·
+                <b>{{ hour }}시</b> · 모델 예측 <b class="num">{{ fmtNum(hourRow.pred) }}</b>명 · 작년 같은 요일 {{ fmtNum(hourRow.baseline) }}명 ·
                 실제 {{ hourRow.actual != null ? fmtNum(hourRow.actual) + '명' : isForecastDate ? '없음 (향후 예측)' : '없음 (원천 결측·이상일)' }}
                 <div class="muted">그래프를 클릭하면 해당 시간으로 이동합니다</div>
               </template>
@@ -215,8 +220,12 @@ function isDateDisabled(ts) {
   return s < meta.value.dates.min_date || s > meta.value.dates.max_forecast_date || missingDates.value.has(s)
 }
 
-// 기본 날짜: 데이터 마지막 날 이전의 가장 최근 화요일 (평일 출근 혼잡을 바로 보이도록)
+// 기본 날짜: 오늘(예측 범위 안이면), 아니면 실측 마지막 날 이전의 가장 최근 화요일
+const fmtDay = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
+const today = fmtDay(new Date())
 function defaultDate(maxDate) {
+  const r = meta.value.dates
+  if (today >= r.min_date && today <= r.max_forecast_date && !missingDates.value.has(today)) return today
   const d = new Date(maxDate + 'T00:00:00')
   const fmt = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
   while (d.getDay() !== 2 || missingDates.value.has(fmt(d))) d.setDate(d.getDate() - 1)
@@ -305,6 +314,7 @@ onBeforeUnmount(() => clearInterval(timer))
 .block-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--ink-2); }
 .date-tags { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
 .excluded { font-size: 12px; margin-bottom: 8px; }
+.freshness { margin-bottom: 6px; }
 .small { font-size: 12px; }
 .hour-row { display: flex; align-items: center; gap: 10px; }
 .hour-label { font-weight: 700; font-size: 18px; width: 44px; text-align: right; }

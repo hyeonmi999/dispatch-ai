@@ -4,6 +4,7 @@
 # 실데이터(data/interim)와 합성 데이터(data/sample)는 같은 스키마입니다.
 #
 #   boarding.parquet  OA-21219 정류장별 승차 승객수 (wide: 승차_승객_수_00시 ~ 23시)
+#   *_history.parquet 같은 형식의 과거 1년치 (작년 같은 주 피처용, 없어도 동작)
 #   dispatch.parquet  OA-21220 정류장별 운행횟수   (wide: 버스운행횟수_00시 ~ 23시)
 #   section.parquet   OA-21218 구간별 재차인원     (wide: 재차인원합_0시 ~ 23시)
 #   weather.parquet   기상청 ASOS 서울(108) 시간자료
@@ -51,9 +52,15 @@ class BusDataset:
     # 1. 승차 / 운행횟수 → long
     # ------------------------------------------------
 
+    def read_with_history(self, name: str) -> pd.DataFrame:
+        """최근 1년 파일 + (있으면) 과거 1년 파일(<name>_history.parquet, 작년 같은 주 비교용)"""
+        frames = [self.dir / f"{name}_history.parquet", self.dir / f"{name}.parquet"]
+        df = pd.concat([pd.read_parquet(p) for p in frames if p.exists()], ignore_index=True)
+        return df.drop_duplicates(["기준_날짜", "노선명", "정류장_ID", "정류장_순서"], keep="last")
+
     def load_long(self) -> pd.DataFrame:
-        b = pd.read_parquet(self.dir / "boarding.parquet")
-        d = pd.read_parquet(self.dir / "dispatch.parquet")
+        b = self.read_with_history("boarding")
+        d = self.read_with_history("dispatch")
         ids = {"기준_날짜": "date", "노선명": "route", "정류장_ID": "stop_id", "정류장_순서": "stop_seq"}
 
         bl = wide_to_long(b, [f"승차_승객_수_{h:02d}시" for h in HOURS], ids, "boarding")

@@ -8,20 +8,22 @@
 #
 # - train      : 트리 학습
 # - early stop : 학습 구간 마지막 14일로 트리 개수만 결정 (검증 구간은 보지 않음)
-# - valid      : 최종 평가. 모델 vs 베이스라인(전주 같은 요일·시간) MAE 비교
+# - valid      : 최종 평가. 모델 vs 베이스라인(작년 같은 요일·시간) MAE 비교
+#                (참고로 '전주 같은 요일' MAE도 함께 기록 - 공개 시차 때문에 실제로는 못 쓰는 값)
 #
 # 학습 산출물
 #   models/bus/<mode>/model.json      XGBoost 모델
 #   models/bus/<mode>/meta.json       피처·카테고리·분할일·지표
 #   models/bus/<mode>/metrics.json    평가 지표
 #   models/bus/<mode>/load_profile.parquet  승차 → 구간 재차인원 환산 비율
-#   data/processed/bus_<mode>_store.parquet 전체 기간 실제값·예측값·베이스라인 + 향후 7일 예측 (API 조회용)
+#   data/processed/bus_<mode>_store.parquet 전체 기간 실제값·예측값·베이스라인 + 향후 21일 예측 (API 조회용)
 #
 # 배치 추론 구조
 #   API 서버는 XGBoost를 불러오지 않고 store만 읽습니다.
 #   (macOS에서 xgboost와 torch가 서로 다른 OpenMP 런타임을 써서 한 프로세스에 함께 로드하면
 #    segfault가 나므로, 예측은 학습 스크립트에서 미리 계산 → 서버는 조회만)
-#   향후 7일 예측은 "1주 전 같은 요일의 운행횟수 = 배차 계획"으로 가정해 미리 생성합니다.
+#   향후 21일 예측은 "가장 최근 같은 요일의 운행횟수 = 배차 계획"으로 가정해 미리 생성합니다.
+#   (피처가 모두 21일 이상 과거 값이라 실측 마지막 날 + 21일까지 예측 가능)
 
 import json
 import time
@@ -33,11 +35,20 @@ import pandas as pd
 from app.config import BUS_EARLY_STOP_DAYS, BUS_VALID_START, MODELS_DIR, PROCESSED_DIR
 from app.core.forecaster import Forecaster, evaluate_mae
 from app.domains.bus.data import BusDataset
-from app.domains.bus.features import CATEGORICAL, FEATURES, LAG_DAYS, build_features, encode_categories
+from app.domains.bus.features import (
+    CATEGORICAL,
+    FEATURES,
+    HORIZON_DAYS,
+    LAG_DAYS,
+    REFERENCE_LAG_DAYS,
+    add_lags,
+    build_features,
+    encode_categories,
+)
 
 KEYS = ["route", "stop_id", "stop_seq", "hour"]
 STORE_COLS = ["date", *KEYS, "boarding", "trips", "pred", "baseline", "daytype", "split"]
-FORECAST_HORIZON_DAYS = 7
+FORECAST_HORIZON_DAYS = HORIZON_DAYS
 
 
 class BusForecaster(Forecaster):
@@ -74,14 +85,17 @@ class BusForecaster(Forecaster):
         long = self.ds.load_long()
         print(f"      {len(long):,}행 | {long['date'].min():%Y-%m-%d} ~ {long['date'].max():%Y-%m-%d} | 노선 {sorted(long['route'].unique())}")
 
-        print("[2/5] 피처 생성 (달력·날씨·lag)")
+        print("[2/5] 피처 생성 (달력·날씨·3~6주 전·작년 같은 주)")
         feats = build_features(long, long, self.ds.weather)
+        feats = add_lags(feats, long, REFERENCE_LAG_DAYS)   # 평가 참고용 '전주 같은 요일' (피처 아님)
         route_cats = sorted(feats["route"].unique().tolist())
         stop_cats = sorted(feats["stop_id"].unique().tolist())
         feats = encode_categories(feats, route_cats, stop_cats)
 
         es_start, valid_start = self.split_dates(feats["date"].max())
-        labeled = feats[feats["boarding"].notna()]
+        # 최근 lag(최대 42일 전)가 생기는 날부터 학습
+        first_usable = feats["date"].min() + pd.Timedelta(days=max(LAG_DAYS))
+        labeled = feats[feats["boarding"].notna() & (feats["date"] >= first_usable)]
         train = labeled[labeled["date"] < es_start]
         early = labeled[(labeled["date"] >= es_start) & (labeled["date"] < valid_start)]
         valid = labeled[labeled["date"] >= valid_start]
@@ -147,13 +161,13 @@ class BusForecaster(Forecaster):
         (self.model_dir / "metrics.json").write_text(json.dumps(metrics, ensure_ascii=False, indent=2))
 
         self.model, self.store = model, feats[STORE_COLS].copy()
-        self.meta["last_observed_date"] = f"{self.store['date'].max():%Y-%m-%d}"
-        forecasts = [self._future_frame(self.store["date"].max() + pd.Timedelta(days=k))
-                     for k in range(1, FORECAST_HORIZON_DAYS + 1)]
-        store = pd.concat([self.store, *forecasts], ignore_index=True)
+        last = self.store["date"].max()
+        self.meta["last_observed_date"] = f"{last:%Y-%m-%d}"
+        forecasts = self._future_frames([last + pd.Timedelta(days=k) for k in range(1, FORECAST_HORIZON_DAYS + 1)])
+        store = pd.concat([self.store, forecasts], ignore_index=True)
         store.to_parquet(self.store_path, index=False)
         (self.model_dir / "meta.json").write_text(json.dumps(self.meta, ensure_ascii=False, indent=2))
-        print(f"      향후 {FORECAST_HORIZON_DAYS}일 예측 {sum(len(f) for f in forecasts):,}행 생성 (배치 추론)")
+        print(f"      향후 {FORECAST_HORIZON_DAYS}일 예측 {len(forecasts):,}행 생성 (배치 추론, ~{last + pd.Timedelta(days=FORECAST_HORIZON_DAYS):%Y-%m-%d})")
         profile = self._build_load_profile(long, feats)
         profile.to_parquet(self.model_dir / "load_profile.parquet", index=False)
 
@@ -169,16 +183,25 @@ class BusForecaster(Forecaster):
 
     @staticmethod
     def _evaluate(valid: pd.DataFrame) -> dict:
-        comp = valid[valid["baseline"].notna()]   # 베이스라인이 있는 행에서 공정 비교
+        # 베이스라인(작년 같은 요일)과 참고용 '전주 같은 요일'이 모두 있는 행에서 공정 비교
+        comp = valid[valid["baseline"].notna() & valid["lag7"].notna()]
         out = {
             "unit": "명 (정류장·시간대별 승차 승객 수)",
+            "baseline_name": "작년 같은 요일·시간 (364일 전)",
+            "horizon_days": FORECAST_HORIZON_DAYS,
             "stop_hour": evaluate_mae(comp["boarding"], comp["pred"], comp["baseline"]),
             "model_mae_all_valid_rows": round(float(np.mean(np.abs(valid["boarding"] - valid["pred"]))), 4),
         }
 
         # 배차 판단 단위인 "노선 전체 × 시간대" 합계 기준 MAE
-        agg = comp.groupby(["date", "route", "hour"], observed=True)[["boarding", "pred", "baseline"]].sum()
+        agg = comp.groupby(["date", "route", "hour"], observed=True)[["boarding", "pred", "baseline", "lag7"]].sum()
         out["route_hour"] = evaluate_mae(agg["boarding"], agg["pred"], agg["baseline"])
+
+        # 참고: 전주 같은 요일 (공개 시차 때문에 실제 운영에서는 쓸 수 없는 값)
+        out["reference_last_week"] = {
+            "stop_hour_mae": round(float(np.mean(np.abs(comp["boarding"] - comp["lag7"]))), 4),
+            "route_hour_mae": round(float(np.mean(np.abs(agg["boarding"] - agg["lag7"]))), 4),
+        }
 
         out["by_route"] = {}
         for route, g in agg.groupby(level="route"):
@@ -200,6 +223,9 @@ class BusForecaster(Forecaster):
             x = m[key]
             print(f"  [{name}] 모델 MAE {x['model_mae']:.3f}명 | 베이스라인 MAE {x['baseline_mae']:.3f}명 "
                   f"| 개선율 {x['improvement_pct']:.1f}% (n={x['n']:,})")
+        ref = m.get("reference_last_week")
+        if ref:
+            print(f"  [참고] 전주 같은 요일 MAE: 정류장·시간대 {ref['stop_hour_mae']:.3f}명 | 노선·시간대 {ref['route_hour_mae']:.1f}명")
         for route, x in m["by_route"].items():
             print(f"    노선 {route}: 모델 {x['model_mae']:.1f} vs 베이스라인 {x['baseline_mae']:.1f} ({x['improvement_pct']:+.1f}%)")
         print("=" * 60)
@@ -283,14 +309,21 @@ class BusForecaster(Forecaster):
             frame = frame[frame["route"] == route]
         return frame, is_future
 
-    def _future_frame(self, date: pd.Timestamp) -> pd.DataFrame:
-        """(학습 시 배치 추론) 데이터 마지막 날 이후 날짜: 1주 전 같은 요일의 정류장·시간대 구성과 운행횟수를 계획값으로 사용"""
-        template = pd.DataFrame()
-        for back in (7, 14, 21):
-            template = self.store[self.store["date"] == date - pd.Timedelta(days=back)]
-            if not template.empty:
-                break
-        rows = template[KEYS + ["trips"]].assign(date=date, boarding=np.nan)
+    def _future_frames(self, dates: list[pd.Timestamp]) -> pd.DataFrame:
+        """(학습 시 배치 추론) 실측 마지막 날 이후 날짜들
+
+        정류장·시간대 구성과 운행횟수(배차 계획)는 실측 기간 중 가장 최근 같은 요일 값을 사용
+        """
+        last = self.store["date"].max()
+        rows = []
+        for date in dates:
+            for back in range(7, 43, 7):
+                src = date - pd.Timedelta(days=back)
+                template = self.store[(self.store["date"] == src) & (src <= last)]
+                if not template.empty:
+                    break
+            rows.append(template[KEYS + ["trips"]].assign(date=date, boarding=np.nan))
+        rows = pd.concat(rows, ignore_index=True)
 
         feats = build_features(rows, self.store, self.ds.weather)
         feats = encode_categories(feats, self.meta["route_categories"], self.meta["stop_categories"])

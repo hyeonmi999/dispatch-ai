@@ -11,7 +11,7 @@
   - 상행은 아침, 하행은 저녁에 더 붐빔 / 환승 거점 정류장은 승객 3배
   - 운행횟수는 피크 10회/h, 낮 7회/h, 새벽·심야 3~5회/h (주말 ×0.8)
 
-사용: python scripts/make_sample_data.py [--weeks 12] [--end 2026-10-18] [--seed 42]
+사용: python scripts/make_sample_data.py [--weeks 60] [--end 2026-10-18] [--seed 42]
 """
 
 import argparse
@@ -104,7 +104,7 @@ def make_weather(dates, rng):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--weeks", type=int, default=12)
+    parser.add_argument("--weeks", type=int, default=60)   # 작년 같은 주 피처가 생기도록 1년 이상
     parser.add_argument("--end", default="2026-10-18")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()

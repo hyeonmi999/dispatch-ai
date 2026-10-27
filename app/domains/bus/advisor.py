@@ -183,7 +183,7 @@ class BusAdvisor(Advisor):
 
         level = congestion_level(c_max)
         rationale = [
-            f"예측 승차 {hrow['pred']:.0f}명/시간 (전주 같은 요일·시간 "
+            f"예측 승차 {hrow['pred']:.0f}명/시간 (작년 같은 요일·시간 "
             + (f"{hrow['baseline']:.0f}명" if pd.notna(hrow["baseline"]) else "-")
             + (f", 실제 {hrow['actual']:.0f}명)" if pd.notna(hrow["actual"]) else ")"),
             f"최대 혼잡 구간 {peak_segment['from_name']} → {peak_segment['to_name']}: "
