@@ -37,13 +37,18 @@
       <aside class="left">
         <section class="block">
           <div class="block-title">조회 시점</div>
-          <n-date-picker
-            v-model:formatted-value="date"
-            value-format="yyyy-MM-dd"
-            type="date"
-            :is-date-disabled="isDateDisabled"
-            style="width: 100%"
-          />
+          <div class="date-row">
+            <n-date-picker
+              v-model:formatted-value="date"
+              value-format="yyyy-MM-dd"
+              type="date"
+              :is-date-disabled="isDateDisabled"
+              style="flex: 1"
+            />
+            <n-button size="medium" :disabled="!canGoNow" :title="canGoNow ? '오늘 날짜·현재 시간의 예측으로 이동' : '오늘은 예측 범위 밖입니다'" @click="goNow">
+              지금
+            </n-button>
+          </div>
           <div class="date-tags">
             <n-tag v-if="date === today" size="small" type="success" round>오늘</n-tag>
             <n-tag v-if="isForecastDate" size="small" type="info" round>향후 예측 (실측 없음)</n-tag>
@@ -190,6 +195,13 @@ const excludedNote = computed(() => {
   const reasons = [...new Set(Object.values(ex))]
   return reasons.map((r) => `${r} (${Object.keys(ex).filter((k) => ex[k] === r).join(', ')}번)`).join(' · ')
 })
+// '지금' 버튼: 오늘 날짜 + 현재 시각으로 이동 (예측 범위 안일 때)
+const canGoNow = computed(() => !!meta.value && !isDateDisabled(new Date(today + 'T00:00:00').getTime()))
+function goNow() {
+  if (playing.value) togglePlay()
+  date.value = today
+  hour.value = new Date().getHours()
+}
 const fmtNum = (v) => (v == null ? '-' : Math.round(v).toLocaleString())
 const currentDomain = computed(() => domains.value.find((d) => d.name === domain.value))
 const selectedMeta = computed(() => meta.value?.routes.find((r) => r.route === selected.value))
@@ -315,6 +327,7 @@ onBeforeUnmount(() => clearInterval(timer))
 .date-tags { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
 .excluded { font-size: 12px; margin-bottom: 8px; }
 .freshness { margin-bottom: 6px; }
+.date-row { display: flex; gap: 6px; }
 .small { font-size: 12px; }
 .hour-row { display: flex; align-items: center; gap: 10px; }
 .hour-label { font-weight: 700; font-size: 18px; width: 44px; text-align: right; }

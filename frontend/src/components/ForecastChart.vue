@@ -1,13 +1,13 @@
 <template>
   <!-- 차트는 박스 안에 절대 위치: SVG 고정 크기가 레이아웃을 다시 키우는 피드백 방지 -->
-  <div class="chart-box">
-    <v-chart class="chart" :option="option" autoresize @click="onClick" />
+  <div ref="boxRef" class="chart-box" @click="onPlotClick">
+    <v-chart ref="chartRef" class="chart" :option="option" autoresize />
   </div>
 </template>
 
 <script setup>
 // 24시간 노선 전체 승차: 실제 vs 모델 예측 vs 베이스라인(작년 같은 요일·시간)
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { LineChart } from 'echarts/charts'
@@ -94,12 +94,21 @@ const option = computed(() => ({
   ],
 }))
 
-function onClick(p) {
-  if (p?.dataIndex != null) emit('hour', p.dataIndex)
+// 선 위가 아니어도 그래프 영역 어디를 클릭하든 가장 가까운 시간으로 이동
+const chartRef = ref(null)
+const boxRef = ref(null)
+function onPlotClick(e) {
+  const chart = chartRef.value
+  const r = boxRef.value?.getBoundingClientRect()
+  if (!chart || !r) return
+  const px = [e.clientX - r.left, e.clientY - r.top]
+  if (!chart.containPixel('grid', px)) return
+  const [idx] = chart.convertFromPixel({ gridIndex: 0 }, px)
+  if (idx >= 0 && idx <= 23) emit('hour', Math.round(idx))
 }
 </script>
 
 <style scoped>
 .chart-box { position: relative; flex: 1; min-height: 0; min-width: 0; }
-.chart { position: absolute; inset: 0; }
+.chart { position: absolute; inset: 0; cursor: pointer; }
 </style>
