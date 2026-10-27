@@ -1,0 +1,60 @@
+# 버스 배차 최적화 도우미 (Oh!gimbak) - 백엔드 패키지
+# 수업 표준 requirements-orag.txt에서 이 프로젝트에 필요한 것만 추렸습니다.
+#
+# python3.11 -m venv .venv
+# source .venv/bin/activate
+# pip install -r requirements.txt
+
+# Backend API
+fastapi                     # REST API 백엔드 프레임워크
+uvicorn[standard]           # FastAPI 실행 서버
+pydantic                    # 요청·응답 데이터 검증
+python-dotenv               # .env 환경변수 관리
+
+# OpenAI (선택: gpt-4o-mini / text-embedding-3-small)
+openai
+tiktoken
+
+# Hugging Face / Embedding & Local LLM (Qwen3, bge-m3)
+torch
+transformers
+accelerate
+sentence-transformers
+huggingface_hub[hf_xet]
+sentencepiece
+protobuf
+
+# LangChain + Vector DB
+langchain
+langchain-core
+langchain-community
+langchain-huggingface
+langchain-openai
+langchain-text-splitters
+faiss-cpu
+
+# Relational Database (MariaDB, async)
+sqlalchemy
+aiomysql
+greenlet
+
+# Machine Learning / Data
+numpy
+pandas
+pyarrow                     # parquet 저장
+openpyxl                    # 노선 기본정보 xlsx
+scikit-learn
+xgboost
+holidays                    # 한국 공휴일
+
+# Document Processing
+pymupdf                     # PDF 텍스트 추출(고속)
+pypdf
+
+# Web & Crawling (데이터 수집 스크립트)
+requests
+beautifulsoup4
+
+# Test
+pytest
+httpx
