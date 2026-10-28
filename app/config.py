@@ -32,7 +32,8 @@ HF_CACHE_DIR = ROOT / "hf_models"
 
 # 모델(Qwen3, bge-m3)을 한 번 받아 두면 Hugging Face Hub 접속 없이 로컬 캐시만 사용
 # (Hub 확인 요청·safetensors 변환 스레드 때문에 시작/종료가 지연되는 문제 방지)
-if all((HF_CACHE_DIR / f"models--{m}").exists() for m in ("BAAI--bge-m3", "Qwen--Qwen3-1.7B")):
+_llm_cache = os.getenv("LOCAL_MODEL_NAME", "Qwen/Qwen3-1.7B").replace("/", "--")
+if all((HF_CACHE_DIR / f"models--{m}").exists() for m in ("BAAI--bge-m3", _llm_cache)):
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
 
@@ -50,7 +51,9 @@ ASYNC_DB_URL = os.getenv("ASYNC_DB_URL", "")
 # 3. LLM / Embedding (수업 표준과 동일)
 # ==================================================
 
-LOCAL_MODEL_NAME = "Qwen/Qwen3-1.7B"
+LOCAL_MODEL_NAME = os.getenv("LOCAL_MODEL_NAME", "Qwen/Qwen3-1.7B")
+# LoRA 어댑터 (scripts/finetune_lora.py 결과). 비우면 사전학습 모델 그대로 사용
+LOCAL_ADAPTER = os.getenv("LOCAL_ADAPTER", "") or None
 OPENAI_MODEL_NAME = "gpt-4o-mini"
 
 BGE_EMBEDDING_MODEL_NAME = "BAAI/bge-m3"

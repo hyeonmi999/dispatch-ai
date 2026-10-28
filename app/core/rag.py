@@ -39,13 +39,17 @@ from app.core.llm import LLMConfigError
 EMBEDDING_CHOICES = ("bge", "openai")
 
 SYSTEM_MESSAGE = (
-    "당신은 대중교통 운영 규정을 안내하는 한국어 AI 어시스턴트입니다. "
-    "반드시 제공된 [근거]에 있는 내용만으로 답변하세요. "
-    "[근거]에 없는 내용은 추측하거나 일반 지식을 사용하지 마세요. "
-    "답변 문장 끝에 사용한 근거 번호를 [1]처럼 표시하세요. "
-    f"질문과 관련된 내용이 [근거]에 없으면 정확히 '{NOT_FOUND_ANSWER}'라고만 답변하세요. "
-    "추론 과정은 출력하지 말고 최종 답변만 3~5문장 이내로 제시하세요."
+    "당신은 시내버스 배차 담당자에게 운수 규정을 안내하는 한국어 어시스턴트입니다. 다음 규칙을 반드시 지키세요.\n"
+    "1. [근거]에 적힌 내용만 사용하세요. 근거에 없는 숫자·기준·금액·기관·날짜는 절대 만들지 마세요.\n"
+    "2. 질문의 대상(시내버스·시외버스·마을버스·택시, 서울·다른 지역 등)과 근거의 대상이 다르면 그 근거는 쓰지 마세요.\n"
+    "3. 답변에 사용한 근거 번호를 문장 끝에 [1]처럼 표시하세요.\n"
+    f"4. 질문에 직접 답하는 내용이 [근거]에 없으면 다른 설명 없이 정확히 '{NOT_FOUND_ANSWER}'라고만 쓰세요.\n"
+    "5. 추론 과정은 쓰지 말고 최종 답변만 3~5문장으로 쓰세요."
 )
+
+# LLM이 형식을 어기고 "명시되지 않았습니다"처럼 돌려 말해도 근거 없음으로 처리
+NOT_FOUND_HINTS = ("찾을 수 없", "명시되지 않", "언급되지 않", "나와 있지 않", "포함되어 있지 않",
+                   "정보가 없", "확인할 수 없", "규정되어 있지 않", "제공되지 않")
 
 
 # ==================================================
@@ -109,6 +113,59 @@ def split_long(text: str, size: int = 800, overlap: int = 100) -> list[str]:
     return splitter.split_text(text)
 
 
+# ------------------------------------------------
+# 긴 조항 → 항(①) · 호(1.) · 목(가.) 단위 분할
+# ------------------------------------------------
+# 시행규칙 제33조처럼 시내버스·시외버스·택시 규정이 한 조항에 섞인 긴 조문을 통째로 주면
+# 작은 LLM이 다른 제도의 숫자를 가져다 답하는 문제가 있었음 (예: 시내버스 질문에 시외버스 기준).
+# 그래서 항 → 호 → 목 순서로 잘게 나누고, 각 조각 앞에 상위 문장(리드 문)을 붙여 문맥을 유지합니다.
+CHUNK_VERSION = 2
+CHUNK_LIMIT = 900
+CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
+GANADA = "가나다라마바사아자차카타파하"
+
+
+def _split_markers(text: str, kind: str):
+    """번호가 1·2·3…(가·나·다…) 순서대로 나오는 지점만 경계로 인정 (날짜 '2014. 12.' 등 오인 방지)"""
+    if kind == "hang":
+        cands = [(m.start(), m.group(), CIRCLED.index(m.group())) for m in re.finditer(f"[{CIRCLED}]", text)]
+        first = 0
+    elif kind == "ho":
+        cands = [(m.start(1), f"제{m.group(1)}호", int(m.group(1))) for m in re.finditer(r"(?:^|\s)(\d{1,2})\. (?=\S)", text)]
+        first = 1
+    else:
+        cands = [(m.start(1), f"{m.group(1)}목", GANADA.index(m.group(1))) for m in re.finditer(f"(?:^|\\s)([{GANADA}])\\. ", text)]
+        first = 0
+    seq, expect = [], first
+    for pos, label, n in cands:
+        if n == expect:
+            seq.append((pos, label))
+            expect += 1
+    if len(seq) < 2:
+        return None
+    lead = text[:seq[0][0]].strip()
+    parts = [(lab, text[pos:(seq[i + 1][0] if i + 1 < len(seq) else len(text))].strip())
+             for i, (pos, lab) in enumerate(seq)]
+    return lead, parts
+
+
+def split_hierarchy(text: str, levels=("hang", "ho", "mok"), crumbs=(), labels=()) -> list[tuple]:
+    """→ [(labels, 상위 리드 문장들, 본문)]"""
+    if len(text) <= CHUNK_LIMIT:
+        return [(labels, crumbs, text)]
+    if not levels:
+        return [(labels, crumbs, part) for part in split_long(text, size=CHUNK_LIMIT)]
+    found = _split_markers(text, levels[0])
+    if found is None:
+        return split_hierarchy(text, levels[1:], crumbs, labels)
+    lead, parts = found
+    sub_crumbs = crumbs + ((lead[:250],) if lead else ())
+    out = []
+    for lab, seg in parts:
+        out += split_hierarchy(seg, levels[1:], sub_crumbs, labels + (lab,))
+    return out
+
+
 def load_pdf_articles(path: Path) -> list[dict]:
     """법령·조례 PDF를 조항 단위로 분할합니다.
 
@@ -147,10 +204,13 @@ def load_pdf_articles(path: Path) -> list[dict]:
     chunks = []
     for art in articles:
         body = re.sub(r"\s+", " ", " ".join(art["lines"])).strip()
-        for i, part in enumerate(split_long(body)):
+        body = re.sub(r"<[^>]*>", "", body)          # <개정 2019. 12. 26.> 같은 연혁 표기 제거
+        for i, (labels, crumbs, part) in enumerate(split_hierarchy(body)):
+            label = f"{art['article']} {' '.join(labels)}".strip()
+            context = " … ".join(crumbs)
             chunks.append({
-                "text": f"[{title}] {art['article']}\n{part}",
-                "metadata": {"document": title, "article": art["article"], "page": art["page"],
+                "text": f"[{title}] {label}\n" + (f"(상위 문장) {context}\n" if context else "") + part,
+                "metadata": {"document": title, "article": label, "page": art["page"],
                              "part": i, "file": path.name, "url": ""},
             })
     return chunks
@@ -184,7 +244,7 @@ def load_documents(docs_dir: Path) -> list[dict]:
 
 
 def docs_fingerprint(docs_dir: Path) -> str:
-    h = hashlib.md5()
+    h = hashlib.md5(f"chunk-v{CHUNK_VERSION}".encode())
     for path in sorted(docs_dir.glob("*")):
         if path.suffix.lower() in {".pdf", ".txt", ".md"}:
             h.update(f"{path.name}:{path.stat().st_size}:{int(path.stat().st_mtime)}".encode())
@@ -332,7 +392,7 @@ class KnowledgeBase:
         answer = llm_module.generate(llm, SYSTEM_MESSAGE, user)
 
         # 3) LLM이 근거 부족으로 판단하면 출처 없이 "찾을 수 없음"
-        if NOT_FOUND_ANSWER in answer or "찾을 수 없" in answer:
+        if any(h in answer for h in NOT_FOUND_HINTS):
             return self._result(question, NOT_FOUND_ANSWER, False, [], llm, embedding, t0,
                                 note="LLM이 근거 문서에서 답을 찾지 못함")
 

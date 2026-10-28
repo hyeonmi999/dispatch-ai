@@ -19,6 +19,7 @@ tiktoken
 torch
 transformers
 accelerate
+peft                        # LoRA 파인튜닝 (규정 RAG 답변)
 sentence-transformers
 huggingface_hub[hf_xet]
 sentencepiece

@@ -14,6 +14,7 @@ import threading
 from app.config import (
     HF_CACHE_DIR,
     HF_TOKEN,
+    LOCAL_ADAPTER,
     LOCAL_MODEL_NAME,
     MAX_NEW_TOKENS,
     OPENAI_API_KEY,
@@ -58,6 +59,14 @@ _local = {"tokenizer": None, "model": None}
 _local_lock = threading.Lock()
 
 
+def set_local_model(name: str, adapter: str | None = None) -> None:
+    """평가·실험용: 로컬 모델/LoRA 어댑터 교체 (다음 호출 때 새로 로드)"""
+    global LOCAL_MODEL_NAME, LOCAL_ADAPTER
+    with _local_lock:
+        LOCAL_MODEL_NAME, LOCAL_ADAPTER = name, adapter
+        _local.update(tokenizer=None, model=None)
+
+
 def load_local_llm():
     """Qwen3 Tokenizer와 Causal Language Model을 한 번만 로드합니다."""
     import torch
@@ -70,7 +79,7 @@ def load_local_llm():
             return _local["tokenizer"], _local["model"]
 
         print("-" * 60)
-        print(f"Qwen3 Local LLM 로딩 시작 | 모델: {LOCAL_MODEL_NAME} | 장치: {DEVICE}")
+        print(f"Qwen3 Local LLM 로딩 시작 | 모델: {LOCAL_MODEL_NAME} | LoRA: {LOCAL_ADAPTER or '-'} | 장치: {DEVICE}")
         print("-" * 60)
 
         tokenizer = AutoTokenizer.from_pretrained(
@@ -88,6 +97,10 @@ def load_local_llm():
             dtype=dtype,
             low_cpu_mem_usage=True,
         ).to(DEVICE)
+        if LOCAL_ADAPTER:
+            # 규정 RAG 답변용 LoRA (근거 인용·'찾을 수 없음' 거절 학습)
+            from peft import PeftModel
+            model = PeftModel.from_pretrained(model, LOCAL_ADAPTER).merge_and_unload()
         model.eval()
 
         _local.update(tokenizer=tokenizer, model=model)
@@ -166,6 +179,6 @@ def llm_status() -> dict:
     return {
         "device": get_device(),
         "default": "qwen",
-        "qwen": {"model": LOCAL_MODEL_NAME, "loaded": is_local_loaded()},
+        "qwen": {"model": LOCAL_MODEL_NAME, "adapter": LOCAL_ADAPTER, "loaded": is_local_loaded()},
         "openai": {"model": OPENAI_MODEL_NAME, "configured": bool(OPENAI_API_KEY)},
     }
