@@ -89,8 +89,10 @@ const option = computed(() => {
         name: '작년 같은 요일',
         type: 'line',
         data: byHour.value.map((h) => h.baseline ?? null),
-        lineStyle: { width: 1.5, color: p.ink3, type: 'dashed' },
-        itemStyle: { color: p.ink3 },
+        // 예측과 값이 비슷한 시간이 많아, 예측선 위에 다른 색으로 그려야 겹쳐도 보임
+        z: 3,
+        lineStyle: { width: 2, color: p.baseline, type: [6, 4] },
+        itemStyle: { color: p.baseline },
         showSymbol: false,
       },
     ],

@@ -32,11 +32,11 @@ export function toggleTheme() {
 // style.css의 .day / .night 변수와 같은 값
 const DAY = {
   panel: '#F8F8F4', panel2: '#ECEDE7', line: '#BFC2BA', ink: '#15181A', ink2: '#464B4B', ink3: '#5D6362', accent: '#B93A08',
-  accentHover: '#CC4A16', accentPressed: '#962E05', c0: '#6C9DB3', c1: '#D79A12', c2: '#E2600F', c3: '#8E1616', c4: '#B9BBB4',
+  accentHover: '#CC4A16', accentPressed: '#962E05', baseline: '#1668A8', c0: '#6C9DB3', c1: '#D79A12', c2: '#E2600F', c3: '#8E1616', c4: '#B9BBB4',
 }
 const NIGHT = {
   panel: '#14181B', panel2: '#1E2428', line: '#333B41', ink: '#ECEEE9', ink2: '#B7BDBB', ink3: '#969D9B', accent: '#FF8A4C',
-  accentHover: '#FF9F6B', accentPressed: '#E97434', c0: '#7FB4CC', c1: '#E9B233', c2: '#F2752B', c3: '#E5534B', c4: '#4C5358',
+  accentHover: '#FF9F6B', accentPressed: '#E97434', baseline: '#6FC0F2', c0: '#7FB4CC', c1: '#E9B233', c2: '#F2752B', c3: '#E5534B', c4: '#4C5358',
 }
 export const palette = computed(() => (theme.value === 'night' ? NIGHT : DAY))
 
