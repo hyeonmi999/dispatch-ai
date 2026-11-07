@@ -17,10 +17,10 @@
 
 ```mermaid
 flowchart LR
-    subgraph FE["Vue 3 + Vite 대시보드 (Naive UI · ECharts · Leaflet)"]
+    subgraph FE["Vue 3 + Vite 패널 대시보드 (Naive UI · ECharts · Leaflet)"]
         MAP["서울 지도 노선도<br/>구간별 혼잡도·혼잡 지점"]
         CHART["24시간 실제 vs 모델 vs 베이스라인<br/>정류장 구간별 혼잡도"]
-        CARD["배차 권고 카드<br/>근거·신뢰도·승인/보류"]
+        CARD["배차 권고 패널<br/>근거·신뢰도·승인/보류"]
         QA["규정 Q&A"]
     end
 
@@ -96,16 +96,19 @@ ai서비스 기말과제/
 │   │   │   ├── features.py     달력·공휴일·방학·날씨·lag 피처
 │   │   │   ├── forecaster.py   XGBoost 학습·시간순 분할·배치 추론
 │   │   │   ├── advisor.py      혼잡도·권고 규칙
+│   │   │   ├── schemas.py      버스 요청 스키마
 │   │   │   └── adapter.py      버스 어댑터 + 지도용 API
 │   │   ├── logistics/          인터페이스·스키마만 (501)
 │   │   └── field_service/      인터페이스·스키마만 (501)
 │   └── db/                     SQLAlchemy async 모델·저장소
 ├── scripts/                    데이터 수집·학습·인덱싱 CLI
-├── frontend/                   Vue 3 + Vite 대시보드
+├── frontend/                   Vue 3 + Vite 패널 대시보드
+│   └── src/                    layout.js(패널 배치) · theme.js(주간/야간) · components/
 ├── docs/bus/                   RAG 규정 문서 (PDF·TXT)
+├── eval/                       RAG 평가 문항과 결과 (LLM 튜닝)
 ├── docker/                     MariaDB (교수님 maria_db.yml 템플릿 기반)
 ├── tests/                      pytest (합성 데이터)
-└── data/ models/ vectorstore/ hf_models/   ← 생성물, 커밋 제외
+└── data/ models/ vectorstore/ hf_models/   ← 생성물, 커밋 제외 (스냅샷은 3-3 참고)
 ```
 
 ---
@@ -140,6 +143,14 @@ python scripts/build_index.py                # 규정 문서 FAISS 인덱스 (bg
 `.env`에서 `DATA_MODE=sample`로 바꾼 뒤 아래 3-4로 서버를 띄웁니다. (실데이터가 없으면 `auto`도 sample로 동작)
 
 ### 3-3. 실데이터로 실행
+**빠른 방법**: [Release `data-snapshot-20261107`](https://github.com/hyeonmi999/dispatch-ai/releases/tag/data-snapshot-20261107)에 데이터·모델·FAISS 인덱스 스냅샷이 있습니다 (실측 ~10-25, 예측 ~11-15). 프로젝트 루트에서 압축을 풀면 아래 수집·학습 없이 3-4로 넘어갈 수 있습니다. LLM·임베딩 모델(`hf_models/`)은 포함되지 않아 처음 쓸 때 내려받습니다.
+```bash
+tar -xzf dispatch-ai-data.tar.gz
+tar -xzf dispatch-ai-models.tar.gz
+tar -xzf dispatch-ai-vectorstore.tar.gz
+```
+
+**직접 수집·학습**
 1. **노선 기본정보 엑셀(수동)**: [서울 열린데이터광장](https://data.seoul.go.kr)에서 「서울시 버스노선 기본정보」, 「서울시 버스노선 ID 정보」를 받아 `data/raw/`에 저장
    - `서울시버스노선기본정보(20260902).xlsx`, `서울시버스노선ID정보(20260902).xlsx`
 2. 나머지는 스크립트가 받습니다.
@@ -168,12 +179,13 @@ python -m uvicorn app.main:app --port 8000      # API 문서: http://localhost:8
 cd frontend && npm run dev                      # http://localhost:5173
 ```
 - DB가 꺼져 있어도 API는 동작하고 응답에 `"db_saved": false`가 붙습니다.
+- **보안 주의**: `docker/maria_db.yml`은 3379 포트를 모든 네트워크에 열고, `.env.example`의 DB 비밀번호는 공개된 예시 값입니다. 공용 네트워크에서는 포트를 `127.0.0.1:3379:3306`으로 바꾸고 비밀번호를 변경하세요.
 - 로컬 LLM은 첫 질문 때 로드됩니다. 기본 Qwen3-1.7B(~4GB), `.env`의 `LOCAL_MODEL_NAME=Qwen/Qwen3-4B` 권장(~8GB, 처음 한 번 `HF_HUB_OFFLINE=0`으로 다운로드). Apple Silicon MPS에서 답변 약 5~10초.
 - LLM을 `openai`로 고르면 `.env`의 `OPENAI_API_KEY`가 필요합니다. 없으면 400과 함께 안내 문구를 반환합니다.
 
 ### 3-5. 테스트
 ```bash
-python -m pytest -q      # 합성 데이터 기준 11개: 시간순 분할·lag 누수·지표·API 계약·501·OpenAI 키 오류
+python -m pytest -q      # 합성 데이터 기준 17개: 시간순 분할·lag 누수·지표·운행횟수 선택·API 계약·501·OpenAI 키 오류
 ```
 
 ---
@@ -330,6 +342,7 @@ python scripts/train_bus.py --mode real
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
+| GET | `/api/health` | 서버 상태 (DB 연결, LLM, 도메인 목록) |
 | GET | `/api/domains` | 등록 도메인·상태 |
 | GET | `/api/{domain}/schema` | 도메인별 요청 스키마 |
 | POST | `/api/{domain}/predict` | 수요 예측 `{"route":"143","date":"2026-10-13","hour":8}` |
@@ -378,7 +391,13 @@ python scripts/train_bus.py --mode real
 
 → 무거운 어드민 템플릿 대신 **Naive UI 컴포넌트 + 직접 구성한 패널 격자**를 택했습니다. 이번 과제의 핵심 화면이 지도·차트·권고 카드라서 로그인·권한·라우팅이 필요 없고, 의존성이 적어야 설치·발표가 안정적이기 때문입니다. 모든 라이브러리는 MIT/Apache-2.0/BSD 계열로 과제·비상업 사용에 제약이 없습니다.
 
-색 규칙: 혼잡 단계는 상태 팔레트(여유 초록·보통 노랑·혼잡 주황·매우혼잡 빨강)를 쓰고 항상 라벨과 함께 표시, 그래프 계열색(실제·모델·베이스라인)은 색각이상 대비 검증을 통과한 조합을 사용했습니다.
+색 규칙 (`frontend/src/theme.js`, `style.css`):
+
+- 혼잡 단계: 여유 파랑·보통 황토·혼잡 주황·매우혼잡 진홍. 항상 글자와 함께 표시합니다.
+- 시간대별 승차 그래프: 모델 예측 주황 실선, 실제 검정 실선(야간은 밝은색), 작년 같은 요일 파랑 점선. 예측과 겹쳐도 보이도록 작년 선을 맨 위에 그립니다.
+- 지도 노선: 혼잡도 색 선에 테두리를 둘러 지도와 구분합니다. 테두리는 주간 검은색, 야간 밝은색입니다.
+
+로고와 탭 아이콘은 한 곳에서 세 갈래로 나가는 배차를 나타내며, 색칠한 첫 갈래가 현재 구현된 버스입니다.
 
 ### LLM 튜닝 — 정확도 + "모르면 모른다" (환각 방지)
 평가 세트 `eval/rag_eval.json` 20문항 (배차 실무자 질문 12 + 문서에 답이 없는 질문 8, 함정 질문 포함:
@@ -425,7 +444,8 @@ python scripts/eval_rag.py --name my_lora --adapter models/llm/qwen3-1.7b-rag-lo
 | Qwen3 ↔ OpenAI 전환, 키 없으면 명확한 오류 | ✅ 400 `OPENAI_API_KEY가 설정되지 않았습니다…` |
 | logistics·field_service "미구현" 응답 | ✅ 501 |
 | 예측·권고 MariaDB 저장 | ✅ `prediction_log`, `advisory_log`, `advisory_batch`, `qa_log` |
-| GitHub private, .env·데이터·모델 미커밋 | ✅ `.gitignore` |
+| .env·데이터·모델 미커밋 | ✅ `.gitignore` (스냅샷은 커밋 아닌 Release 첨부) |
+| GitHub private | ⚠ 현재 public. 명세는 private 요구 |
 
 ---
 
@@ -436,4 +456,5 @@ python scripts/eval_rag.py --name my_lora --adapter models/llm/qwen3-1.7b-rag-lo
 - 새 주 데이터 공개(매주 월요일) → 다운로드·재학습은 현재 수동입니다. 스케줄러로 자동화하면 예측 구간이 매주 자동으로 갱신됩니다.
 - 혼잡도는 승차 예측에 구간 환산 비율(최근 8주 평균)을 곱해 추정하므로, 노선 개편·이벤트 등 구조 변화에는 둔감합니다. 정원 55명·임계값은 `app/config.py`에서 조정합니다.
 - 로컬 LLM(Qwen3-4B)도 조문 해석 오류가 남아 있어(평가 12문항 중 2개), 출처 조항 원문(스니펫)을 함께 보여 줍니다. (7장 "LLM 튜닝" 참고)
+- 배경지도(Esri)는 키 없이 쓸 수 있지만 지명이 영어입니다. 서울 기준 밝은 타일이 확대 13까지만 있어, 주간 화면은 그 이상 확대하면 13 타일을 늘려서 표시합니다(조금 흐림).
 - 2차 스프린트: 버스위치정보 API로 실시간 차량 위치 오버레이, 물류·출동 도메인 어댑터 구현.
