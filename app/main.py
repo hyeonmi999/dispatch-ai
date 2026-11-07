@@ -1,7 +1,7 @@
 # ==================================================
-# 버스 배차 최적화 도우미 - FastAPI 서버 (Oh!gimbak)
+# 통합 배차 AI 플랫폼 (Dispatch AI) - FastAPI 서버 (Oh!gimbak)
 # ==================================================
-# 서비스·물류 배차 AI 공통 아키텍처 + 1차 스프린트(버스)
+# 도메인 공통 아키텍처 + 1차 스프린트(버스 배차 최적화 도우미)
 #
 # 실행 (프로젝트 루트, .venv 활성화 후)
 #   python -m uvicorn app.main:app --port 8000 --reload
@@ -31,7 +31,7 @@ register_all(registry)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("-" * 60)
-    print(f"버스 배차 최적화 도우미 시작 | 실행 장치: {get_device()}")
+    print(f"통합 배차 AI 플랫폼 시작 | 실행 장치: {get_device()}")
     print("-" * 60)
     for adapter in registry.all():
         adapter.startup()
@@ -41,10 +41,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="버스 배차 최적화 도우미 API",
+    title="통합 배차 AI 플랫폼 API",
     description=(
-        "서비스·물류 배차 AI 공통 구조 (수요 예측 + 규정 RAG + 배차 권고). "
-        "1차 스프린트: 서울 시내버스. 모든 권고는 담당자 검토(needs_review)가 필요합니다."
+        "도메인 공통 구조 (수요 예측 + 규정 RAG + 배차 권고). "
+        "1차 스프린트: 버스 배차 최적화 도우미 (서울 시내버스). "
+        "물류·서비스 기사 출동 배차는 인터페이스만 제공합니다 (501). "
+        "모든 권고는 담당자 검토(needs_review)가 필요합니다."
     ),
     version="1.0.0",
     lifespan=lifespan,

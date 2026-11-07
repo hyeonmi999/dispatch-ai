@@ -1,4 +1,4 @@
-# 버스 배차 최적화 도우미 (Oh!gimbak) - 백엔드 패키지
+# 통합 배차 AI 플랫폼 (Oh!gimbak) - 백엔드 패키지
 # 수업 표준 requirements-orag.txt에서 이 프로젝트에 필요한 것만 추렸습니다.
 #
 # python3.11 -m venv .venv

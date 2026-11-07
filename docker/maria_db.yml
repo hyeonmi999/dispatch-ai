@@ -1,4 +1,4 @@
-# 교수님 maria_db.yml 템플릿 기반 (학습 목적) - 버스 배차 최적화 도우미용 MariaDB
+# 교수님 maria_db.yml 템플릿 기반 (학습 목적) - 통합 배차 AI 플랫폼용 MariaDB
 #
 # 실행 (프로젝트 루트에서, Docker Desktop 실행 후)
 #   cp docker/.env.example docker/.env

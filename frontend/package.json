@@ -2,7 +2,7 @@
   "name": "dispatch-ai-frontend",
   "private": true,
   "version": "1.0.0",
-  "description": "버스 배차 최적화 도우미 (Oh!gimbak) - Vue 3 대시보드",
+  "description": "통합 배차 AI 플랫폼 (Oh!gimbak) - Vue 3 대시보드",
   "type": "module",
   "scripts": {
     "dev": "vite",
