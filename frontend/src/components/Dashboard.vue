@@ -166,10 +166,15 @@ const domains = ref([{ name: 'bus', title: '버스 배차', status: 'ready' }])
 const domain = ref('bus')
 const llm = ref('qwen')
 const embedding = ref('bge')
-const llmOptions = [
-  { label: 'Qwen3-1.7B (로컬)', value: 'qwen' },
-  { label: 'OpenAI gpt-4o-mini', value: 'openai' },
-]
+// 로컬 모델 이름은 서버 설정(.env LOCAL_MODEL_NAME)을 따름
+const llmOptions = computed(() => {
+  const local = health.value?.llm?.qwen
+  const name = local?.model?.split('/').pop() ?? 'Qwen'
+  return [
+    { label: `${name}${local?.adapter ? ' + LoRA' : ''} (로컬)`, value: 'qwen' },
+    { label: 'OpenAI gpt-4o-mini', value: 'openai' },
+  ]
+})
 const embeddingOptions = [
   { label: 'bge-m3 (로컬)', value: 'bge' },
   { label: 'OpenAI 3-small', value: 'openai' },
