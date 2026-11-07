@@ -3,7 +3,7 @@
     <p class="note">AI 권고는 보조 자료입니다. 모든 건 담당자 검토가 필요합니다.</p>
     <div class="ctl">
       <n-switch v-model:value="useLlm" size="small" />
-      <span class="sm">규정 요약 (LLM, 유형당 10~30초)</span>
+      <span class="sm label">규정 요약</span>
       <n-button type="primary" size="small" :loading="loading" class="go" @click="run">{{ hour }}시 전체 노선 권고</n-button>
     </div>
 
@@ -68,6 +68,7 @@ watch(() => [props.date, props.hour], () => (batch.value = null))
 
 <style scoped>
 .note { margin: 0 0 8px; padding-bottom: 7px; border-bottom: 1px solid var(--line); font-size: 11px; color: var(--ink2); }
-.ctl { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-.go { margin-left: auto; }
+.ctl { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.label { white-space: nowrap; }
+.go { margin-left: auto; flex: none; }
 </style>
