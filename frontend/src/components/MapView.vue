@@ -69,9 +69,10 @@ function draw() {
       if (!target[side] || s.congestion > target[side].congestion) target[side] = s
     }
 
-    // 바탕 경로 (테두리 효과) - 상행 경로 하나만
+    // 바탕 경로 (테두리 효과) - 상행 경로 하나만. 주간은 검은색, 야간은 어두운 지도에 묻히지 않게 밝은색
+    // smoothFactor 0: Leaflet이 선마다 점을 따로 줄이면 테두리와 색선이 어긋나 테두리 두께가 들쭉날쭉해짐
     const outPath = shape.outbound.flatMap((o) => o.coords)
-    L.polyline(outPath, { color: palette.value.panel, weight: active ? 11 : 7, opacity: active ? 0.95 : 0.6 }).addTo(routeLayer)
+    L.polyline(outPath, { color: palette.value.ink, weight: active ? 11 : 7, opacity: active ? 1 : 0.6, smoothFactor: 0 }).addTo(routeLayer)
 
     for (const seg of shape.outbound) {
       const { up, down } = merged.get(seg.seq)
@@ -80,7 +81,8 @@ function draw() {
       const line = L.polyline(seg.coords, {
         color: levelColor(level),
         weight: active ? 7 : 4,
-        opacity: active ? 1 : 0.55,
+        opacity: 1, // 반투명이면 검은 테두리가 비쳐 혼잡도 색이 탁해짐
+        smoothFactor: 0,
       })
       const fmt = (x) => (x ? `${fmtCongestion(x.congestion)} (${x.level})` : '-')
       line.bindTooltip(
@@ -222,17 +224,28 @@ let baseTiles = null
 let labelTiles = null
 let resizeObserver = null
 
+// 테마를 바꿀 때 setUrl은 쓰지 않음: 소수 확대 상태에서 재요청하면 10.5 같은 없는 확대값으로 타일을 요청함
+function setTiles() {
+  baseTiles?.remove()
+  labelTiles?.remove()
+  // 서울 기준 Esri 밝은 배경과 지명 층은 확대 13까지만 있고, 14부터는 "Map data not yet available" 이미지만 옴.
+  // maxNativeZoom: 그 이상 확대하면 13 타일을 늘려서 표시 (어두운 배경은 16까지 있음)
+  const LAST_REAL_ZOOM = 13
+  baseTiles = L.tileLayer(tileUrl('Base'), {
+    attribution: 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
+    maxZoom: 16,
+    maxNativeZoom: isNight.value ? 16 : LAST_REAL_ZOOM,
+  }).addTo(map)
+  labelTiles = L.tileLayer(tileUrl('Reference'), { maxZoom: 16, maxNativeZoom: LAST_REAL_ZOOM }).addTo(map)
+}
+
 onMounted(() => {
   // zoomSnap을 잘게 해야 정수 확대에 묶이지 않고 패널에 꽉 차게 맞음
   map = L.map(el.value, { zoomControl: true, preferCanvas: false, zoomSnap: 0.25, zoomDelta: 1 }).setView([37.5665, 126.978], 12)
   map.on('dragstart zoomstart', () => {
     if (!fitting) userMoved = true
   })
-  baseTiles = L.tileLayer(tileUrl('Base'), {
-    attribution: 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
-    maxZoom: 16,
-  }).addTo(map)
-  labelTiles = L.tileLayer(tileUrl('Reference'), { maxZoom: 16 }).addTo(map)
+  setTiles()
   routeLayer = L.layerGroup().addTo(map)
   hotspotLayer = L.layerGroup().addTo(map)
   tagLayer = L.layerGroup().addTo(map)
@@ -249,8 +262,7 @@ onMounted(() => {
 
 watch(() => [props.geometries, props.overview, props.selected], draw)
 watch(isNight, () => {
-  baseTiles?.setUrl(tileUrl('Base'))
-  labelTiles?.setUrl(tileUrl('Reference'))
+  setTiles()
   draw()
 })
 
