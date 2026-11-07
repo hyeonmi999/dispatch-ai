@@ -1,5 +1,6 @@
 // 백엔드 API 호출 (Vite 프록시: /api → http://127.0.0.1:8000)
 import axios from 'axios'
+import { palette } from './theme'
 
 const http = axios.create({ baseURL: '/api', timeout: 180000 })
 
@@ -32,23 +33,11 @@ export const api = {
   review: (id, body) => http.post(`/advisories/${id}/review`, body).then((r) => r.data),
 }
 
-// 혼잡도 단계 색 (상태 팔레트: 색 + 라벨을 항상 함께 표시)
-export const LEVEL_COLORS = {
-  여유: '#0ca30c',
-  보통: '#fab219',
-  혼잡: '#ec835a',
-  매우혼잡: '#d03b3b',
-  정보없음: '#b5b3ab',
-  운행없음: '#b5b3ab',
-}
-export const levelColor = (level) => LEVEL_COLORS[level] || '#b5b3ab'
-
-export const ACTION_TYPES = {
-  increase: 'error',
-  increase_limited: 'warning',
-  decrease: 'info',
-  keep: 'success',
-}
+// 혼잡도 단계 색 (색 + 라벨을 항상 함께 표시). 차트·지도는 levelColor, 화면 요소는 levelClass
+const LEVEL_INDEX = { 여유: 0, 보통: 1, 혼잡: 2, 매우혼잡: 3 }
+const levelIndex = (level) => LEVEL_INDEX[level] ?? 4
+export const levelColor = (level) => palette.value[`c${levelIndex(level)}`]
+export const levelClass = (level) => `b${levelIndex(level)}`
 
 // 혼잡도 표시: 반올림하면 0.798이 "0.80 보통"처럼 단계와 어긋나 보여서 소수 둘째 자리에서 버림
 export const fmtCongestion = (v) => (v == null ? '-' : (Math.floor(v * 100) / 100).toFixed(2))

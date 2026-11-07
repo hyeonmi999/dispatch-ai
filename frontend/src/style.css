@@ -1,29 +1,65 @@
+/* 색·글꼴 토큰. theme.js의 값과 같이 관리 */
+.day {
+  --ground: #dfe1db; --panel: #f8f8f4; --panel2: #ecede7; --line: #bfc2ba;
+  --ink: #15181a; --ink2: #464b4b; --ink3: #5d6362; --accent: #b93a08; --on: #ffffff;
+  --c0: #6c9db3; --c1: #d79a12; --c2: #e2600f; --c3: #8e1616; --c4: #b9bbb4;
+  --r143: #06655e; --r272: #7a3fe0; --r160: #c2257f; --r150: #1b2f7a; --r271: #447a0f;
+  color-scheme: light;
+}
+.night {
+  --ground: #0b0e10; --panel: #14181b; --panel2: #1e2428; --line: #333b41;
+  --ink: #eceee9; --ink2: #b7bdbb; --ink3: #969d9b; --accent: #ff8a4c; --on: #14181b;
+  --c0: #7fb4cc; --c1: #e9b233; --c2: #f2752b; --c3: #e5534b; --c4: #4c5358;
+  --r143: #5eead4; --r272: #c9b0ff; --r160: #f06bb5; --r150: #5d7bf5; --r271: #8bd42a;
+  color-scheme: dark;
+}
 :root {
-  --page: #f6f6f3;
-  --surface: #fcfcfb;
-  --ink: #0b0b0b;
-  --ink-2: #52514e;
-  --muted: #898781;
-  --line: #e1e0d9;
-  --accent: #2a78d6;
+  --sans: 'IBM Plex Sans KR', -apple-system, 'Apple SD Gothic Neo', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
 }
 * { box-sizing: border-box; }
-html, body, #app { height: 100%; margin: 0; }
+html, body, #app { min-height: 100%; margin: 0; }
 body {
-  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif;
-  background: var(--page);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.45;
+  background: var(--ground);
   color: var(--ink);
-  font-variant-numeric: tabular-nums;
 }
-.muted { color: var(--muted); }
-.ink2 { color: var(--ink-2); }
-.num { font-variant-numeric: tabular-nums; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink3); }
+.ink2 { color: var(--ink2); }
+.sm { font-size: 11px; color: var(--ink3); }
+
+/* 노선 번호표: 테두리는 노선색, 글자는 잉크색. 선택하면 노선색으로 채움 */
+.r143 { --rc: var(--r143); } .r272 { --rc: var(--r272); } .r160 { --rc: var(--r160); }
+.r150 { --rc: var(--r150); } .r271 { --rc: var(--r271); }
+.rno {
+  display: inline-block; border: 2px solid var(--rc, var(--ink)); padding: 0 5px; background: var(--panel);
+  font-family: var(--mono); font-weight: 600; line-height: 1.35; white-space: nowrap;
+}
+.rno.on { background: var(--rc, var(--ink)); color: var(--on); }
+
+/* 혼잡도 단계 표시 (색 + 글자를 항상 함께) */
+.chip { display: inline-block; width: 9px; height: 9px; flex: none; }
+.b0 { background: var(--c0); } .b1 { background: var(--c1); } .b2 { background: var(--c2); }
+.b3 { background: var(--c3); } .b4 { background: var(--c4); }
+
+.act { font-size: 11px; font-weight: 600; padding: 1px 6px; border: 1px solid var(--line); border-radius: 2px; white-space: nowrap; }
+.act.up { background: var(--accent); color: var(--on); border-color: var(--accent); }
+.meter { display: block; height: 6px; background: var(--panel2); margin-top: 3px; }
+.meter i { display: block; height: 100%; }
+.notice { font-size: 12px; color: var(--ink2); border: 1px solid var(--line); background: var(--panel2); padding: 8px 10px; }
+.notice.warn { border-color: var(--accent); }
+.empty-note { padding: 24px 12px; text-align: center; color: var(--ink3); font-size: 12px; }
 
 /* 혼잡 지점 깜빡임 */
 .hotspot-pulse {
-  width: 18px; height: 18px; border-radius: 50%;
-  background: rgba(208, 59, 59, 0.9);
-  border: 2px solid #fff;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--c3);
+  border: 2px solid var(--panel);
   box-shadow: 0 0 0 0 rgba(208, 59, 59, 0.6);
   animation: pulse 1.6s infinite;
 }
@@ -33,10 +69,17 @@ body {
   100% { box-shadow: 0 0 0 0 rgba(208, 59, 59, 0); }
 }
 @media (prefers-reduced-motion: reduce) { .hotspot-pulse { animation: none; } }
-.leaflet-container { font-family: inherit; background: #eceae4; }
 
-/* 차트 카드 아래 고정 높이 설명 칸 (내용이 늘어도 차트 크기 유지, 넘치면 스크롤) */
+.leaflet-container { font-family: inherit; background: var(--panel2); }
+.leaflet-tooltip {
+  background: var(--panel); color: var(--ink); border: 1px solid var(--ink); border-radius: 0; box-shadow: none; font-size: 12px;
+}
+.leaflet-tooltip::before { display: none; }
+.leaflet-bar a { background: var(--panel); color: var(--ink); border-radius: 0 !important; }
+.leaflet-bar { border-radius: 0; }
+
+/* 차트 아래 설명 칸 */
 .chart-foot {
-  flex: none; height: 58px; overflow-y: auto; margin-top: 4px; padding-top: 4px;
-  border-top: 1px solid #efeee8; font-size: 12px; line-height: 1.5; color: var(--ink-2);
+  flex: none; max-height: 76px; overflow-y: auto; margin-top: 4px; padding-top: 4px;
+  border-top: 1px solid var(--line); font-size: 12px; line-height: 1.5; color: var(--ink2);
 }

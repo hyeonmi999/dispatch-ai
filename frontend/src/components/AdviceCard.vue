@@ -1,42 +1,33 @@
 <template>
   <div class="card">
-    <div class="top">
-      <n-tag :type="ACTION_TYPES[a.recommendation.action]" size="medium" strong>{{ a.recommendation.label }}</n-tag>
-      <n-tag type="warning" size="small" round>⚠ 담당자 검토 필요 (needs_review)</n-tag>
-    </div>
+    <dl class="flow">
+      <div>
+        <dt>배차간격</dt>
+        <dd class="num">{{ a.current.interval_min }} → <b>{{ a.recommendation.recommended_interval_min }}</b><small>분</small></dd>
+      </div>
+      <div>
+        <dt>운행횟수</dt>
+        <dd class="num">{{ a.current.trips_per_hour }} → <b>{{ a.recommendation.recommended_trips_per_hour }}</b><small>회/h</small></dd>
+      </div>
+      <div>
+        <dt>혼잡도 · {{ a.congestion.level }} → {{ levelOf(a.recommendation.expected_congestion) }}</dt>
+        <dd class="num">{{ fmtCongestion(a.congestion.ratio) }} → <b>{{ fmtCongestion(a.recommendation.expected_congestion) }}</b></dd>
+      </div>
+      <div>
+        <dt>추가 차량 (권고 간격 유지 시)</dt>
+        <dd class="num"><b>{{ a.recommendation.extra_buses > 0 ? '+' : '' }}{{ a.recommendation.extra_buses }}</b><small>대</small></dd>
+      </div>
+    </dl>
 
-    <div class="flow">
-      <div class="cell">
-        <div class="lbl">배차간격</div>
-        <div class="big num">{{ a.current.interval_min }}<small>분</small> → <b>{{ a.recommendation.recommended_interval_min }}</b><small>분</small></div>
-      </div>
-      <div class="cell">
-        <div class="lbl">운행횟수</div>
-        <div class="big num">{{ a.current.trips_per_hour }} → <b>{{ a.recommendation.recommended_trips_per_hour }}</b><small>회/h</small></div>
-      </div>
-      <div class="cell">
-        <div class="lbl">혼잡도</div>
-        <div class="big num">
-          {{ fmtCongestion(a.congestion.ratio) }} → <b>{{ fmtCongestion(a.recommendation.expected_congestion) }}</b>
-        </div>
-        <div class="tiny">{{ a.congestion.level }} → {{ levelOf(a.recommendation.expected_congestion) }}</div>
-      </div>
-      <div class="cell">
-        <div class="lbl">추가 차량</div>
-        <div class="big num"><b>{{ a.recommendation.extra_buses > 0 ? '+' : '' }}{{ a.recommendation.extra_buses }}</b><small>대</small></div>
-        <div class="tiny">권고 간격 유지 시</div>
-      </div>
-    </div>
-
-    <div class="sec-title">판단 근거 (예측·혼잡도)</div>
+    <div class="sec">판단 근거</div>
     <ul class="rationale">
       <li v-for="(r, i) in a.rationale" :key="i">{{ r }}</li>
     </ul>
 
-    <div class="sec-title">규정·정책 근거 <span class="muted">({{ a.evidence.embedding }}{{ a.evidence.llm ? ' · ' + a.evidence.llm : '' }})</span></div>
-    <n-alert v-if="!a.evidence.found" type="warning" :show-icon="false">
-      {{ a.evidence.answer || '근거 문서를 찾을 수 없음' }} <span class="muted">{{ a.evidence.note }}</span>
-    </n-alert>
+    <div class="sec">규정·정책 근거 <span class="sm">{{ a.evidence.embedding }}{{ a.evidence.llm ? ' · ' + a.evidence.llm : '' }}</span></div>
+    <div v-if="!a.evidence.found" class="notice warn">
+      {{ a.evidence.answer || '근거 문서를 찾을 수 없음' }} <span class="sm">{{ a.evidence.note }}</span>
+    </div>
     <template v-else>
       <div v-if="a.evidence.answer" class="answer">{{ a.evidence.answer }}</div>
       <SourceList :sources="a.evidence.sources" />
@@ -44,32 +35,25 @@
 
     <div class="foot">
       <div class="conf">
-        <span class="lbl">신뢰도</span>
-        <n-progress type="line" :percentage="Math.round(a.confidence * 100)" :height="6" :show-indicator="false" color="#2a78d6" style="width: 90px" />
-        <span class="num small">{{ Math.round(a.confidence * 100) }}%</span>
+        <span class="sm">신뢰도</span>
+        <span class="meter conf-bar"><i :style="{ width: `${Math.round(a.confidence * 100)}%`, background: 'var(--ink2)' }"></i></span>
+        <span class="num sm">{{ Math.round(a.confidence * 100) }}%</span>
       </div>
-      <div class="review">
-        <template v-if="reviewed">
-          <n-tag :type="reviewed === 'approved' ? 'success' : reviewed === 'rejected' ? 'error' : 'default'">{{ STATUS[reviewed] }} 완료</n-tag>
-        </template>
-        <template v-else>
-          <n-button size="small" type="primary" :disabled="!canReview" @click="review('approved')">승인</n-button>
-          <n-button size="small" :disabled="!canReview" @click="review('held')">보류</n-button>
-          <n-button size="small" type="error" ghost :disabled="!canReview" @click="review('rejected')">반려</n-button>
-        </template>
+      <span v-if="reviewed" class="done">{{ STATUS[reviewed] }} 완료</span>
+      <div v-else class="rv" role="group" :aria-label="`${a.route}번 권고 검토`">
+        <button v-for="(label, key) in STATUS" :key="key" :disabled="!canReview" @click="review(key)">{{ label }}</button>
       </div>
     </div>
-    <div class="muted tiny right">
-      권고 #{{ a.advisory_id ?? '-' }} · {{ a.db_saved ? 'MariaDB 저장됨' : 'DB 미저장' }} · {{ a.model_version }}
-      {{ a.is_forecast ? '· 향후 예측' : '' }}
+    <div class="sm meta">
+      권고 #{{ a.advisory_id ?? '-' }} · {{ a.db_saved ? 'MariaDB 저장됨' : 'DB 미저장' }} · {{ a.model_version }}{{ a.is_forecast ? ' · 향후 예측' : '' }}
     </div>
   </div>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue'
-import { NAlert, NButton, NProgress, NTag, useMessage } from 'naive-ui'
-import { ACTION_TYPES, api, errorMessage, fmtCongestion } from '../api'
+import { useMessage } from 'naive-ui'
+import { api, errorMessage, fmtCongestion } from '../api'
 import SourceList from './SourceList.vue'
 
 const props = defineProps({
@@ -104,21 +88,24 @@ async function review(status) {
 </script>
 
 <style scoped>
-.card { border: 1px solid #e6e4dc; border-radius: 10px; padding: 12px; }
-.top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.flow { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
-.cell { background: #f7f6f2; border-radius: 8px; padding: 8px 10px; }
-.lbl { font-size: 11px; color: var(--muted); }
-.big { font-size: 17px; }
-.big b { font-size: 20px; }
-.big small { font-size: 11px; color: var(--muted); margin-left: 1px; }
-.tiny { font-size: 11px; color: var(--muted); }
-.small { font-size: 12px; }
-.sec-title { font-size: 12px; font-weight: 700; color: var(--ink-2); margin: 10px 0 6px; }
-.rationale { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.6; }
-.answer { background: #eef4fc; border-radius: 8px; padding: 10px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; margin-bottom: 8px; }
-.foot { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; gap: 8px; flex-wrap: wrap; }
+.card { padding: 2px 2px 10px; }
+.flow { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; margin: 0; }
+.flow > div { padding: 5px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+dt { font-size: 11px; color: var(--ink3); }
+dd { margin: 0; font-size: 15px; white-space: nowrap; }
+dd b { font-size: 17px; font-weight: 600; }
+dd small { font-size: 11px; color: var(--ink3); margin-left: 2px; }
+.sec { font-size: 12px; font-weight: 600; color: var(--ink2); margin: 10px 0 4px; }
+.rationale { margin: 0; padding-left: 15px; font-size: 12px; line-height: 1.55; color: var(--ink2); }
+.answer { border: 1px solid var(--line); padding: 8px 10px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; margin-bottom: 6px; }
+.foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 8px; flex-wrap: wrap; }
 .conf { display: flex; align-items: center; gap: 6px; }
-.review { display: flex; gap: 6px; }
-.right { text-align: right; margin-top: 6px; }
+.conf-bar { width: 70px; margin: 0; }
+.done { font-size: 12px; font-weight: 600; }
+.rv { display: inline-flex; border: 1px solid var(--line); border-radius: 2px; overflow: hidden; }
+.rv button { font-size: 12px; padding: 3px 10px; border-right: 1px solid var(--line); min-height: 28px; }
+.rv button:last-child { border-right: 0; }
+.rv button:hover:not(:disabled) { background: var(--ink); color: var(--panel); }
+.rv button:disabled { opacity: 0.45; cursor: not-allowed; }
+.meta { text-align: right; margin-top: 6px; overflow-wrap: anywhere; }
 </style>

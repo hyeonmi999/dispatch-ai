@@ -1,38 +1,29 @@
 <template>
-  <section class="block">
-    <div class="block-title">예측 모델 성능 (검증 구간)</div>
-    <div class="muted small">{{ metrics.valid_period?.join(' ~ ') }} · 시간 순서 분할</div>
-    <div class="kpis">
-      <div class="kpi">
-        <div class="kpi-label">모델 MAE</div>
-        <div class="kpi-value num">{{ fmt(m.model_mae) }}<span>명</span></div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-label">작년 같은 요일</div>
-        <div class="kpi-value num ink2">{{ fmt(m.baseline_mae) }}<span>명</span></div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-label">개선율</div>
-        <div class="kpi-value num good">{{ m.improvement_pct?.toFixed(1) }}<span>%</span></div>
-      </div>
+  <div>
+    <div class="big3">
+      <div><span>모델 MAE</span><b class="num">{{ fmt(m.model_mae) }}명</b></div>
+      <div><span>작년 같은 요일</span><b class="num">{{ fmt(m.baseline_mae) }}명</b></div>
+      <div><span>개선율</span><b class="num">{{ m.improvement_pct?.toFixed(1) }}%</b></div>
     </div>
-    <div class="muted small">정류장·시간대 단위 · {{ metrics.horizon_days || 21 }}일 앞 예측 · 베이스라인 = 작년 같은 요일·시간</div>
-    <div v-if="metrics.reference_last_week" class="muted small ref">
-      참고: 전주 같은 요일 값으로 맞히면 {{ metrics.reference_last_week.stop_hour_mae.toFixed(2) }}명 — 데이터가 8일 늦게 공개돼 실제 운영에서는 쓸 수 없는 값
-    </div>
-    <table class="tbl">
-      <thead><tr><th>노선</th><th>모델</th><th>작년 같은 요일</th><th>개선</th></tr></thead>
+    <table>
+      <thead><tr><th scope="col">노선·시간 MAE</th><th scope="col">모델</th><th scope="col">작년</th><th scope="col">개선</th></tr></thead>
       <tbody>
         <tr v-for="(x, r) in metrics.by_route" :key="r">
-          <td>{{ r }}</td>
-          <td class="num">{{ Math.round(x.model_mae) }}</td>
-          <td class="num">{{ Math.round(x.baseline_mae) }}</td>
-          <td class="num">{{ x.improvement_pct.toFixed(0) }}%</td>
+          <td class="num">{{ r }}</td>
+          <td class="num">{{ x.model_mae.toFixed(1) }}</td>
+          <td class="num">{{ x.baseline_mae.toFixed(1) }}</td>
+          <td class="num">{{ x.improvement_pct.toFixed(1) }}%</td>
         </tr>
       </tbody>
     </table>
-    <div class="muted small">노선 표: 노선 전체 × 시간대 합계 MAE (명/시간)</div>
-  </section>
+    <p class="foot">
+      검증 {{ metrics.valid_period?.join('~') }}, 정류장·시간 단위(명), {{ metrics.horizon_days || 21 }}일 앞 예측.
+      실제 운행횟수를 입력한 값입니다. 운행횟수를 과거 값으로 넣으면 10/25까지 데이터로 한 시뮬레이션 기준 4.13명, 노선·시간 97명입니다.
+    </p>
+    <p v-if="metrics.reference_last_week" class="foot">
+      참고: 전주 같은 요일 값으로 맞히면 {{ metrics.reference_last_week.stop_hour_mae.toFixed(2) }}명. 데이터가 8일 늦게 공개돼 실제 운영에서는 쓸 수 없는 값입니다.
+    </p>
+  </div>
 </template>
 
 <script setup>
@@ -44,17 +35,14 @@ const fmt = (v) => (v == null ? '-' : v.toFixed(2))
 </script>
 
 <style scoped>
-.block { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
-.block-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--ink-2); }
-.small { font-size: 12px; }
-.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 10px 0 6px; }
-.kpi-label { font-size: 11px; color: var(--muted); }
-.kpi-value { font-size: 22px; font-weight: 700; }
-.kpi-value span { font-size: 12px; font-weight: 500; margin-left: 2px; color: var(--muted); }
-.good { color: #006300; }
-.ref { margin-top: 4px; }
-.tbl { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
-.tbl th { text-align: right; font-weight: 500; color: var(--muted); border-bottom: 1px solid var(--line); padding: 3px 4px; }
-.tbl td { text-align: right; padding: 3px 4px; border-bottom: 1px solid #f0efe9; }
-.tbl th:first-child, .tbl td:first-child { text-align: left; }
+.big3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 8px; border: 1px solid var(--line); }
+.big3 div { padding: 6px 8px; border-right: 1px solid var(--line); min-width: 0; }
+.big3 div:last-child { border-right: 0; }
+.big3 span { display: block; font-size: 11px; color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.big3 b { font-size: 18px; font-weight: 500; white-space: nowrap; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th { font-weight: 500; color: var(--ink3); font-size: 11px; text-align: right; padding: 3px 4px; border-bottom: 1px solid var(--line); }
+td { padding: 4px; text-align: right; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; }
+.foot { font-size: 11px; color: var(--ink2); margin: 8px 0 0; }
 </style>

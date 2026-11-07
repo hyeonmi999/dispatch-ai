@@ -23,5 +23,5 @@ defineProps({ sources: { type: Array, default: () => [] } })
 <style scoped>
 .src { font-size: 12.5px; }
 .small { font-size: 12px; }
-.snippet { font-size: 12.5px; line-height: 1.6; color: var(--ink-2); background: #faf9f6; padding: 8px; border-radius: 6px; margin-bottom: 4px; }
+.snippet { font-size: 12.5px; line-height: 1.6; color: var(--ink2); background: var(--panel2); padding: 8px; margin-bottom: 4px; }
 </style>

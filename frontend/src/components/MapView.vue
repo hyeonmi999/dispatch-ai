@@ -1,13 +1,21 @@
 <template>
   <div ref="el" class="map"></div>
+  <div class="legend">
+    <span><i class="chip b0"></i>여유 ~0.45</span>
+    <span><i class="chip b1"></i>보통 ~0.80</span>
+    <span><i class="chip b2"></i>혼잡 ~1.00</span>
+    <span><i class="chip b3"></i>매우혼잡 1.00~</span>
+    <span><i class="lg-dot"></i>혼잡 지점 0.8~</span>
+  </div>
 </template>
 
 <script setup>
-// 서울 지도 위 노선도: 정류장 구간마다 혼잡도 색, 혼잡 구간은 빨간 점 깜빡임
+// 서울 지도 위 노선도: 정류장 구간마다 혼잡도 색, 혼잡 구간은 점 깜빡임
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import L from 'leaflet'
-import { LEVEL_COLORS, fmtCongestion, levelColor } from '../api'
+import { fmtCongestion, levelColor } from '../api'
 import { routeShape } from '../routeShape'
+import { isNight, palette } from '../theme'
 
 const props = defineProps({
   geometries: { type: Object, default: () => ({}) },
@@ -20,6 +28,7 @@ const el = ref(null)
 let map = null
 let routeLayer = null
 let hotspotLayer = null
+let tagLayer = null
 let fitted = false
 
 // 노선별 상·하행 구조는 좌표가 바뀔 때만 다시 계산
@@ -60,9 +69,9 @@ function draw() {
       if (!target[side] || s.congestion > target[side].congestion) target[side] = s
     }
 
-    // 바탕 경로 (흰 테두리 효과) - 상행 경로 하나만
+    // 바탕 경로 (테두리 효과) - 상행 경로 하나만
     const outPath = shape.outbound.flatMap((o) => o.coords)
-    L.polyline(outPath, { color: '#ffffff', weight: active ? 11 : 7, opacity: active ? 0.95 : 0.6 }).addTo(routeLayer)
+    L.polyline(outPath, { color: palette.value.panel, weight: active ? 11 : 7, opacity: active ? 0.95 : 0.6 }).addTo(routeLayer)
 
     for (const seg of shape.outbound) {
       const { up, down } = merged.get(seg.seq)
@@ -85,22 +94,9 @@ function draw() {
     }
     outPath.forEach((p) => bounds.push(p))
 
-    // 노선 번호 라벨
-    const mid = outPath[Math.floor(outPath.length / 2)]
-    L.marker(mid, {
-      icon: L.divIcon({
-        className: '',
-        html: `<div class="route-pill ${active ? 'on' : ''}">${route}</div>`,
-        iconSize: [44, 22],
-        iconAnchor: [22, 11],
-      }),
-    })
-      .on('click', () => emit('select', route))
-      .addTo(routeLayer)
-
     if (active) {
       for (const st of geo.stops.filter((s) => s.seq <= shape.turn)) {
-        L.circleMarker([st.lat, st.lng], { radius: 3, color: '#52514e', weight: 1, fillColor: '#fff', fillOpacity: 1 })
+        L.circleMarker([st.lat, st.lng], { radius: 3, color: palette.value.ink2, weight: 1, fillColor: palette.value.panel, fillOpacity: 1 })
           .bindTooltip(`${st.name} (${st.seq})`)
           .addTo(routeLayer)
       }
@@ -118,7 +114,7 @@ function draw() {
       const pos = seg ? seg.coords[Math.floor(seg.coords.length / 2)] : h.lat != null ? [h.lat, h.lng] : null
       if (!pos) continue
       L.marker(pos, {
-        icon: L.divIcon({ className: '', html: '<div class="hotspot-pulse"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
+        icon: L.divIcon({ className: '', html: '<div class="hotspot-pulse"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }),
         zIndexOffset: 1000,
       })
         .bindTooltip(`<b>${r.route}번 혼잡</b><br/>${h.name}<br/>혼잡도 ${fmtCongestion(h.congestion)}`)
@@ -127,66 +123,150 @@ function draw() {
     }
   }
 
+  routeBounds = bounds
   if (!fitted && bounds.length) {
-    map.fitBounds(bounds, { padding: [30, 30] })
+    fitRoutes()
     fitted = true
   }
+  placeTags()
 }
 
-function addLegend() {
-  const legend = L.control({ position: 'bottomright' })
-  legend.onAdd = () => {
-    const div = L.DomUtil.create('div', 'map-legend')
-    const items = [
-      ['여유', '좌석 여유'],
-      ['보통', '입석 손잡이'],
-      ['혼잡', '통로까지 입석'],
-      ['매우혼잡', '정원 초과'],
-    ]
-    div.innerHTML =
-      '<div class="lg-title">차내 혼잡도 (재차 ÷ 정원)</div>' +
-      items.map(([k, d]) => `<div class="lg-row"><span class="lg-sw" style="background:${LEVEL_COLORS[k]}"></span>${k} <span class="lg-d">${d}</span></div>`).join('') +
-      '<div class="lg-row"><span class="hotspot-pulse lg-dot"></span>혼잡 지점 (0.8 이상)</div>'
-    return div
-  }
-  legend.addTo(map)
+// 노선 전체가 패널에 꽉 차게 맞춤. 사용자가 직접 확대·이동한 뒤에는 그 화면을 유지
+let routeBounds = []
+let fitting = false
+let userMoved = false
+function fitRoutes() {
+  if (!routeBounds.length) return
+  fitting = true
+  map.fitBounds(routeBounds, { padding: [34, 34], animate: false })
+  fitting = false
 }
+
+// 노선 번호표: 처음 맞춘 화면에서 다른 노선·번호표와 가장 떨어진 지점을 노선별 기본 자리로 정함
+// 확대·축소·이동해도 기본 자리에 고정. 화면 밖으로 나가거나 다른 번호표와 겹칠 때만 그 번호표를 옮기고,
+// 다시 들어갈 수 있게 되면 기본 자리로 돌아옴
+const TAG_W = 44
+const TAG_H = 24
+const tagHomes = new Map()
+const tagSpots = new Map()
+
+function samplePath(route) {
+  const coords = shapeOf(route).outbound.flatMap((o) => o.coords)
+  const step = Math.max(1, Math.floor(coords.length / 80))
+  return coords.filter((_, i) => i % step === 0)
+}
+
+function placeTags() {
+  if (!map || !tagLayer) return
+  tagLayer.clearLayers()
+  const size = map.getSize()
+
+  const routes = Object.keys(props.geometries).sort()
+  const paths = new Map(routes.map((r) => [r, samplePath(r).map((ll) => ({ ll, p: map.latLngToContainerPoint(ll) }))]))
+
+  // 지도 안쪽, 확대 버튼·출처 표기를 가리지 않는 자리만 후보
+  const usable = (p) =>
+    p.x > TAG_W / 2 + 4 && p.x < size.x - TAG_W / 2 - 4 && p.y > TAG_H / 2 + 4 && p.y < size.y - TAG_H / 2 - 24 && !(p.x < 60 && p.y < 90)
+  // 새 자리를 고를 때는 여유를 두고, 이미 있는 자리는 실제로 겹칠 때만 옮김 (자주 움직이지 않게)
+  const clashes = (a, b, gap = 6) => Math.abs(a.x - b.x) < TAG_W + gap && Math.abs(a.y - b.y) < TAG_H + gap
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y)
+  const stay = (ll, placedSoFar) => {
+    if (!ll) return null
+    const p = map.latLngToContainerPoint(ll)
+    return usable(p) && !placedSoFar.some((q) => clashes(p, q, 0)) ? { ll, p } : null
+  }
+
+  const placed = []
+  for (const route of routes) {
+    const candidates = paths.get(route).filter((c) => usable(c.p))
+    if (!candidates.length) continue // 이 노선이 화면 밖
+
+    let spot = stay(tagHomes.get(route), placed) || stay(tagSpots.get(route), placed)
+
+    if (!spot) {
+      const others = routes.filter((r) => r !== route).flatMap((r) => paths.get(r))
+      let best = -Infinity
+      for (const c of candidates) {
+        const fromLines = Math.min(60, ...others.map((o) => dist(c.p, o.p)))
+        const fromTags = Math.min(160, ...placed.map((q) => dist(c.p, q)))
+        const score = fromLines * 2 + fromTags - (placed.some((q) => clashes(c.p, q)) ? 10000 : 0)
+        if (score > best) {
+          best = score
+          spot = c
+        }
+      }
+    }
+
+    if (!tagHomes.has(route)) tagHomes.set(route, spot.ll)
+    tagSpots.set(route, spot.ll)
+    placed.push(spot.p)
+    const active = route === props.selected
+    L.marker(spot.ll, {
+      icon: L.divIcon({
+        className: '',
+        html: `<div class="rno route-tag r${route} ${active ? 'on' : ''}">${route}</div>`,
+        iconSize: [TAG_W, TAG_H],
+        iconAnchor: [TAG_W / 2, TAG_H / 2],
+      }),
+      zIndexOffset: active ? 900 : 800,
+    })
+      .on('click', () => emit('select', route))
+      .addTo(tagLayer)
+  }
+}
+
+// 키 없이 쓸 수 있는 회색 배경지도 (노선 색이 잘 보이도록) - Esri Canvas, 야간은 어두운 지도
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas'
+const tileUrl = (part) => `${ESRI}/World_${isNight.value ? 'Dark' : 'Light'}_Gray_${part}/MapServer/tile/{z}/{y}/{x}`
+let baseTiles = null
+let labelTiles = null
+let resizeObserver = null
 
 onMounted(() => {
-  map = L.map(el.value, { zoomControl: true, preferCanvas: false }).setView([37.5665, 126.978], 12)
-  // 키 없이 쓸 수 있는 회색 배경지도 (노선 색이 잘 보이도록) - Esri World Light Gray Canvas
-  const esri = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas'
-  L.tileLayer(`${esri}/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`, {
+  // zoomSnap을 잘게 해야 정수 확대에 묶이지 않고 패널에 꽉 차게 맞음
+  map = L.map(el.value, { zoomControl: true, preferCanvas: false, zoomSnap: 0.25, zoomDelta: 1 }).setView([37.5665, 126.978], 12)
+  map.on('dragstart zoomstart', () => {
+    if (!fitting) userMoved = true
+  })
+  baseTiles = L.tileLayer(tileUrl('Base'), {
     attribution: 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
     maxZoom: 16,
   }).addTo(map)
-  L.tileLayer(`${esri}/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 16 }).addTo(map)
+  labelTiles = L.tileLayer(tileUrl('Reference'), { maxZoom: 16 }).addTo(map)
   routeLayer = L.layerGroup().addTo(map)
   hotspotLayer = L.layerGroup().addTo(map)
-  addLegend()
+  tagLayer = L.layerGroup().addTo(map)
+  map.on('zoomend moveend resize', placeTags)
   draw()
+  // 패널 크기를 바꾸면 지도도 다시 맞춤
+  resizeObserver = new ResizeObserver(() => {
+    if (!map) return
+    map.invalidateSize({ animate: false })
+    if (!userMoved) fitRoutes()
+  })
+  resizeObserver.observe(el.value)
 })
 
 watch(() => [props.geometries, props.overview, props.selected], draw)
+watch(isNight, () => {
+  baseTiles?.setUrl(tileUrl('Base'))
+  labelTiles?.setUrl(tileUrl('Reference'))
+  draw()
+})
 
-onBeforeUnmount(() => map?.remove())
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  // 확대 애니메이션 중에 패널을 닫아도 번호표 계산이 호출되지 않게 먼저 해제
+  map?.off('zoomend moveend resize', placeTags)
+  map?.remove()
+  map = null
+})
 </script>
 
 <style>
-.map { width: 100%; height: 100%; }
-.route-pill {
-  display: inline-block; padding: 2px 8px; border-radius: 11px; font-size: 12px; font-weight: 700;
-  background: #fff; color: #0b0b0b; border: 1.5px solid #52514e; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  cursor: pointer; text-align: center;
-}
-.route-pill.on { background: #2a78d6; color: #fff; border-color: #2a78d6; }
-.map-legend {
-  background: rgba(255, 255, 255, 0.95); padding: 8px 10px; border-radius: 8px; font-size: 12px;
-  line-height: 1.6; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15); color: #0b0b0b;
-}
-.lg-title { font-weight: 700; margin-bottom: 2px; }
-.lg-row { display: flex; align-items: center; gap: 6px; }
-.lg-sw { width: 18px; height: 5px; border-radius: 3px; display: inline-block; }
-.lg-d { color: #898781; }
-.lg-dot { width: 10px; height: 10px; border-width: 1px; animation: none; }
+.map { width: 100%; flex: 1; min-height: 0; }
+.route-tag { width: 44px; height: 24px; font-size: 13px; line-height: 20px; text-align: center; padding: 0; cursor: pointer; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 10px; border-top: 1px solid var(--line); font-size: 11px; color: var(--ink2); align-items: center; flex: none; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.lg-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--c3); }
 </style>

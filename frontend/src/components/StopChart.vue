@@ -1,17 +1,27 @@
 <template>
-  <!-- 차트 영역은 고정, 혼잡 구간 목록은 아래 고정 높이 칸에서 스크롤 (목록이 길어져도 차트 크기 유지) -->
+  <!-- 차트 아래 칸은 높이 제한 + 스크롤 (목록이 길어져도 차트가 찌그러지지 않게) -->
   <div class="chart-box">
     <v-chart v-if="stops.length" class="chart" :option="option" autoresize />
     <div v-else class="empty muted">이 시간대 운행 데이터가 없습니다</div>
   </div>
-  <div class="chart-foot">
+  <div v-if="stops.length" class="chart-foot">
     <template v-if="runs.length">
-      <div class="muted foot-head">혼잡 구간 {{ runs.length }}곳 (혼잡도 0.8 이상, 높은 순)</div>
-      <div v-for="(r, i) in runs" :key="i" class="run">
-        <b>{{ BADGES[i] || i + 1 + '.' }}</b> {{ r.from }} → {{ r.to }} <span class="muted num">최대 {{ fmtCongestion(r.peak) }}</span>
+      <div class="sm">혼잡 구간 {{ runs.length }}곳 (혼잡도 0.8 이상, 높은 순)</div>
+      <div v-for="(r, i) in runs" :key="i" class="row">
+        <b class="num">{{ i + 1 }}</b>
+        <span class="ell">{{ r.from }} → {{ r.to }}</span>
+        <span class="num">{{ fmtCongestion(r.peak) }}</span>
       </div>
     </template>
-    <span v-else-if="stops.length" class="muted">혼잡 구간(0.8 이상) 없음</span>
+    <template v-else>
+      <div class="sm">혼잡 구간 없음. 혼잡도 상위 3곳:</div>
+      <div v-for="s in topStops" :key="s.seq" class="row">
+        <i class="chip" :class="levelClass(s.level)"></i>
+        <span class="ell">{{ s.name }}</span>
+        <span class="num">{{ fmtCongestion(s.congestion) }}</span>
+        <span class="sm">{{ s.level }}</span>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -25,15 +35,14 @@ import { use } from 'echarts/core'
 import { BarChart } from 'echarts/charts'
 import { GridComponent, MarkAreaComponent, MarkLineComponent, TooltipComponent } from 'echarts/components'
 import { SVGRenderer } from 'echarts/renderers'
-import { fmtCongestion, levelColor } from '../api'
+import { fmtCongestion, levelClass, levelColor } from '../api'
 import { turnSeq } from '../routeShape'
+import { FONT_MONO, FONT_SANS, palette } from '../theme'
 
 use([BarChart, GridComponent, MarkAreaComponent, MarkLineComponent, TooltipComponent, SVGRenderer])
 
 const props = defineProps({ stops: { type: Array, default: () => [] } })
-const INK = { muted: '#898781', grid: '#e1e0d9', axis: '#c3c2b7', text: '#52514e' }
 const HIGH = 0.8
-const BADGES = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩']
 
 const turnIndex = computed(() => {
   const seq = turnSeq(props.stops)
@@ -58,20 +67,29 @@ const runs = computed(() => {
   return out.sort((a, b) => b.peak - a.peak)
 })
 
+const topStops = computed(() =>
+  props.stops.filter((s) => s.congestion != null).sort((a, b) => b.congestion - a.congestion).slice(0, 3),
+)
+
 const option = computed(() => {
   const t = turnIndex.value
   const stops = props.stops
+  const p = palette.value
   return {
     animationDuration: 300,
-    grid: { left: 40, right: 16, top: 24, bottom: 30 },
+    textStyle: { fontFamily: FONT_SANS },
+    grid: { left: 34, right: 12, top: 18, bottom: 24 },
     tooltip: {
-      // 차트 카드는 크기 고정을 위해 overflow: hidden → 툴팁은 body에 띄워 잘리지 않게
+      // 패널이 overflow: hidden이라 툴팁은 body에 띄워 잘리지 않게
       appendTo: 'body',
-      extraCssText: 'z-index: 2000; max-width: 320px; white-space: normal;',
+      extraCssText: 'z-index: 2000; max-width: 320px; white-space: normal; border-radius: 0; box-shadow: none;',
+      backgroundColor: p.panel,
+      borderColor: p.ink,
+      textStyle: { color: p.ink, fontSize: 12, fontFamily: FONT_SANS },
       trigger: 'item',
-      formatter: (p) => {
-        const s = stops[p.dataIndex]
-        const next = stops[p.dataIndex + 1]
+      formatter: (x) => {
+        const s = stops[x.dataIndex]
+        const next = stops[x.dataIndex + 1]
         return `<b>${s.name}${next ? ' → ' + next.name : ''}</b><br/>` +
           `${s.direction ? '→ ' + s.direction + ' 방면 · ' : ''}혼잡도 ${fmtCongestion(s.congestion)} (${s.level || '-'})` +
           `<br/>예측 승차 ${s.pred ?? '-'}명` + (s.actual != null ? ` · 실제 ${s.actual}명` : '')
@@ -80,45 +98,36 @@ const option = computed(() => {
     xAxis: {
       type: 'category',
       data: stops.map((s) => s.seq),
-      axisLine: { lineStyle: { color: INK.axis } },
+      axisLine: { lineStyle: { color: p.line } },
       axisTick: { show: false },
-      axisLabel: { color: INK.muted, interval: 9 },
-      name: '정류장 순서',
-      nameLocation: 'middle',
-      nameGap: 18,
-      nameTextStyle: { color: INK.muted, fontSize: 11 },
+      axisLabel: { color: p.ink3, interval: 19, fontFamily: FONT_MONO, fontSize: 11 },
     },
     yAxis: {
       type: 'value',
-      name: '혼잡도',
-      nameTextStyle: { color: INK.muted, align: 'right' },
-      splitLine: { lineStyle: { color: INK.grid } },
-      axisLabel: { color: INK.muted },
+      splitLine: { lineStyle: { color: p.line } },
+      axisLabel: { color: p.ink3, fontFamily: FONT_MONO, fontSize: 11 },
     },
     series: [
       {
         type: 'bar',
-        barCategoryGap: '15%',
-        data: stops.map((s) => ({
-          value: s.congestion,
-          itemStyle: { color: levelColor(s.level), borderRadius: [2, 2, 0, 0] },
-        })),
+        barCategoryGap: '12%',
+        data: stops.map((s) => ({ value: s.congestion, itemStyle: { color: levelColor(s.level) } })),
         markLine: {
           silent: true,
           symbol: 'none',
           data: [
-            { yAxis: HIGH, lineStyle: { color: '#d03b3b', type: 'dashed' }, label: { formatter: '증차 기준 0.8', position: 'insideEndTop', color: '#8f1f1f' } },
-            { xAxis: t, lineStyle: { color: '#898781', type: 'dotted' }, label: { formatter: '회차', position: 'end', color: INK.text } },
+            { yAxis: HIGH, lineStyle: { color: p.accent, type: 'dashed' }, label: { formatter: '증차 기준 0.8', position: 'insideEndTop', color: p.accent, fontSize: 11 } },
+            { xAxis: t, lineStyle: { color: p.ink3, type: 'dotted' }, label: { formatter: '회차', position: 'end', color: p.ink2, fontSize: 11 } },
           ],
         },
         markArea: {
           silent: true,
-          itemStyle: { color: 'rgba(208, 59, 59, 0.10)' },
+          itemStyle: { color: p.accent, opacity: 0.1 },
           data: runs.value.map((r, i) => [
-            { xAxis: r.start, name: BADGES[i] || '' },
+            { xAxis: r.start, name: String(i + 1) },
             { xAxis: Math.min(r.end + 1, stops.length - 1) },
           ]),
-          label: { position: 'insideTop', color: '#8f1f1f', fontWeight: 700 },
+          label: { position: 'insideTop', color: p.accent, fontWeight: 700, fontFamily: FONT_MONO },
         },
       },
     ],
@@ -130,7 +139,7 @@ const option = computed(() => {
 .chart-box { position: relative; flex: 1; min-height: 0; min-width: 0; }
 .chart { position: absolute; inset: 0; }
 .empty { position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; }
-.foot-head { font-size: 11px; }
-.run { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.run b { color: #8f1f1f; }
+.row { display: flex; align-items: center; gap: 7px; }
+.row b { color: var(--accent); font-weight: 600; }
+.ell { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>
