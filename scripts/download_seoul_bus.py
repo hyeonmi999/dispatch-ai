@@ -15,6 +15,8 @@ zip 하나씩 받아서 대상 노선만 걸러 parquet 조각으로 저장하�
     python scripts/download_seoul_bus.py --datasets OA-21219 OA-21220 \
         --seqs 2408 2409 2410 2411 2412 2501 2502 2503 2504 2505 2506 2507 2508 2509 \
         --min-date 20240826 --max-date 20250928 --suffix _history
+    # 새로 공개된 주만 기존 parquet에 추가 (주간 파일은 매주 월요일 공개)
+    python scripts/download_seoul_bus.py --seqs 261102 --append
 """
 
 import argparse
@@ -46,7 +48,7 @@ DEFAULT_ROUTES = ["143", "272", "160", "150", "271"]
 MONTHLY_SEQS = ["2509", "2510", "2511", "2512", "2601", "2602", "2603",
                 "2604", "2605", "2606", "2607", "2608"]
 WEEKLY_SEQS = ["260907", "260914", "260921", "260928",
-               "261005", "261012", "261019", "261026"]
+               "261005", "261012", "261019", "261026", "261102"]
 
 DATASETS = {
     "OA-21219": {"name": "boarding", "seqs": MONTHLY_SEQS + WEEKLY_SEQS,
@@ -131,10 +133,14 @@ def process(inf_id, seq, route_ids):
 # 4. 조각 병합 (중복 날짜 제거, 시간대 컬럼 숫자 변환)
 # =========================================================
 
-def merge_parts(inf_id, route_ids, seqs, min_date=MIN_DATE, max_date="99999999", suffix=""):
+def merge_parts(inf_id, route_ids, seqs, min_date=MIN_DATE, max_date="99999999", suffix="", append=False):
     cfg = DATASETS[inf_id]
+    out = OUT_DIR / f"{cfg['name']}{suffix}.parquet"
     parts = [PARTS_DIR / f"{cfg['name']}_{seq}.parquet" for seq in seqs]
-    df = pd.concat([pd.read_parquet(p) for p in parts if p.exists()], ignore_index=True)
+    frames = [pd.read_parquet(p) for p in parts if p.exists()]
+    if append and out.exists():
+        frames.insert(0, pd.read_parquet(out).drop(columns="노선명"))
+    df = pd.concat(frames, ignore_index=True)
 
     df = df[df["노선_ID"].isin(route_ids) & df["기준_날짜"].between(min_date, max_date)]
     df = df.drop_duplicates(subset=cfg["key"], keep="last")
@@ -144,7 +150,6 @@ def merge_parts(inf_id, route_ids, seqs, min_date=MIN_DATE, max_date="99999999",
     df.insert(1, "노선명", df["노선_ID"].map(route_ids))
     df = df.sort_values(cfg["key"]).reset_index(drop=True)
 
-    out = OUT_DIR / f"{cfg['name']}{suffix}.parquet"
     df.to_parquet(out, index=False)
     print(f"📦 {out.relative_to(ROOT)}: {len(df):,}행, "
           f"{df['기준_날짜'].min()} ~ {df['기준_날짜'].max()}, 날짜 {df['기준_날짜'].nunique()}일")
@@ -162,6 +167,7 @@ def main():
     parser.add_argument("--min-date", default=MIN_DATE)
     parser.add_argument("--max-date", default="99999999")
     parser.add_argument("--suffix", default="", help="출력 파일명 접미사 (예: _history)")
+    parser.add_argument("--append", action="store_true", help="기존 parquet에 새 조각을 합침 (같은 키는 새 값 우선)")
     args = parser.parse_args()
 
     route_ids = resolve_route_ids(args.routes)
@@ -172,7 +178,7 @@ def main():
         seqs = args.seqs or DATASETS[inf_id]["seqs"]
         for seq in seqs:
             process(inf_id, seq, route_ids)
-        merge_parts(inf_id, route_ids, seqs, args.min_date, args.max_date, args.suffix)
+        merge_parts(inf_id, route_ids, seqs, args.min_date, args.max_date, args.suffix, args.append)
 
 
 if __name__ == "__main__":
