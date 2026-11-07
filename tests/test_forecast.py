@@ -53,3 +53,38 @@ def test_blank_source_day_is_missing_not_zero():
     b.loc[b["기준_날짜"] == "20260915", list(hb)] = 0.1
     found = dict(zip(BusDataset.find_anomalies(b, d)["date"], BusDataset.find_anomalies(b, d)["reason"]))
     assert found == {"20260929": "승차 집계 누락", "20260915": "운행 중단(파업 등 추정)"}
+
+
+def _calendar(rows: dict) -> pd.Series:
+    return pd.Series(rows, name="daytype").rename(index=pd.Timestamp).sort_index()
+
+
+def test_trips_source_skips_holiday_for_regular_day():
+    """평일 예측에 휴일 배차가 섞이지 않게: 2주 전이 대체 휴일이면 그 전주 값을 사용"""
+    from app.domains.bus.forecaster import trips_source_date
+
+    cal = _calendar({"2026-09-28": "weekday", "2026-10-05": "holiday"})
+    assert trips_source_date(pd.Timestamp("2026-10-19"), "weekday", cal) == pd.Timestamp("2026-09-28")
+
+
+def test_trips_source_for_holiday_uses_latest_sunday_or_holiday():
+    """휴일 예측은 요일과 상관없이 가장 최근 일요일·공휴일의 배차를 사용"""
+    from app.domains.bus.forecaster import trips_source_date
+
+    cal = _calendar({"2026-12-13": "holiday", "2026-12-18": "weekday", "2026-12-20": "holiday"})
+    assert trips_source_date(pd.Timestamp("2026-12-25"), "holiday", cal) == pd.Timestamp("2026-12-20")
+
+
+def test_trips_source_keeps_latest_same_weekday_on_regular_weeks():
+    from app.domains.bus.forecaster import trips_source_date
+
+    cal = _calendar({"2026-10-12": "weekday", "2026-10-19": "weekday"})
+    assert trips_source_date(pd.Timestamp("2026-11-02"), "weekday", cal) == pd.Timestamp("2026-10-19")
+
+
+def test_trips_source_falls_back_to_same_weekday_when_no_daytype_match():
+    from app.domains.bus.forecaster import trips_source_date
+
+    cal = _calendar({"2026-10-05": "holiday"})
+    assert trips_source_date(pd.Timestamp("2026-10-19"), "weekday", cal) == pd.Timestamp("2026-10-05")
+    assert trips_source_date(pd.Timestamp("2026-10-20"), "weekday", cal) is None

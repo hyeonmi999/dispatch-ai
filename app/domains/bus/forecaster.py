@@ -22,7 +22,7 @@
 #   API 서버는 XGBoost를 불러오지 않고 store만 읽습니다.
 #   (macOS에서 xgboost와 torch가 서로 다른 OpenMP 런타임을 써서 한 프로세스에 함께 로드하면
 #    segfault가 나므로, 예측은 학습 스크립트에서 미리 계산 → 서버는 조회만)
-#   향후 21일 예측은 "가장 최근 같은 요일의 운행횟수 = 배차 계획"으로 가정해 미리 생성합니다.
+#   향후 21일 예측은 "요일유형이 같은 가장 최근 날의 운행횟수 = 배차 계획"으로 가정해 미리 생성합니다.
 #   (피처가 모두 21일 이상 과거 값이라 실측 마지막 날 + 21일까지 예측 가능)
 
 import json
@@ -43,12 +43,30 @@ from app.domains.bus.features import (
     REFERENCE_LAG_DAYS,
     add_lags,
     build_features,
+    daytype_of,
     encode_categories,
+    kr_holidays,
 )
 
 KEYS = ["route", "stop_id", "stop_seq", "hour"]
 STORE_COLS = ["date", *KEYS, "boarding", "trips", "pred", "baseline", "daytype", "split"]
 FORECAST_HORIZON_DAYS = HORIZON_DAYS
+
+
+def trips_source_date(target: pd.Timestamp, daytype: str, calendar: pd.Series) -> pd.Timestamp | None:
+    """예측일의 배차 계획으로 쓸 과거 날짜를 고릅니다. calendar: 날짜 → 요일유형 (실측이 있는 날만)
+
+    평일·토요일은 같은 요일 중 요일유형이 같은 가장 최근 날, 일요일·공휴일은 가장 최근 일요일·공휴일.
+    (휴일 배차가 평일 예측에 섞이면 승객이 15% 넘게 낮게 예측됨, README 참고)
+    요일유형이 맞는 날이 없으면 가장 최근 같은 요일 값을 그대로 사용합니다.
+    """
+    if daytype == "holiday":
+        holidays = calendar[calendar == "holiday"]
+        if not holidays.empty:
+            return holidays.index.max()
+    backs = [target - pd.Timedelta(days=k) for k in range(7, 43, 7)]
+    same_dow = [d for d in backs if d in calendar.index]
+    return next((d for d in same_dow if calendar[d] == daytype), same_dow[0] if same_dow else None)
 
 
 class BusForecaster(Forecaster):
@@ -312,17 +330,18 @@ class BusForecaster(Forecaster):
     def _future_frames(self, dates: list[pd.Timestamp]) -> pd.DataFrame:
         """(학습 시 배치 추론) 실측 마지막 날 이후 날짜들
 
-        정류장·시간대 구성과 운행횟수(배차 계획)는 실측 기간 중 가장 최근 같은 요일 값을 사용
+        정류장·시간대 구성과 운행횟수(배차 계획)는 노선별로 요일유형이 같은 가장 최근 날의 값을 사용
+        (운행 중단·집계 누락일은 승객·운행 값이 비어 있어 후보에서 제외)
         """
-        last = self.store["date"].max()
+        hol = kr_holidays(range(min(dates).year, max(dates).year + 1))
         rows = []
-        for date in dates:
-            for back in range(7, 43, 7):
-                src = date - pd.Timedelta(days=back)
-                template = self.store[(self.store["date"] == src) & (src <= last)]
-                if not template.empty:
-                    break
-            rows.append(template[KEYS + ["trips"]].assign(date=date, boarding=np.nan))
+        for route, g in self.store.groupby("route", observed=True):
+            usable = g.groupby("date").filter(lambda d: d["boarding"].notna().any() and d["trips"].notna().any())
+            calendar = usable.groupby("date")["daytype"].first()
+            for date in dates:
+                src = trips_source_date(date, daytype_of(date, hol), calendar)
+                if src is not None:
+                    rows.append(usable.loc[usable["date"] == src, KEYS + ["trips"]].assign(date=date, boarding=np.nan))
         rows = pd.concat(rows, ignore_index=True)
 
         feats = build_features(rows, self.store, self.ds.weather)
