@@ -129,7 +129,11 @@ class BusAdvisor(Advisor):
     # 2. 시간대 권고 수치
     # ==================================================
 
-    def analyze_hour(self, route: str, date, hour: int) -> dict:
+    def hour_state(self, route: str, date, hour: int) -> dict:
+        """시간대의 구간별 혼잡도와 현재 운행 상태 (권고·시뮬레이션 공용)
+
+        현재 운행횟수는 최대 혼잡 구간의 값을 기준으로 합니다.
+        """
         day = self.analyze_day(route, date)
         seg = day["segments"][day["segments"]["hour"] == hour].dropna(subset=["congestion"])
         hrow = day["hourly"][day["hourly"]["hour"] == hour]
@@ -137,15 +141,26 @@ class BusAdvisor(Advisor):
             raise ValueError(f"{route}번 {hour}시는 운행 데이터가 없는 시간대입니다")
         hrow = hrow.iloc[0]
 
-        names = self.stop_names(route)
         top = seg.loc[seg["congestion"].idxmax()]
-        c_max = float(top["congestion"])
         cur_trips = float(top["trips"]) if top["trips"] > 0 else float(hrow["trips"])
+        info = self.ds.route_info_for(route, day["daytype"])
+        return {
+            "day": day, "segments": seg, "hourly": hrow, "top": top, "info": info,
+            "cur_trips": cur_trips,
+            "min_interval": float(info.get("min_interval") or 3),
+            "max_interval": float(info.get("max_interval") or 20),
+        }
+
+    def analyze_hour(self, route: str, date, hour: int) -> dict:
+        state = self.hour_state(route, date, hour)
+        day, hrow, top, info = state["day"], state["hourly"], state["top"], state["info"]
+
+        names = self.stop_names(route)
+        c_max = float(top["congestion"])
+        cur_trips = state["cur_trips"]
         cur_interval = 60.0 / cur_trips
 
-        info = self.ds.route_info_for(route, day["daytype"])
-        min_iv = float(info.get("min_interval") or 3)
-        max_iv = float(info.get("max_interval") or 20)
+        min_iv, max_iv = state["min_interval"], state["max_interval"]
         run_minutes = float(info.get("run_minutes") or 180)
 
         # 목표 혼잡도가 되려면 필요한 운행횟수

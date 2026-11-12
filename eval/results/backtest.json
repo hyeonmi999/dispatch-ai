@@ -1,0 +1,266 @@
+{
+  "tune_window": {
+    "start": "2026-09-01",
+    "end": "2026-09-28",
+    "days": 28
+  },
+  "eval_window": {
+    "start": "2026-09-30",
+    "end": "2026-10-25",
+    "days": 25
+  },
+  "crowded_threshold": 0.8,
+  "p90_fit_window": {
+    "start": "2026-09-01",
+    "end": "2026-09-28",
+    "days": 28
+  },
+  "weights_grid": [
+    {
+      "weights": {
+        "overload": 5,
+        "trips": 1,
+        "change": 0
+      },
+      "metrics": {
+        "cells": 3149,
+        "route_days": 140,
+        "overcrowded_cells": 112,
+        "overcrowded_pct": 3.56,
+        "total_trips": 22146.0,
+        "trips_vs_current_pct": 5.39,
+        "changed_cells": 2249,
+        "fleet_over_days": 1,
+        "fleet_over_new_days": 0
+      }
+    },
+    {
+      "weights": {
+        "overload": 5,
+        "trips": 1,
+        "change": 1
+      },
+      "metrics": {
+        "cells": 3149,
+        "route_days": 140,
+        "overcrowded_cells": 111,
+        "overcrowded_pct": 3.52,
+        "total_trips": 23975.0,
+        "trips_vs_current_pct": 14.1,
+        "changed_cells": 1430,
+        "fleet_over_days": 2,
+        "fleet_over_new_days": 0
+      }
+    },
+    {
+      "weights": {
+        "overload": 5,
+        "trips": 1,
+        "change": 2
+      },
+      "metrics": {
+        "cells": 3149,
+        "route_days": 140,
+        "overcrowded_cells": 111,
+        "overcrowded_pct": 3.52,
+        "total_trips": 23965.0,
+        "trips_vs_current_pct": 14.05,
+        "changed_cells": 1428,
+        "fleet_over_days": 2,
+        "fleet_over_new_days": 0
+      }
+    },
+    {
+      "weights": {
+        "overload": 10,
+        "trips": 1,
+        "change": 0
+      },
+      "metrics": {
+        "cells": 3149,
+        "route_days": 140,
+        "overcrowded_cells": 111,
+        "overcrowded_pct": 3.52,
+        "total_trips": 22148.0,
+        "trips_vs_current_pct": 5.4,
+        "changed_cells": 2248,
+        "fleet_over_days": 1,
+        "fleet_over_new_days": 0
+      }
+    },
+    {
+      "weights": {
+        "overload": 10,
+        "trips": 1,
+        "change": 1
+      },
+      "metrics": {
+        "cells": 3149,
+        "route_days": 140,
+        "overcrowded_cells": 110,
+        "overcrowded_pct": 3.49,
+        "total_trips": 23979.0,
+        "trips_vs_current_pct": 14.12,
+        "changed_cells": 1429,
+        "fleet_over_days": 2,
+        "fleet_over_new_days": 0
+      }
+    },
+    {
+      "weights": {
+        "overload": 10,
+        "trips": 1,
+        "change": 2
+      },
+      "metrics": {
+        "cells": 3149,
+        "route_days": 140,
+        "overcrowded_cells": 111,
+        "overcrowded_pct": 3.52,
+        "total_trips": 23978.0,
+        "trips_vs_current_pct": 14.11,
+        "changed_cells": 1430,
+        "fleet_over_days": 2,
+        "fleet_over_new_days": 0
+      }
+    },
+    {
+      "weights": {
+        "overload": 20,
+        "trips": 1,
+        "change": 0
+      },
+      "metrics": {
+        "cells": 3149,
+        "route_days": 140,
+        "overcrowded_cells": 111,
+        "overcrowded_pct": 3.52,
+        "total_trips": 22148.0,
+        "trips_vs_current_pct": 5.4,
+        "changed_cells": 2248,
+        "fleet_over_days": 1,
+        "fleet_over_new_days": 0
+      }
+    },
+    {
+      "weights": {
+        "overload": 20,
+        "trips": 1,
+        "change": 1
+      },
+      "metrics": {
+        "cells": 3149,
+        "route_days": 140,
+        "overcrowded_cells": 110,
+        "overcrowded_pct": 3.49,
+        "total_trips": 23981.0,
+        "trips_vs_current_pct": 14.12,
+        "changed_cells": 1429,
+        "fleet_over_days": 2,
+        "fleet_over_new_days": 0
+      }
+    },
+    {
+      "weights": {
+        "overload": 20,
+        "trips": 1,
+        "change": 2
+      },
+      "metrics": {
+        "cells": 3149,
+        "route_days": 140,
+        "overcrowded_cells": 111,
+        "overcrowded_pct": 3.52,
+        "total_trips": 23981.0,
+        "trips_vs_current_pct": 14.12,
+        "changed_cells": 1430,
+        "fleet_over_days": 2,
+        "fleet_over_new_days": 0
+      }
+    }
+  ],
+  "weights_chosen": {
+    "overload": 10,
+    "trips": 1,
+    "change": 1
+  },
+  "pick_order": [
+    "새로 생긴 인가대수 초과 0건",
+    "과밀 비율 낮은 쪽",
+    "총 운행 적은 쪽",
+    "변경 건수 적은 쪽"
+  ],
+  "eval": {
+    "현행": {
+      "cells": 2809,
+      "route_days": 125,
+      "overcrowded_cells": 701,
+      "overcrowded_pct": 24.96,
+      "total_trips": 19062.0,
+      "trips_vs_current_pct": 0.0,
+      "changed_cells": 0,
+      "fleet_over_days": 0,
+      "fleet_over_new_days": 0
+    },
+    "규칙": {
+      "cells": 2809,
+      "route_days": 125,
+      "overcrowded_cells": 130,
+      "overcrowded_pct": 4.63,
+      "total_trips": 19902.2,
+      "trips_vs_current_pct": 4.41,
+      "changed_cells": 1070,
+      "fleet_over_days": 11,
+      "fleet_over_new_days": 11
+    },
+    "그리디": {
+      "cells": 2809,
+      "route_days": 125,
+      "overcrowded_cells": 73,
+      "overcrowded_pct": 2.6,
+      "total_trips": 21725.0,
+      "trips_vs_current_pct": 13.97,
+      "changed_cells": 1261,
+      "fleet_over_days": 0,
+      "fleet_over_new_days": 0
+    },
+    "최적화": {
+      "cells": 2809,
+      "route_days": 125,
+      "overcrowded_cells": 75,
+      "overcrowded_pct": 2.67,
+      "total_trips": 21726.0,
+      "trips_vs_current_pct": 13.98,
+      "changed_cells": 1267,
+      "fleet_over_days": 0,
+      "fleet_over_new_days": 0
+    }
+  },
+  "eval_reference": {
+    "label": "최적화 (감차 허용, 참고)",
+    "weights": {
+      "overload": 10,
+      "trips": 1,
+      "change": 0
+    },
+    "metrics": {
+      "cells": 2809,
+      "route_days": 125,
+      "overcrowded_cells": 75,
+      "overcrowded_pct": 2.67,
+      "total_trips": 20068.0,
+      "trips_vs_current_pct": 5.28,
+      "changed_cells": 2029,
+      "fleet_over_days": 0,
+      "fleet_over_new_days": 0
+    },
+    "why": "미리 정한 순서로 고른 설정이 아님. 튜닝 구간에서 과밀 비율은 거의 같고 총 운행이 훨씬 적어서 평가 구간에 한 번 더 채점한 참고 값 (2026-11-12 추가)"
+  },
+  "notes": [
+    "운행횟수는 예측값(승객 수 상한 포함)만으로 정하고, 혼잡도 채점에만 실제 승객을 사용",
+    "혼잡도는 실제 승차 × 구간 환산 비율 ÷ (운행횟수 × 정원). 운행횟수를 바꿔도 승객 수는 그대로라고 가정",
+    "인가대수 초과는 '최근 왕복 운행시간 동안 출발한 버스 수 > 인가대수'인 순간이 있는 노선·일",
+    "새 초과는 현행에는 없던 초과. 현행이 이미 넘는 순간은 현행 값까지 허용",
+    "튜닝 구간 점수(weights_grid)는 가중치를 고르는 데만 쓰고 발표에는 쓰지 않음"
+  ]
+}

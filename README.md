@@ -96,7 +96,11 @@ ai서비스 기말과제/
 │   │   │   ├── features.py     달력·공휴일·방학·날씨·lag 피처
 │   │   │   ├── forecaster.py   XGBoost 학습·시간순 분할·배치 추론
 │   │   │   ├── advisor.py      혼잡도·권고 규칙
-│   │   │   ├── schemas.py      버스 요청 스키마
+│   │   │   ├── calibration.py  승객 수 상한(P90) 비율표·채점
+│   │   │   ├── simulator.py    배차간격 변경 시뮬레이션
+│   │   │   ├── optimizer.py    전 노선 배차 최적화 (OR-Tools CP-SAT, 비교용 그리디)
+│   │   │   ├── backtest.py     배차 방식 성능 비교 채점 (현행·규칙·그리디·최적화)
+│   │   │   ├── schemas.py      버스 요청·응답 스키마
 │   │   │   └── adapter.py      버스 어댑터 + 지도용 API
 │   │   ├── logistics/          인터페이스·스키마만 (501)
 │   │   └── field_service/      인터페이스·스키마만 (501)
@@ -138,6 +142,7 @@ cd frontend && npm install && cd ..
 ```bash
 python scripts/make_sample_data.py           # data/sample 생성 (실데이터와 같은 스키마 + 가상 노선 좌표, 60주)
 python scripts/train_bus.py --mode sample    # 학습 → 모델/베이스라인 MAE·개선율 출력
+python scripts/calibrate_p90.py --mode sample  # 승객 수 상한 비율표 (배차 최적화에 필요)
 python scripts/build_index.py                # 규정 문서 FAISS 인덱스 (bge-m3 최초 1회 다운로드 ~2.3GB)
 ```
 `.env`에서 `DATA_MODE=sample`로 바꾼 뒤 아래 3-4로 서버를 띄웁니다. (실데이터가 없으면 `auto`도 sample로 동작)
@@ -163,6 +168,8 @@ python scripts/download_seoul_bus.py --datasets OA-21219 OA-21220 \
 python scripts/fetch_weather.py --start 2024-08-01   # 기상청 ASOS 서울 시간자료 (DATA_GO_KR_API_KEY 필요)
 python scripts/fetch_route_geo.py            # 노선 경로·정류소 좌표 (DATA_GO_KR_API_KEY 필요)
 python scripts/train_bus.py --mode real      # 약 7분 (M 시리즈, 2년치 844만 행)
+python scripts/calibrate_p90.py              # 승객 수 상한 비율표 → models/bus/real/p90.json (배차 최적화에 필요)
+python scripts/backtest.py                   # (선택) 배차 방식 성능 비교 → eval/results/backtest.json, 약 30초
 python scripts/build_index.py
 ```
 
@@ -185,7 +192,7 @@ cd frontend && npm run dev                      # http://localhost:5173
 
 ### 3-5. 테스트
 ```bash
-python -m pytest -q      # 합성 데이터 기준 17개: 시간순 분할·lag 누수·지표·운행횟수 선택·API 계약·501·OpenAI 키 오류
+python -m pytest -q      # 합성 데이터 기준 52개: 시간순 분할·lag 누수·지표·운행횟수 선택·상한 비율·시뮬레이션·배차 최적화·성능 비교·API 계약·501·OpenAI 키 오류
 ```
 
 ---
@@ -277,6 +284,7 @@ python -m pytest -q      # 합성 데이터 기준 17개: 시간순 분할·lag 
 python scripts/download_seoul_bus.py --seqs 261109 --append   # 10/26~11/01 주 → boarding·dispatch·section에 추가
 python scripts/fetch_weather.py --start 2024-08-01
 python scripts/train_bus.py --mode real
+python scripts/calibrate_p90.py              # 재학습하면 상한 비율표도 다시 만듦
 ```
 
 ### 검증 결과 (실데이터, `models/bus/real/metrics.json`)
@@ -349,6 +357,8 @@ python scripts/train_bus.py --mode real
 | POST | `/api/{domain}/ask` | 규정 질의응답 `{"question":"…","llm":"qwen","embedding":"bge"}` → 답변 + 출처(문서명·조항·쪽) / 근거 없으면 `found:false`, "찾을 수 없음" |
 | POST | `/api/{domain}/advise` | 배차 권고 `{"route":"143","date":"2026-10-13","hour":7,"use_llm":true}` → 예상 승객·혼잡도·권고 간격·추가 차량·근거·신뢰도·`needs_review` |
 | POST | `/api/bus/advise/all` | 선택 시간대 **전체 노선** 권고 `{"date":"2026-10-28","hour":8}` → 증차 필요 → 별도 대책 → 감차 검토 → 유지 순 (규정 근거는 권고 유형별 1회 조회) |
+| POST | `/api/bus/simulate` | 배차간격 변경 시뮬레이션 `{"route":"143","date":"2026-10-28","hour":8,"interval":5}` → 지금과 바꾼 뒤의 최대 혼잡도·구간별 혼잡도·`needs_review`. 승객 수는 그대로라고 가정. 간격이 노선의 최소~최대 배차간격 밖이면 400 |
+| POST | `/api/bus/optimize` | 전 노선 배차 최적화 `{"date":"2026-10-28","hours":[6,7,8,9]}` → 노선·시간별 현행·권고 운행횟수와 증차·감차·유지 구분, 필요 버스 대수, 전후 혼잡도, 더 늘리지 못한 이유(`binding`), `needs_review`. 기본은 붐비는 곳은 늘리고 한가한 곳은 줄이는 설정(감차 권고에는 `cut_notice` 안내)이며, `weights.change`를 1 이상으로 주면 늘리기만 함. 승객 수 상한(P90) 기준으로 판단하며 `python scripts/calibrate_p90.py`를 먼저 실행해야 함 (없으면 503) |
 | GET | `/api/advisories/batches` | 권고 이력 — 시간대별 "전체 노선 권고" 묶음 (권고 유형별 건수, 검토 진행) |
 | GET | `/api/advisories/batches/{id}` | 묶음 1건의 노선별 저장된 권고 (현재 검토 상태 반영) |
 | GET | `/api/advisories` | 개별 권고 이력 (MariaDB) |

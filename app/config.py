@@ -98,6 +98,11 @@ BUS_SAMPLE_ROUTES = ["901", "902", "903"]          # 합성 데이터 노선
 BUS_VALID_START = "2026-09-01"       # 이 날짜부터 검증
 BUS_EARLY_STOP_DAYS = 14             # 학습 구간 마지막 14일은 early stopping 용
 
+# 인가대수가 원본(서울시 버스노선 기본정보 엑셀)에 비어 있는 노선의 보완 값
+#   160번 49대: 나무위키 "서울 버스 160" (2026-11-12 확인, 공식 자료 아님)
+#   같은 출처의 143·150·272번 값은 원본 엑셀과 같고 271번만 1대 다름 (docs/decisions.md)
+BUS_FLEET_OVERRIDES = {"160": 49}
+
 # 차량 정원 (서울 일반 시내버스 대형 기준: 좌석 약 25 + 입석)
 BUS_CAPACITY = 55
 BUS_SEATS = 25
@@ -113,6 +118,23 @@ CONGESTION_LEVELS = [
 CONGESTION_HIGH = 0.80     # 이 이상이면 배차간격 단축(증차) 권고
 CONGESTION_LOW = 0.25      # 이 미만이면 감차 검토 권고
 CONGESTION_TARGET = 0.70   # 권고 간격 계산 시 목표 혼잡도
+
+# 검증 구간(BUS_VALID_START ~ 실측 마지막 날)을 둘로 나눔: 앞쪽에서 값을 고르고 뒤쪽에서는 채점만
+BUS_TUNE_END = "2026-09-28"          # 이 날짜까지 튜닝 구간, 다음 날부터 평가 구간
+
+# 승객 수 상한(P90): 예측 × (실제 ÷ 예측 비율의 90% 분위수)
+BUS_P90_QUANTILE = 0.90
+BUS_P90_MIN_SAMPLES = 10             # 노선·시간 표본(날짜 수)이 이보다 적으면 노선 전체 값 사용
+BUS_P90_COVERAGE_RANGE = (88.0, 92.0)   # 합격 기준: 평가 구간에서 실제가 상한 이하인 비율(%)
+BUS_P90_FIXED_RATIO = 1.10           # 비교용 후보: 전 노선 고정 배수
+
+# 전 노선 배차 최적화 (F-13)
+#   줄일 것 = overload × 과밀량(명) + trips × 총 운행횟수 + change × 현행과 달라진 운행횟수
+#   change 0: 바꾸는 비용을 두지 않아, 붐비는 곳은 늘리고 한가한 곳은 줄임 (감차 허용)
+#   평가 구간에서 증차만 하는 설정(change 1)과 과밀 비율은 같고 총 운행이 훨씬 적었음 (docs/decisions.md)
+BUS_OPT_WEIGHTS = {"overload": 10, "trips": 1, "change": 0}
+BUS_OPT_TIME_LIMIT_SEC = 10          # 풀이 시간 제한
+BUS_OPT_SEED = 42
 
 # 학기 중/방학 구분 (서울 초중고 대략 기준, 계절성 피처)
 SCHOOL_VACATIONS = [

@@ -1,0 +1,90 @@
+{
+  "method": "route_hour_ratio",
+  "quantile": 0.9,
+  "min_samples": 10,
+  "fit_window": {
+    "start": "2026-09-01",
+    "end": "2026-09-28",
+    "days": 28
+  },
+  "eval_window": {
+    "start": "2026-09-30",
+    "end": "2026-10-25",
+    "days": 25
+  },
+  "eval": {
+    "rows": 2830,
+    "covered_pct": 90.57,
+    "margin_pct": 8.55
+  },
+  "passed": true,
+  "coverage_range": [
+    88.0,
+    92.0
+  ],
+  "scores": {
+    "예측 그대로": {
+      "eval": {
+        "rows": 2830,
+        "covered_pct": 61.52,
+        "margin_pct": 0.0
+      },
+      "tune": {
+        "rows": 3173,
+        "covered_pct": 51.5,
+        "margin_pct": 0.0
+      }
+    },
+    "C 고정 배수 ×1.1": {
+      "eval": {
+        "rows": 2830,
+        "covered_pct": 92.26,
+        "margin_pct": 10.0
+      },
+      "tune": {
+        "rows": 3173,
+        "covered_pct": 89.82,
+        "margin_pct": 10.0
+      }
+    },
+    "C 전체 한 값 ×1.101": {
+      "eval": {
+        "rows": 2830,
+        "covered_pct": 92.44,
+        "margin_pct": 10.14
+      },
+      "tune": {
+        "rows": 3173,
+        "covered_pct": 90.01,
+        "margin_pct": 10.14
+      }
+    },
+    "A 노선·시간": {
+      "eval": {
+        "rows": 2830,
+        "covered_pct": 90.57,
+        "margin_pct": 8.55
+      },
+      "tune": {
+        "rows": 3173,
+        "covered_pct": 89.25,
+        "margin_pct": 8.51
+      }
+    }
+  },
+  "by_daytype": {
+    "holiday": 84.4,
+    "saturday": 82.5,
+    "weekday": 95.0
+  },
+  "by_route": {
+    "143": 89.6,
+    "150": 87.8,
+    "160": 89.8,
+    "271": 91.6,
+    "272": 94.4
+  },
+  "fallback_cells": [
+    "160 2시"
+  ]
+}
