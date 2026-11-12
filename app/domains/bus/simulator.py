@@ -48,6 +48,7 @@ def simulate(advisor: BusAdvisor, route: str, date, hour: int, interval: float) 
             "seq": int(row.stop_seq),
             "from_name": stop.get("name", row.stop_id),
             "congestion_before": round(before, 3),
+            "level_before": congestion_level(before),
             "congestion": round(after, 3),
             "level": congestion_level(after),
         })

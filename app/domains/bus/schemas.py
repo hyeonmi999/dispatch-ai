@@ -61,6 +61,7 @@ class BusSimulatedSegment(BaseModel):
     seq: int = Field(..., description="정류장 순번 (이 정류장에서 다음 정류장까지의 구간)")
     from_name: str
     congestion_before: float = Field(..., description="지금 혼잡도")
+    level_before: str = Field(..., description="지금 혼잡 단계")
     congestion: float = Field(..., description="바꾼 뒤 혼잡도")
     level: str = Field(..., description="바꾼 뒤 혼잡 단계")
 

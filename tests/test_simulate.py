@@ -29,6 +29,7 @@ def test_shorter_interval_lowers_congestion(client):
     assert short["simulated"]["max_congestion"] < long["simulated"]["max_congestion"]
     assert short["simulated"]["trips_per_hour"] == pytest.approx(60 / info["min_interval"], abs=0.01)
     assert short["segments"] and short["needs_review"] is True and short["assumption"]
+    assert all(s["level"] and s["level_before"] for s in short["segments"])
     assert max(s["congestion"] for s in short["segments"]) == pytest.approx(
         short["simulated"]["max_congestion"], abs=0.002)
 

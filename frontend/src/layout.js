@@ -10,6 +10,8 @@ export const TITLES = {
   stops: '정류장별 혼잡도',
   status: '배차 현황',
   advice: '배차 권고',
+  optimize: '배차 최적화',
+  whatif: '배차간격 시뮬레이션',
   qa: '규정 Q&A',
   metrics: '모델 성능',
   history: '권고 이력',
@@ -18,13 +20,16 @@ export const TITLES = {
 // 켤 때의 기본 크기 / 줄일 수 있는 최소 크기 [열, 행]
 const DEFAULT_SIZE = {
   routes: [3, 7], map: [6, 9], forecast: [3, 6], stops: [3, 6], status: [3, 8], advice: [3, 15], qa: [4, 10], metrics: [4, 9], history: [3, 8],
+  optimize: [6, 11], whatif: [3, 11],
 }
 export const MIN_SIZE = {
   routes: [2, 4], map: [3, 5], forecast: [3, 5], stops: [3, 5], status: [2, 5], advice: [3, 5], qa: [3, 5], metrics: [3, 5], history: [2, 4],
+  optimize: [4, 6], whatif: [3, 6],
 }
 
 export const PRESETS = [
   { id: 'ops', name: '관제', panels: { routes: [0, 0, 3, 7], status: [0, 7, 3, 8], map: [3, 0, 6, 9], forecast: [3, 9, 3, 6], stops: [6, 9, 3, 6], advice: [9, 0, 3, 15] } },
+  { id: 'plan', name: '배차 계획', panels: { optimize: [0, 0, 6, 12], whatif: [6, 0, 3, 12], routes: [9, 0, 3, 6], status: [9, 6, 3, 8] } },
   { id: 'ana', name: '분석', panels: { forecast: [0, 0, 6, 7], stops: [6, 0, 6, 7], metrics: [0, 7, 5, 9], routes: [5, 7, 4, 9], status: [9, 7, 3, 9] } },
   { id: 'demo', name: '발표', panels: { map: [0, 0, 8, 15], status: [8, 0, 4, 6], metrics: [8, 6, 4, 9] } },
   { id: 'rule', name: '규정 검토', panels: { advice: [0, 0, 5, 15], qa: [5, 0, 4, 15], history: [9, 0, 3, 15] } },
@@ -65,7 +70,13 @@ export function resolve(layout, active = null) {
 export function loadSaved() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) || 'null')
-    if (s?.layout && Object.keys(TITLES).every((id) => s.layout[id])) return s
+    if (!s?.layout) return null
+    // 나중에 추가된 패널은 저장된 배치에 없으므로 꺼진 상태로 채움 (쓰던 배치는 그대로 유지)
+    const blank = makeLayout(null)
+    for (const id of Object.keys(TITLES)) {
+      if (!s.layout[id]) s.layout[id] = { ...blank[id], y: 999, on: false }
+    }
+    return s
   } catch {
     /* 저장소를 못 쓰면 기본 배치 */
   }
