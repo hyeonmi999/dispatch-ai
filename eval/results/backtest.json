@@ -6,8 +6,8 @@
   },
   "eval_window": {
     "start": "2026-09-30",
-    "end": "2026-10-25",
-    "days": 25
+    "end": "2026-11-01",
+    "days": 32
   },
   "crowded_threshold": 0.8,
   "p90_fit_window": {
@@ -23,14 +23,14 @@
         "change": 0
       },
       "metrics": {
-        "cells": 3149,
+        "cells": 2717,
         "route_days": 140,
-        "overcrowded_cells": 112,
-        "overcrowded_pct": 3.56,
-        "total_trips": 22146.0,
-        "trips_vs_current_pct": 5.39,
-        "changed_cells": 2249,
-        "fleet_over_days": 1,
+        "overcrowded_cells": 224,
+        "overcrowded_pct": 8.24,
+        "total_trips": 21681.0,
+        "trips_vs_current_pct": 1.35,
+        "changed_cells": 1484,
+        "fleet_over_days": 0,
         "fleet_over_new_days": 0
       }
     },
@@ -41,14 +41,14 @@
         "change": 1
       },
       "metrics": {
-        "cells": 3149,
+        "cells": 2717,
         "route_days": 140,
-        "overcrowded_cells": 111,
-        "overcrowded_pct": 3.52,
-        "total_trips": 23975.0,
-        "trips_vs_current_pct": 14.1,
-        "changed_cells": 1430,
-        "fleet_over_days": 2,
+        "overcrowded_cells": 222,
+        "overcrowded_pct": 8.17,
+        "total_trips": 22805.0,
+        "trips_vs_current_pct": 6.61,
+        "changed_cells": 951,
+        "fleet_over_days": 0,
         "fleet_over_new_days": 0
       }
     },
@@ -59,14 +59,14 @@
         "change": 2
       },
       "metrics": {
-        "cells": 3149,
+        "cells": 2717,
         "route_days": 140,
-        "overcrowded_cells": 111,
-        "overcrowded_pct": 3.52,
-        "total_trips": 23965.0,
-        "trips_vs_current_pct": 14.05,
-        "changed_cells": 1428,
-        "fleet_over_days": 2,
+        "overcrowded_cells": 222,
+        "overcrowded_pct": 8.17,
+        "total_trips": 22801.0,
+        "trips_vs_current_pct": 6.59,
+        "changed_cells": 949,
+        "fleet_over_days": 0,
         "fleet_over_new_days": 0
       }
     },
@@ -77,14 +77,14 @@
         "change": 0
       },
       "metrics": {
-        "cells": 3149,
+        "cells": 2717,
         "route_days": 140,
-        "overcrowded_cells": 111,
-        "overcrowded_pct": 3.52,
-        "total_trips": 22148.0,
-        "trips_vs_current_pct": 5.4,
-        "changed_cells": 2248,
-        "fleet_over_days": 1,
+        "overcrowded_cells": 224,
+        "overcrowded_pct": 8.24,
+        "total_trips": 21682.0,
+        "trips_vs_current_pct": 1.36,
+        "changed_cells": 1485,
+        "fleet_over_days": 0,
         "fleet_over_new_days": 0
       }
     },
@@ -95,14 +95,14 @@
         "change": 1
       },
       "metrics": {
-        "cells": 3149,
+        "cells": 2717,
         "route_days": 140,
-        "overcrowded_cells": 110,
-        "overcrowded_pct": 3.49,
-        "total_trips": 23979.0,
-        "trips_vs_current_pct": 14.12,
-        "changed_cells": 1429,
-        "fleet_over_days": 2,
+        "overcrowded_cells": 221,
+        "overcrowded_pct": 8.13,
+        "total_trips": 22808.0,
+        "trips_vs_current_pct": 6.62,
+        "changed_cells": 953,
+        "fleet_over_days": 0,
         "fleet_over_new_days": 0
       }
     },
@@ -113,14 +113,14 @@
         "change": 2
       },
       "metrics": {
-        "cells": 3149,
+        "cells": 2717,
         "route_days": 140,
-        "overcrowded_cells": 111,
-        "overcrowded_pct": 3.52,
-        "total_trips": 23978.0,
-        "trips_vs_current_pct": 14.11,
-        "changed_cells": 1430,
-        "fleet_over_days": 2,
+        "overcrowded_cells": 221,
+        "overcrowded_pct": 8.13,
+        "total_trips": 22808.0,
+        "trips_vs_current_pct": 6.62,
+        "changed_cells": 953,
+        "fleet_over_days": 0,
         "fleet_over_new_days": 0
       }
     },
@@ -131,14 +131,14 @@
         "change": 0
       },
       "metrics": {
-        "cells": 3149,
+        "cells": 2717,
         "route_days": 140,
-        "overcrowded_cells": 111,
-        "overcrowded_pct": 3.52,
-        "total_trips": 22148.0,
-        "trips_vs_current_pct": 5.4,
-        "changed_cells": 2248,
-        "fleet_over_days": 1,
+        "overcrowded_cells": 224,
+        "overcrowded_pct": 8.24,
+        "total_trips": 21685.0,
+        "trips_vs_current_pct": 1.37,
+        "changed_cells": 1488,
+        "fleet_over_days": 0,
         "fleet_over_new_days": 0
       }
     },
@@ -149,14 +149,14 @@
         "change": 1
       },
       "metrics": {
-        "cells": 3149,
+        "cells": 2717,
         "route_days": 140,
-        "overcrowded_cells": 110,
-        "overcrowded_pct": 3.49,
-        "total_trips": 23981.0,
-        "trips_vs_current_pct": 14.12,
-        "changed_cells": 1429,
-        "fleet_over_days": 2,
+        "overcrowded_cells": 221,
+        "overcrowded_pct": 8.13,
+        "total_trips": 22809.0,
+        "trips_vs_current_pct": 6.62,
+        "changed_cells": 954,
+        "fleet_over_days": 0,
         "fleet_over_new_days": 0
       }
     },
@@ -167,14 +167,14 @@
         "change": 2
       },
       "metrics": {
-        "cells": 3149,
+        "cells": 2717,
         "route_days": 140,
-        "overcrowded_cells": 111,
-        "overcrowded_pct": 3.52,
-        "total_trips": 23981.0,
-        "trips_vs_current_pct": 14.12,
-        "changed_cells": 1430,
-        "fleet_over_days": 2,
+        "overcrowded_cells": 221,
+        "overcrowded_pct": 8.13,
+        "total_trips": 22809.0,
+        "trips_vs_current_pct": 6.62,
+        "changed_cells": 954,
+        "fleet_over_days": 0,
         "fleet_over_new_days": 0
       }
     }
@@ -192,46 +192,46 @@
   ],
   "eval": {
     "현행": {
-      "cells": 2809,
-      "route_days": 125,
-      "overcrowded_cells": 701,
-      "overcrowded_pct": 24.96,
-      "total_trips": 19062.0,
+      "cells": 3103,
+      "route_days": 160,
+      "overcrowded_cells": 641,
+      "overcrowded_pct": 20.66,
+      "total_trips": 24806.0,
       "trips_vs_current_pct": 0.0,
       "changed_cells": 0,
       "fleet_over_days": 0,
       "fleet_over_new_days": 0
     },
     "규칙": {
-      "cells": 2809,
-      "route_days": 125,
-      "overcrowded_cells": 130,
-      "overcrowded_pct": 4.63,
-      "total_trips": 19902.2,
-      "trips_vs_current_pct": 4.41,
-      "changed_cells": 1070,
-      "fleet_over_days": 11,
-      "fleet_over_new_days": 11
+      "cells": 3103,
+      "route_days": 160,
+      "overcrowded_cells": 356,
+      "overcrowded_pct": 11.47,
+      "total_trips": 25665.7,
+      "trips_vs_current_pct": 3.47,
+      "changed_cells": 611,
+      "fleet_over_days": 25,
+      "fleet_over_new_days": 25
     },
     "그리디": {
-      "cells": 2809,
-      "route_days": 125,
-      "overcrowded_cells": 73,
-      "overcrowded_pct": 2.6,
-      "total_trips": 21725.0,
-      "trips_vs_current_pct": 13.97,
-      "changed_cells": 1261,
+      "cells": 3103,
+      "route_days": 160,
+      "overcrowded_cells": 270,
+      "overcrowded_pct": 8.7,
+      "total_trips": 26520.0,
+      "trips_vs_current_pct": 6.91,
+      "changed_cells": 999,
       "fleet_over_days": 0,
       "fleet_over_new_days": 0
     },
     "최적화": {
-      "cells": 2809,
-      "route_days": 125,
-      "overcrowded_cells": 75,
-      "overcrowded_pct": 2.67,
-      "total_trips": 21726.0,
-      "trips_vs_current_pct": 13.98,
-      "changed_cells": 1267,
+      "cells": 3103,
+      "route_days": 160,
+      "overcrowded_cells": 258,
+      "overcrowded_pct": 8.31,
+      "total_trips": 26518.0,
+      "trips_vs_current_pct": 6.9,
+      "changed_cells": 1054,
       "fleet_over_days": 0,
       "fleet_over_new_days": 0
     }
@@ -244,13 +244,13 @@
       "change": 0
     },
     "metrics": {
-      "cells": 2809,
-      "route_days": 125,
-      "overcrowded_cells": 75,
-      "overcrowded_pct": 2.67,
-      "total_trips": 20068.0,
-      "trips_vs_current_pct": 5.28,
-      "changed_cells": 2029,
+      "cells": 3103,
+      "route_days": 160,
+      "overcrowded_cells": 266,
+      "overcrowded_pct": 8.57,
+      "total_trips": 25171.0,
+      "trips_vs_current_pct": 1.47,
+      "changed_cells": 1715,
       "fleet_over_days": 0,
       "fleet_over_new_days": 0
     },

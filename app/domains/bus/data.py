@@ -130,6 +130,13 @@ class BusDataset:
     # 2. 구간 재차인원 → long
     # ------------------------------------------------
 
+    @cached_property
+    def section_long(self) -> pd.DataFrame:
+        """구간 재차인원 (서버에서 실제 혼잡도를 볼 때 여러 번 쓰므로 한 번만 읽음). 파일이 없으면 빈 표"""
+        if not (self.dir / "section.parquet").exists():
+            return pd.DataFrame(columns=["date", "route", "stop_id", "to_stop_id", "stop_seq", "hour", "onboard"])
+        return self.load_section_long()
+
     def load_section_long(self) -> pd.DataFrame:
         s = pd.read_parquet(self.dir / "section.parquet")
         ids = {"기준_날짜": "date", "노선명": "route", "출발_정류장_ID": "stop_id",

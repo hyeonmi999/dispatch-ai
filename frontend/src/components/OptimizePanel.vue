@@ -44,7 +44,7 @@
 
       <div class="scroll">
         <table class="plan">
-          <caption class="sm">시간당 운행횟수 · 지금 → 권고</caption>
+          <caption class="sm">기점 출발 시각별 운행횟수 · 지금 → 권고</caption>
           <thead>
             <tr>
               <th scope="col">노선</th>
@@ -66,7 +66,7 @@
                   <span class="num">{{ cellText(cell(r, h)) }}</span>
                   <span class="mark" aria-hidden="true">{{ MARK[cell(r, h).action] }}{{ cell(r, h).limited_by ? '!' : '' }}</span>
                 </button>
-                <span v-else class="none" title="운행 데이터가 없는 시간대">–</span>
+                <span v-else class="none" title="기점에서 출발하는 버스가 없는 시간대">–</span>
               </td>
             </tr>
           </tbody>

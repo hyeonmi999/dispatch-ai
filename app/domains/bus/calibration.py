@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from app.config import BUS_P90_MIN_SAMPLES, BUS_P90_QUANTILE
+from app.config import BUS_P90_MIN_SAMPLES, BUS_P90_QUANTILE, BUS_TUNE_END
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,14 @@ def route_hour_totals(store: pd.DataFrame) -> pd.DataFrame:
     """
     valid = store[(store["split"] == "valid") & store["boarding"].notna()]
     return valid.groupby(KEYS, observed=True)[["boarding", "pred"]].sum().reset_index()
+
+
+def default_tune_end(valid_dates, mode: str) -> pd.Timestamp:
+    """튜닝 구간 마지막 날. 실데이터는 설정값, 합성 데이터는 검증 구간이 짧아 앞쪽 절반을 씁니다."""
+    if mode == "real":
+        return pd.Timestamp(BUS_TUNE_END)
+    dates = sorted(pd.unique(pd.Series(valid_dates)))
+    return pd.Timestamp(dates[len(dates) // 2 - 1])
 
 
 def split_by_date(totals: pd.DataFrame, tune_end: pd.Timestamp) -> tuple[pd.DataFrame, pd.DataFrame]:

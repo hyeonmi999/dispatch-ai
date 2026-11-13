@@ -1,6 +1,7 @@
 import json
 
 import pandas as pd
+import pytest
 
 from app.config import MODELS_DIR, PROCESSED_DIR
 from app.domains.bus.features import add_lags
@@ -88,3 +89,99 @@ def test_trips_source_falls_back_to_same_weekday_when_no_daytype_match():
     cal = _calendar({"2026-10-05": "holiday"})
     assert trips_source_date(pd.Timestamp("2026-10-19"), "weekday", cal) == pd.Timestamp("2026-10-05")
     assert trips_source_date(pd.Timestamp("2026-10-20"), "weekday", cal) is None
+
+
+def _profile(dataset, until):
+    from app.domains.bus.features import add_calendar
+    from app.domains.bus.forecaster import BusForecaster
+    long = dataset.load_long()
+    calendar = add_calendar(long[["date"]].drop_duplicates())
+    return BusForecaster(dataset)._build_load_profile(long, calendar, until)
+
+
+def test_load_profile_ignores_section_data_after_cutoff(sample_model, monkeypatch):
+    """환산 비율은 기준일까지의 자료로만 만듦 (평가 구간의 실제 재차인원이 섞이면 안 됨)"""
+    # 준비: 기준일 뒤의 재차인원을 5배로 부풀린 자료
+    from app.domains.bus.data import BusDataset
+    dataset = BusDataset("sample")
+    section = dataset.load_section_long()
+    until = sorted(section["date"].unique())[len(section["date"].unique()) // 2]
+    inflated = section.copy()
+    inflated.loc[inflated["date"] > until, "onboard"] *= 5
+
+    # 실행
+    profile, window = _profile(dataset, pd.Timestamp(until))
+    monkeypatch.setattr(dataset, "load_section_long", lambda: inflated)
+    profile_inflated, _ = _profile(dataset, pd.Timestamp(until))
+
+    # 확인: 기준일 뒤 자료가 달라져도 비율은 그대로, 사용 구간은 기준일에서 끝남
+    pd.testing.assert_frame_equal(profile.reset_index(drop=True), profile_inflated.reset_index(drop=True))
+    assert window["end"] == f"{pd.Timestamp(until):%Y-%m-%d}"
+    assert (profile["ratio"] >= 0).all() and len(profile) > 0
+
+
+def test_load_profile_fails_clearly_without_data_before_cutoff(sample_model):
+    """기준일 이전 자료가 하나도 없으면 빈 비율표를 조용히 만들지 않고 오류"""
+    import pytest
+    from app.domains.bus.data import BusDataset
+    with pytest.raises(ValueError, match="환산 비율"):
+        _profile(BusDataset("sample"), pd.Timestamp("2000-01-01"))
+
+
+def test_training_stopped_before_tree_cap(sample_model):
+    """트리 개수는 early stopping이 정해야 함 (상한에 걸리면 학습이 덜 끝난 것)"""
+    m = json.loads((MODELS_DIR / "bus/sample/metrics.json").read_text(encoding="utf-8"))
+    assert m["hit_tree_cap"] is False
+    assert m["best_iteration"] < m["max_trees"] - 1
+
+
+# ---------- 혼잡도의 시간 기준 (기점 출발 시각) ----------
+
+def test_forward_window_sums_following_hours_within_the_day():
+    """N시 출발 버스의 승객 = N시부터 몇 시간 동안의 승차 합. 날짜를 넘기지 않고, 창이 전부 비면 빈 값"""
+    import numpy as np
+    from app.domains.bus.forecaster import forward_window
+    by_hour = pd.DataFrame([{4: 10.0, 5: 20.0, 6: np.nan, 22: 5.0, 23: 7.0}])
+
+    out = forward_window(by_hour, hours=3).iloc[0]
+
+    assert out[4] == 30.0 and out[5] == 20.0      # 4시: 4·5·6시 합 (6시는 빈 값이라 0으로 봄)
+    assert out[22] == 12.0 and out[23] == 7.0     # 23시 뒤는 다음 날이라 더하지 않음
+    assert pd.isna(out[6]) and pd.isna(out[10])   # 창 안이 전부 비어 있으면 빈 값
+
+
+def test_departures_use_first_stops_only():
+    """기점 출발 횟수는 앞쪽 정류장의 운행횟수. 뒤쪽 정류장에 버스가 몰려도 영향 없음"""
+    from app.domains.bus.advisor import departures
+    frame = pd.DataFrame({
+        "stop_seq": [1, 2, 3, 4, 5, 60, 61],
+        "hour": 8,
+        "trips": [10, 10, 9, 10, 11, 3, 25],
+    })
+
+    assert departures(frame)[8] == 10
+
+
+def test_actual_congestion_is_observed_onboard_per_departure(sample_model):
+    """실제 혼잡도 = 원본 구간 재차인원 ÷ 기점 출발 횟수 ÷ 정원 (환산 비율로 추정한 값이 아님)"""
+    from app.config import BUS_CAPACITY
+    from app.domains.bus.advisor import BusAdvisor, departures
+    from app.domains.bus.data import BusDataset
+    from app.domains.bus.forecaster import BusForecaster
+    dataset = BusDataset("sample")
+    forecaster = BusForecaster(dataset)
+    assert forecaster.load()
+    advisor = BusAdvisor(None, forecaster, dataset)
+    date = forecaster.store.loc[forecaster.store["split"] == "valid", "date"].max()
+    route = dataset.routes[0]
+
+    day = advisor.analyze_day(route, date)
+    seg = day["segments"].dropna(subset=["congestion_actual"])
+    row = seg.loc[seg["congestion_actual"].idxmax()]
+
+    section = dataset.section_long
+    observed = section[(section["date"] == date) & (section["route"] == route) & (section["hour"] == row["hour"])
+                       & (section["stop_id"] == row["stop_id"]) & (section["stop_seq"] == row["stop_seq"])]["onboard"].iloc[0]
+    trips = departures(day["frame"])[row["hour"]]
+    assert day["actual_source"] == "observed"
+    assert row["congestion_actual"] == pytest.approx(observed / trips / BUS_CAPACITY)

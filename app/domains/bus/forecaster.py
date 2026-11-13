@@ -32,8 +32,12 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
-from app.config import BUS_EARLY_STOP_DAYS, BUS_VALID_START, MODELS_DIR, PROCESSED_DIR
+from app.config import (
+    BUS_EARLY_STOP_DAYS, BUS_LOAD_WINDOW_HOURS, BUS_VALID_START, BUS_XGB_EARLY_STOP_ROUNDS, BUS_XGB_MAX_TREES,
+    MODELS_DIR, PROCESSED_DIR,
+)
 from app.core.forecaster import Forecaster, evaluate_mae
+from app.domains.bus.calibration import default_tune_end
 from app.domains.bus.data import BusDataset
 from app.domains.bus.features import (
     CATEGORICAL,
@@ -67,6 +71,18 @@ def trips_source_date(target: pd.Timestamp, daytype: str, calendar: pd.Series) -
     backs = [target - pd.Timedelta(days=k) for k in range(7, 43, 7)]
     same_dow = [d for d in backs if d in calendar.index]
     return next((d for d in same_dow if calendar[d] == daytype), same_dow[0] if same_dow else None)
+
+
+def forward_window(by_hour: pd.DataFrame, hours: int = BUS_LOAD_WINDOW_HOURS) -> pd.DataFrame:
+    """열이 시간(0~23)인 표 → 각 시각부터 hours시간 동안의 합. 날짜를 넘어가지 않습니다.
+
+    N시에 출발한 버스는 그 뒤 몇 시간 동안 승객을 태우므로, 재차인원은 이 합에 비례한다고 봅니다.
+    창 안의 값이 모두 비어 있으면 결과도 비워 둡니다.
+    """
+    full = by_hour.reindex(columns=range(24))
+    total = sum(full.shift(-k, axis=1).fillna(0.0) for k in range(hours))
+    filled = sum(full.shift(-k, axis=1).notna().astype(int) for k in range(hours))
+    return total.where(filled > 0)
 
 
 class BusForecaster(Forecaster):
@@ -125,7 +141,7 @@ class BusForecaster(Forecaster):
               f"| valid {valid['date'].min():%Y-%m-%d}~{valid['date'].max():%Y-%m-%d} ({len(valid):,})")
 
         model = XGBRegressor(
-            n_estimators=2000,
+            n_estimators=BUS_XGB_MAX_TREES,
             learning_rate=0.05,
             max_depth=8,
             min_child_weight=5,
@@ -137,11 +153,14 @@ class BusForecaster(Forecaster):
             tree_method="hist",
             enable_categorical=True,
             max_cat_to_onehot=1,
-            early_stopping_rounds=50,
+            early_stopping_rounds=BUS_XGB_EARLY_STOP_ROUNDS,
             n_jobs=-1,
         )
         model.fit(train[FEATURES], train["boarding"], eval_set=[(early[FEATURES], early["boarding"])], verbose=False)
+        hit_cap = model.best_iteration >= BUS_XGB_MAX_TREES - 1
         print(f"[4/5] XGBoost 학습 완료 | best_iteration={model.best_iteration}")
+        if hit_cap:
+            print(f"⚠️ 트리 개수가 상한({BUS_XGB_MAX_TREES})에 걸려 학습이 덜 끝났습니다. app/config.py 의 BUS_XGB_MAX_TREES 를 올리세요.")
 
         feats["pred"] = np.clip(model.predict(feats[FEATURES]), 0, None).astype("float32")
         feats["split"] = np.where(feats["date"] >= valid_start, "valid",
@@ -155,6 +174,8 @@ class BusForecaster(Forecaster):
             "early_stop_period": [f"{early['date'].min():%Y-%m-%d}", f"{early['date'].max():%Y-%m-%d}"],
             "valid_period": [f"{valid['date'].min():%Y-%m-%d}", f"{valid['date'].max():%Y-%m-%d}"],
             "best_iteration": int(model.best_iteration),
+            "max_trees": BUS_XGB_MAX_TREES,
+            "hit_tree_cap": bool(hit_cap),
             "feature_importance": dict(sorted(
                 ((f, round(float(v), 4)) for f, v in zip(FEATURES, model.feature_importances_)),
                 key=lambda x: -x[1])),
@@ -175,8 +196,8 @@ class BusForecaster(Forecaster):
             # 원천 이상으로 학습·평가에서 뺀 노선·날짜 (화면에 사유 표시)
             "excluded_route_days": self.ds.anomalies.to_dict("records"),
         }
-        (self.model_dir / "meta.json").write_text(json.dumps(self.meta, ensure_ascii=False, indent=2))
-        (self.model_dir / "metrics.json").write_text(json.dumps(metrics, ensure_ascii=False, indent=2))
+        (self.model_dir / "meta.json").write_text(json.dumps(self.meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        (self.model_dir / "metrics.json").write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
 
         self.model, self.store = model, feats[STORE_COLS].copy()
         last = self.store["date"].max()
@@ -184,10 +205,9 @@ class BusForecaster(Forecaster):
         forecasts = self._future_frames([last + pd.Timedelta(days=k) for k in range(1, FORECAST_HORIZON_DAYS + 1)])
         store = pd.concat([self.store, forecasts], ignore_index=True)
         store.to_parquet(self.store_path, index=False)
-        (self.model_dir / "meta.json").write_text(json.dumps(self.meta, ensure_ascii=False, indent=2))
+        (self.model_dir / "meta.json").write_text(json.dumps(self.meta, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"      향후 {FORECAST_HORIZON_DAYS}일 예측 {len(forecasts):,}행 생성 (배치 추론, ~{last + pd.Timedelta(days=FORECAST_HORIZON_DAYS):%Y-%m-%d})")
-        profile = self._build_load_profile(long, feats)
-        profile.to_parquet(self.model_dir / "load_profile.parquet", index=False)
+        profile = self._save_load_profile(long, feats, valid["date"])
 
         self._print_metrics(metrics)
         print(f"⏱️ 총 {time.time() - t0:.0f}s")
@@ -251,23 +271,50 @@ class BusForecaster(Forecaster):
     # ------------------------------------------------
     # 승차 → 구간 재차인원 환산 비율
     # ------------------------------------------------
-    # ratio = Σ 구간 재차인원(시간대) ÷ Σ 노선 전체 승차(시간대)
-    # 예측한 노선 전체 승차에 곱하면 구간별 예상 재차인원(혼잡도 분자)이 됩니다.
+    # ratio = Σ 구간 재차인원(N시 출발 버스) ÷ Σ 노선 전체 승차(N시부터 BUS_LOAD_WINDOW_HOURS시간)
+    # 예측한 노선 전체 승차의 같은 구간 합에 곱하면 N시 출발 버스의 구간별 예상 재차인원(혼잡도 분자)이 됩니다.
+    # 원본 재차인원의 "N시"는 기점 출발 시각 기준이라, 같은 시각의 승차와 바로 나누지 않습니다 (app/config.py).
+    # 튜닝 구간 마지막 날(until)까지의 자료만 씁니다. 평가 구간의 실제 재차인원이 비율에 섞이면
+    # 그 구간의 예상 혼잡도가 정답을 미리 본 값이 되어 배차 방식 성능 비교 점수가 부풀려집니다.
 
-    def _build_load_profile(self, long: pd.DataFrame, feats: pd.DataFrame) -> pd.DataFrame:
+    def _save_load_profile(self, long: pd.DataFrame, calendar: pd.DataFrame, valid_dates) -> pd.DataFrame:
+        profile_end = default_tune_end(valid_dates, self.ds.mode)
+        profile, window = self._build_load_profile(long, calendar, profile_end)
+        profile.to_parquet(self.model_dir / "load_profile.parquet", index=False)
+        self.meta["load_profile_window"] = {**window, "window_hours": BUS_LOAD_WINDOW_HOURS}
+        (self.model_dir / "meta.json").write_text(json.dumps(self.meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"      환산 비율: {window['start']} ~ {window['end']} ({window['days']}일) 자료로 계산")
+        return profile
+
+    def rebuild_load_profile(self) -> None:
+        """모델은 그대로 두고 환산 비율만 다시 만듭니다 (계산식이나 구간 자료가 바뀌었을 때)."""
+        if not self.load():
+            raise FileNotFoundError("학습된 모델이 없습니다. 먼저 전체 학습을 실행하세요.")
+        calendar = self.store[["date", "daytype"]].drop_duplicates()
+        valid_dates = self.store.loc[(self.store["split"] == "valid") & self.store["boarding"].notna(), "date"]
+        self.profile = self._save_load_profile(self.ds.load_long(), calendar, valid_dates)
+
+    def _build_load_profile(self, long: pd.DataFrame, feats: pd.DataFrame,
+                            until: pd.Timestamp) -> tuple[pd.DataFrame, dict]:
         section = self.ds.load_section_long()
-        totals = long.groupby(["date", "route", "hour"], as_index=False)["boarding"].sum(min_count=1)
-        totals = totals.rename(columns={"boarding": "route_total"}).dropna()
+        section = section[section["date"] <= until]
+        if section.empty:
+            raise ValueError(f"{until:%Y-%m-%d} 이전의 구간 재차인원 자료가 없어 환산 비율을 만들 수 없습니다.")
+        window = {"start": f"{section['date'].min():%Y-%m-%d}", "end": f"{section['date'].max():%Y-%m-%d}",
+                  "days": int(section["date"].nunique())}
+        totals = long[long["date"].isin(section["date"].unique())]
+        totals = totals.groupby(["date", "route", "hour"], observed=True)["boarding"].sum(min_count=1).unstack("hour")
+        totals = forward_window(totals).rename_axis(columns="hour").stack().rename("route_total").reset_index()
         dt = feats[["date", "daytype"]].drop_duplicates()
 
         x = section.merge(totals, on=["date", "route", "hour"]).merge(dt, on="date")
-        x = x[x["route_total"] > 0]
+        x = x[(x["route_total"] > 0) & x["onboard"].notna()]      # 그 시각에 출발한 버스가 없던 날은 뺌
         keys = ["route", "stop_id", "stop_seq", "to_stop_id", "hour"]
         by_dt = x.groupby(keys + ["daytype"], as_index=False)[["onboard", "route_total"]].sum()
         all_dt = x.groupby(keys, as_index=False)[["onboard", "route_total"]].sum().assign(daytype="all")
         profile = pd.concat([by_dt, all_dt], ignore_index=True)
         profile["ratio"] = (profile["onboard"] / profile["route_total"]).astype("float32")
-        return profile[keys + ["daytype", "ratio"]]
+        return profile[keys + ["daytype", "ratio"]], window
 
     # ==================================================
     # 2. 로드
@@ -277,7 +324,7 @@ class BusForecaster(Forecaster):
         """서버용 로드: XGBoost 없이 예측 결과(store)와 메타만 읽습니다."""
         if not (self.store_path.exists() and (self.model_dir / "meta.json").exists()):
             return False
-        self.meta = json.loads((self.model_dir / "meta.json").read_text())
+        self.meta = json.loads((self.model_dir / "meta.json").read_text(encoding="utf-8"))
         self.store = pd.read_parquet(self.store_path)
         self.profile = pd.read_parquet(self.model_dir / "load_profile.parquet")
         print(f"✅ 버스 예측 모델 로드: {self.model_version} | store {len(self.store):,}행")

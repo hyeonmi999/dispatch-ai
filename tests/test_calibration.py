@@ -96,3 +96,14 @@ def test_script_writes_table_for_every_sample_route(sample_model):
     assert set(saved["route_default"]) == set(BUS_SAMPLE_ROUTES)
     assert all(value > 0 for value in saved["route_default"].values())
     assert saved["fit_window"]["end"] < saved["eval_window"]["start"]
+
+
+def test_default_tune_end_real_uses_config_and_sample_uses_first_half():
+    # 준비: 검증 구간 20일
+    from app.config import BUS_TUNE_END
+    from app.domains.bus.calibration import default_tune_end
+    dates = pd.date_range("2026-09-28", periods=20)
+
+    # 확인: 실데이터는 설정값, 합성 데이터는 앞쪽 절반의 마지막 날 (10번째 날)
+    assert default_tune_end(dates, "real") == pd.Timestamp(BUS_TUNE_END)
+    assert default_tune_end(dates, "sample") == dates[9]

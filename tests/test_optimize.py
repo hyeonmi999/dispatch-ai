@@ -206,3 +206,49 @@ def test_optimize_api_rejects_bad_input(client, payload):
     body = {"date": _meta(client)["dates"]["max_date"], "hours": [8], **payload}
     r = client.post("/api/bus/optimize", json=body)
     assert r.status_code == 422, r.text
+
+
+# ---------- 첫차·막차 시간대, 감차 조건 ----------
+
+def test_service_minutes_counts_only_time_between_first_and_last_bus():
+    from app.domains.bus.optimizer import service_minutes
+    info = {"first_bus": "03:57", "last_bus": "22:10"}
+
+    assert service_minutes(info, 3) == 3          # 03:57 ~ 03:59
+    assert service_minutes(info, 4) == 60
+    assert service_minutes(info, 22) == 11        # 22:00 ~ 22:10
+    assert service_minutes(info, 23) == 0
+    assert service_minutes({}, 8) == 60           # 첫차·막차 시각을 모르면 제한하지 않음
+    assert service_minutes({"first_bus": "04:00", "last_bus": "00:30"}, 0) == 31   # 막차가 자정을 넘는 노선
+
+
+def test_first_and_last_bus_hours_are_fixed_at_current_trips():
+    from app.domains.bus.optimizer import trip_bounds
+    info = {"first_bus": "03:57", "last_bus": "22:10"}
+
+    assert trip_bounds(info, 3, 6.0, 14.0, current=1) == (1, 1, True)
+    assert trip_bounds(info, 22, 6.0, 14.0, current=3) == (3, 3, True)
+    assert trip_bounds(info, 8, 6.0, 14.0, current=8) == (5, 10, False)
+    assert trip_bounds(info, 8, 6.0, 14.0, current=12) == (5, 12, False)   # 현행이 범위 밖이면 현행까지 넓힘
+
+
+def _one_cell_inputs(onboard: float, current: int = 10, cut_floor: int | None = None) -> dict:
+    cell = {"current": current, "low": 4, "high": 15, "onboard": onboard, "ratio": 1.0, "edge": False}
+    if cut_floor is not None:
+        cell["cut_floor"] = cut_floor
+    trips = [0] * 24
+    trips[8] = current
+    return {"routes": {"r1": {"current": trips, "cells": {8: cell}, "fleet": 100, "fleet_estimated": False, "run_minutes": 60}}}
+
+
+def test_cut_stops_at_cut_floor():
+    """감차 허용 설정이라도 감차 하한 아래로는 줄이지 않음"""
+    from app.domains.bus.optimizer import solve_cpsat
+    weights = {"overload": 10, "trips": 1, "change": 0}
+    onboard = 6 * 0.7 * 55            # 6회면 딱 목표 혼잡도 0.7
+
+    free, _ = solve_cpsat(_one_cell_inputs(onboard), weights)
+    floored, _ = solve_cpsat(_one_cell_inputs(onboard, cut_floor=7), weights)
+
+    assert free["r1", 8] == 6         # 하한이 없으면 목표 혼잡도까지 줄임
+    assert floored["r1", 8] == 7      # 줄인 뒤 혼잡도 0.6 이하가 되는 7회에서 멈춤

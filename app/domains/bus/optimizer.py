@@ -8,6 +8,8 @@
 #
 # 지킬 것
 #   ① 배차간격: 60 ÷ 최대 배차간격 ≤ x ≤ 60 ÷ 최소 배차간격
+#      첫차·막차 시간대는 운행하는 시간이 한 시간이 안 되므로 현행 그대로 둡니다
+#      (첫차 03:57이면 3시대는 3분뿐. 여기를 바꾸려면 첫차·막차 시각을 옮겨야 하므로 배차간격 권고 대상이 아님).
 #   ② 버스 대수: 어느 시각이든 "도로 위에 있는 버스" ≤ 인가대수
 #      도로 위 버스 = 최근 왕복 운행시간 동안 출발한 버스 수 (출발한 버스는 한 바퀴 돌 때까지 못 씀).
 #      운행횟수가 계속 x로 같으면 x × 운행시간 ÷ 60과 같은 값입니다.
@@ -19,7 +21,9 @@
 # 줄일 것
 #   overload × 과밀량 + trips × 총 운행횟수 + change × 현행과 달라진 운행횟수
 #   과밀량 = 최대 혼잡 구간의 승객 수 상한(P90)이 목표 혼잡도(0.7) × 정원 × x 를 넘는 만큼 (명)
-#   기본 가중치는 change 0 (감차 허용): 붐비는 곳은 늘리고, 목표 혼잡도보다 한가한 곳은 줄입니다.
+#   기본 가중치는 change 0 (감차 허용): 붐비는 곳은 늘리고, 한가한 곳은 줄입니다.
+#   감차는 줄인 뒤에도 상한 기준 혼잡도가 CONGESTION_CUT_MAX(0.6) 이하일 때만 합니다.
+#   늘리는 기준(0.7)과 줄이는 기준(0.6) 사이는 그대로 둡니다 (예측이 조금 틀려도 감차로 과밀이 생기지 않게).
 #   change를 1 이상으로 주면 늘리기만 합니다.
 #
 # 풀이
@@ -34,7 +38,8 @@ import time
 import pandas as pd
 
 from app.config import (
-    BUS_CAPACITY, BUS_OPT_SEED, BUS_OPT_TIME_LIMIT_SEC, BUS_OPT_WEIGHTS, CONGESTION_HIGH, CONGESTION_TARGET,
+    BUS_CAPACITY, BUS_OPT_SEED, BUS_OPT_TIME_LIMIT_SEC, BUS_OPT_WEIGHTS, CONGESTION_CUT_MAX, CONGESTION_HIGH,
+    CONGESTION_TARGET,
 )
 from app.core.domain import InvalidRequest
 from app.domains.bus.advisor import BusAdvisor, congestion_level
@@ -43,11 +48,13 @@ from app.domains.bus.calibration import ratio_for
 HOURS_PER_DAY = 24
 LOAD_SCALE = 100       # 승객 수를 정수로 다루려고 1/100명 단위로 바꿈
 WEIGHT_SCALE = 10      # 가중치는 소수 첫째 자리까지
-ASSUMPTION = "승객 수는 그대로라고 가정. 증차 판단은 승객 수 상한(10번 중 9번은 이보다 적게 탐) 기준"
+ASSUMPTION = ("시간은 버스가 기점을 출발하는 시각 기준. 승객 수는 그대로라고 가정. "
+              "증차 판단은 승객 수 상한(10번 중 9번은 이보다 적게 탐) 기준. 첫차·막차 시간대는 현행 유지")
 CUT_NOTICE = ("운행횟수를 줄이는 권고가 포함되어 있습니다. 줄이면 배차간격이 길어져 승객 대기시간이 늘어납니다. "
               "사업계획 변경 절차 대상인지 규정을 확인하고 담당자 검토 후 진행하세요.")
 LIMIT_INTERVAL = "최소 배차간격 한계"
 LIMIT_FLEET = "인가대수 한계"
+LIMIT_EDGE = "첫차·막차 시간대 (운행 시간이 한 시간 미만)"
 
 
 # ==================================================
@@ -60,6 +67,37 @@ def _minutes_on_road(start_hour: int, run_minutes: int, at_minute: int) -> int:
     at_minute 직전 run_minutes 동안 출발한 버스가 도로 위에 있습니다.
     """
     return max(0, min(at_minute, (start_hour + 1) * 60) - max(at_minute - run_minutes, start_hour * 60))
+
+
+def _clock_minutes(value) -> int | None:
+    """'04:10' → 250. 값이 없거나 형식이 다르면 None"""
+    try:
+        hour, minute = str(value).split(":")[:2]
+        return int(hour) * 60 + int(minute)
+    except (ValueError, TypeError):
+        return None
+
+
+def service_minutes(info: dict, hour: int) -> int:
+    """hour 시대에 기점에서 버스가 출발할 수 있는 시간(분). 첫차·막차 시각을 모르면 60"""
+    first, last = _clock_minutes(info.get("first_bus")), _clock_minutes(info.get("last_bus"))
+    if first is None or last is None:
+        return 60
+    if last < first:
+        last += HOURS_PER_DAY * 60                     # 막차가 자정을 넘는 노선
+    spans = [(hour * 60, (hour + 1) * 60), ((hour + HOURS_PER_DAY) * 60, (hour + HOURS_PER_DAY + 1) * 60)]
+    return max(0, max(min(end, last + 1) - max(start, first) for start, end in spans))
+
+
+def trip_bounds(info: dict, hour: int, min_interval: float, max_interval: float, current: int) -> tuple[int, int, bool]:
+    """(최소 운행횟수, 최대 운행횟수, 첫차·막차 시간대 여부). 현행 운행횟수는 항상 범위 안에 둡니다.
+
+    첫차·막차 시간대는 운행 시간이 한 시간이 안 돼 배차간격 기준을 그대로 적용할 수 없으므로 현행으로 고정합니다.
+    """
+    if service_minutes(info, hour) < 60:
+        return current, current, True
+    low, high = math.ceil(60.0 / max_interval - 1e-9), math.floor(60.0 / min_interval + 1e-9)
+    return min(low, current), max(high, current), False
 
 
 def collect_inputs(advisor: BusAdvisor, table: dict, routes: list[str], date, hours: list[int]) -> dict:
@@ -80,20 +118,24 @@ def collect_inputs(advisor: BusAdvisor, table: dict, routes: list[str], date, ho
                 continue
             top = state["top"]
             ratio = ratio_for(table, route, hour)
-            low = math.ceil(60.0 / state["max_interval"] - 1e-9)
-            high = math.floor(60.0 / state["min_interval"] + 1e-9)
+            low, high, edge = trip_bounds(state["info"], hour, state["min_interval"], state["max_interval"], current[hour])
+            onboard = float(top["congestion"]) * BUS_CAPACITY * current[hour]
+            # 감차 하한: 줄인 뒤에도 상한 기준 혼잡도가 CONGESTION_CUT_MAX 이하가 되는 가장 적은 운행횟수 (현행보다 크지 않게)
+            keep = math.ceil(onboard * ratio / (CONGESTION_CUT_MAX * BUS_CAPACITY) - 1e-9)
             cells[hour] = {
                 "current": current[hour],
-                "low": min(low, current[hour]), "high": max(high, current[hour]),
+                "low": low, "high": high,
+                "cut_floor": min(current[hour], max(keep, 1)),
+                "edge": edge,
                 # 현행 혼잡도가 그대로 나오도록, 최대 혼잡 구간의 재차인원(명/시간)을 현행 운행횟수 기준으로 환산
-                "onboard": float(top["congestion"]) * BUS_CAPACITY * current[hour],
+                "onboard": onboard,
                 "ratio": ratio,
             }
         if info is None:
             continue
         for hour in hours:
             if hour not in cells:
-                out["skipped"].append({"route": route, "hour": hour, "reason": "운행 데이터가 없는 시간대"})
+                out["skipped"].append({"route": route, "hour": hour, "reason": "기점에서 출발하는 버스가 없는 시간대"})
         out["routes"][route] = {
             "current": current, "cells": cells,
             "fleet": int(info.get("buses") or 0),
@@ -145,7 +187,7 @@ def solve_cpsat(inputs: dict, weights: dict) -> tuple[dict, str]:
             continue
         for hour in hours:
             cell = r["cells"][hour]
-            var = model.NewIntVar(cell["low"], cell["high"], f"x_{route}_{hour}")
+            var = model.NewIntVar(max(cell["low"], cell.get("cut_floor", cell["low"])), cell["high"], f"x_{route}_{hour}")
             model.AddHint(var, cell["current"])
             x[route, hour] = var
 
@@ -185,7 +227,7 @@ def solve_cpsat(inputs: dict, weights: dict) -> tuple[dict, str]:
 def _can_add(route: dict, trips: list[int], hour: int, limits: dict[int, float]) -> str | None:
     """hour 시에 한 회 더 보낼 수 없으면 그 이유"""
     if trips[hour] + 1 > route["cells"][hour]["high"]:
-        return LIMIT_INTERVAL
+        return LIMIT_EDGE if route["cells"][hour].get("edge") else LIMIT_INTERVAL
     trial = trips.copy()
     trial[hour] += 1
     if any(_on_road(trial, route["run_minutes"], m) > limit + 1e-6 for m, limit in limits.items()):

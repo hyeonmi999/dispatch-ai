@@ -4,7 +4,7 @@
   <div v-else>
     <div class="head">
       <span class="rno on" :class="`r${route.route}`">{{ route.route }}</span>
-      <span class="sm">{{ date }} {{ hour }}시 · 최대 혼잡 구간 기준</span>
+      <span class="sm">{{ date }} {{ hour }}시 출발 버스 · 최대 혼잡 구간 기준</span>
       <n-spin v-if="loading" :size="14" class="spin" />
     </div>
 

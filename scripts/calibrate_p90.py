@@ -30,21 +30,16 @@ sys.path.insert(0, str(ROOT))
 import pandas as pd  # noqa: E402
 
 from app.config import (  # noqa: E402
-    BUS_P90_COVERAGE_RANGE, BUS_P90_FIXED_RATIO, BUS_P90_MIN_SAMPLES, BUS_P90_QUANTILE, BUS_TUNE_END,
+    BUS_P90_COVERAGE_RANGE, BUS_P90_FIXED_RATIO, BUS_P90_MIN_SAMPLES, BUS_P90_QUANTILE,
     MODELS_DIR, PROCESSED_DIR, resolve_data_mode,
 )
-from app.domains.bus.calibration import coverage, fit_ratios, route_hour_totals, split_by_date, upper_bound  # noqa: E402
+from app.domains.bus.calibration import (  # noqa: E402
+    coverage, default_tune_end, fit_ratios, route_hour_totals, split_by_date, upper_bound,
+)
 
 RESULT_PATH = ROOT / "eval" / "results" / "p90_calibration.json"
 STORE_COLS = ["date", "route", "hour", "boarding", "pred", "daytype", "split"]
 CHOSEN = "A 노선·시간"
-
-
-def default_tune_end(totals: pd.DataFrame, mode: str) -> pd.Timestamp:
-    if mode == "real":
-        return pd.Timestamp(BUS_TUNE_END)
-    dates = sorted(totals["date"].unique())          # 합성 데이터는 검증 구간이 짧아 앞쪽 절반을 사용
-    return pd.Timestamp(dates[len(dates) // 2 - 1])
 
 
 def window(frame: pd.DataFrame) -> dict:
@@ -72,7 +67,7 @@ def main():
     totals = route_hour_totals(store)
     if totals.empty:
         raise SystemExit("검증 구간(split == 'valid')에 실제값이 있는 행이 없습니다.")
-    tune_end = pd.Timestamp(args.tune_end) if args.tune_end else default_tune_end(totals, mode)
+    tune_end = pd.Timestamp(args.tune_end) if args.tune_end else default_tune_end(totals["date"], mode)
     tune, evaluation = split_by_date(totals, tune_end)
     if tune.empty or evaluation.empty:
         raise SystemExit(f"튜닝 구간 또는 평가 구간이 비었습니다 (튜닝 끝 {tune_end:%Y-%m-%d}).")

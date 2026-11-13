@@ -81,7 +81,7 @@ def test_summary_metrics():
 
 
 def test_decisions_do_not_use_actual_passengers(sample_model):
-    """누수 방지: 실제 승차를 5배로 바꿔도 네 방식이 정한 운행횟수는 그대로이고, 채점 값만 달라짐"""
+    """누수 방지: 실제 승차·실제 재차인원을 5배로 바꿔도 네 방식이 정한 운행횟수는 그대로이고, 채점 값만 달라짐"""
     # 준비: 합성 데이터의 검증 구간 하루
     from app.domains.bus.advisor import BusAdvisor
     from app.domains.bus.calibration import load_ratios
@@ -101,6 +101,8 @@ def test_decisions_do_not_use_actual_passengers(sample_model):
     plans, peaks = decide(advisor, inputs, BUS_OPT_WEIGHTS), actual_peaks(advisor, inputs)
 
     forecaster.store.loc[forecaster.store["date"] == date, "boarding"] *= 5
+    section = dataset.section_long                      # 채점에 쓰는 원본 구간 재차인원
+    section.loc[section["date"] == date, "onboard"] *= 5
     advisor.clear_cache()
     inputs_spiked = collect_inputs(advisor, table, dataset.routes, date, ALL_HOURS)
     plans_spiked, peaks_spiked = decide(advisor, inputs_spiked, BUS_OPT_WEIGHTS), actual_peaks(advisor, inputs_spiked)

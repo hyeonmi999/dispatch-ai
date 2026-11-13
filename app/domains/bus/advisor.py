@@ -1,10 +1,14 @@
 # ==================================================
 # 버스 배차 권고
 # ==================================================
-# 혼잡도 계산
-#   1) 예측한 노선 전체 승차(시간대) × 구간 환산 비율 = 구간별 예상 재차인원(시간 합계)
-#   2) ÷ 그 시간대 운행횟수 = 버스 1대당 평균 재차인원
+# 혼잡도 계산 (시간 기준 = 버스가 기점을 출발한 시각)
+#   1) N시부터 3시간 동안의 예측 승차 합 × 구간 환산 비율 = N시 출발 버스들의 구간별 예상 재차인원 합
+#   2) ÷ N시 기점 출발 횟수 = 버스 1대당 평균 재차인원
 #   3) ÷ 차량 정원 = 혼잡도 (0.45 여유 / 0.8 보통 / 1.0 혼잡 / 그 이상 매우혼잡)
+#   실제 혼잡도는 원본 구간 재차인원이 있는 날이면 그 값을 그대로 쓰고(재차인원 ÷ 출발 횟수 ÷ 정원),
+#   없는 날은 실제 승차로 같은 계산을 합니다.
+#   원본 재차인원의 "N시"가 기점 출발 시각 기준이라, 정류장을 지난 시각 기준인 운행횟수로 나누면
+#   새벽·심야 혼잡도가 크게 어긋납니다 (app/config.py, docs/decisions.md).
 #
 # 권고 규칙 (최대 혼잡 구간 기준)
 #   혼잡도 ≥ 0.8  → 배차간격 단축(증차): 목표 혼잡도 0.7이 되는 운행횟수
@@ -21,6 +25,7 @@ import pandas as pd
 
 from app.config import (
     BUS_CAPACITY,
+    BUS_DEPARTURE_STOPS,
     CONGESTION_HIGH,
     CONGESTION_LEVELS,
     CONGESTION_LOW,
@@ -28,7 +33,7 @@ from app.config import (
 )
 from app.core.advisor import Advisor
 from app.domains.bus.data import BusDataset
-from app.domains.bus.forecaster import BusForecaster
+from app.domains.bus.forecaster import BusForecaster, forward_window
 
 ACTION_LABELS = {
     "increase": "배차간격 단축 (증차)",
@@ -52,6 +57,12 @@ def congestion_level(c: float) -> str:
         if c < upper:
             return label
     return CONGESTION_LEVELS[-1][1]
+
+
+def departures(frame: pd.DataFrame) -> pd.Series:
+    """시간별 기점 출발 횟수: 정류장 순서가 가장 앞인 몇 곳의 운행횟수 중앙값 (한 곳만 보면 집계 누락에 흔들림)"""
+    first = sorted(frame["stop_seq"].unique())[:BUS_DEPARTURE_STOPS]
+    return frame[frame["stop_seq"].isin(first)].groupby("hour")["trips"].median()
 
 
 def _num(x, digits=1):
@@ -90,24 +101,32 @@ class BusAdvisor(Advisor):
             raise ValueError(f"{route}번 {date:%Y-%m-%d} 데이터가 없습니다 (원천 결측일일 수 있음)")
         daytype = frame["daytype"].iloc[0]
 
-        # 시간대별 노선 합계
+        # 시간대별 노선 합계. trips = 기점 출발 횟수 (출발이 없는 시간대는 비어 있음)
         hourly = frame.groupby("hour").agg(
             actual=("boarding", lambda s: s.sum(min_count=1)),
             pred=("pred", "sum"),
             baseline=("baseline", lambda s: s.sum(min_count=1)),
-            trips=("trips", "median"),
-        ).reset_index()
+        )
+        hourly["trips"] = departures(frame)
+        hourly.loc[~(hourly["trips"] >= 1), "trips"] = np.nan
+        # N시 출발 버스가 태우는 승객 = N시부터 몇 시간 동안의 승차 합
+        hourly["pred_window"] = forward_window(hourly[["pred"]].T).iloc[0]
+        hourly["actual_window"] = forward_window(hourly[["actual"]].T).iloc[0]
+        hourly = hourly.reset_index()
 
         # 구간별 재차인원·혼잡도
         prof = self.fc.profile_for(route, daytype)
-        seg = prof.merge(hourly[["hour", "pred", "actual"]], on="hour")
-        seg = seg.merge(frame[["stop_id", "stop_seq", "hour", "trips"]], on=["stop_id", "stop_seq", "hour"], how="left")
-        # 일부 정류장은 운행횟수가 1~2회로 잡히는 경우가 있어(단축 운행·집계 누락) 혼잡도가 과대 계산됨
-        # → 그 시간대 노선 중앙값의 절반 미만이면 중앙값으로 대체
-        median_trips = seg["hour"].map(hourly.set_index("hour")["trips"])
-        seg["trips"] = seg["trips"].where(seg["trips"] >= 0.5 * median_trips, median_trips)
-        seg["onboard"] = seg["ratio"] * seg["pred"]
-        seg["onboard_actual"] = seg["ratio"] * seg["actual"]
+        seg = prof.merge(hourly[["hour", "pred", "actual", "pred_window", "actual_window", "trips"]], on="hour")
+        seg["onboard"] = seg["ratio"] * seg["pred_window"]
+        seg["onboard_actual"] = seg["ratio"] * seg["actual_window"]
+        # 원본 구간 재차인원이 있는 날은 추정값 대신 그 값을 실제로 씀
+        observed = self.ds.section_long
+        observed = observed[(observed["date"] == date) & (observed["route"] == route)]
+        if not observed.empty:
+            keys = ["stop_id", "stop_seq", "to_stop_id", "hour"]
+            seg = seg.merge(observed[keys + ["onboard"]].rename(columns={"onboard": "onboard_observed"}), on=keys, how="left")
+            seg["onboard_actual"] = seg["onboard_observed"].where(seg["actual"].notna())
+            seg = seg.drop(columns="onboard_observed")
         seg["per_bus"] = seg["onboard"] / seg["trips"]
         seg["congestion"] = seg["per_bus"] / BUS_CAPACITY
         seg["congestion_actual"] = seg["onboard_actual"] / seg["trips"] / BUS_CAPACITY
@@ -121,7 +140,8 @@ class BusAdvisor(Advisor):
             on="hour", how="left")
 
         result = {"route": route, "date": date, "daytype": daytype, "is_future": is_future,
-                  "frame": frame, "hourly": hourly, "segments": seg}
+                  "frame": frame, "hourly": hourly, "segments": seg,
+                  "actual_source": "observed" if not observed.empty else "estimated"}
         self._day_cache[key] = result
         return result
 
@@ -132,17 +152,18 @@ class BusAdvisor(Advisor):
     def hour_state(self, route: str, date, hour: int) -> dict:
         """시간대의 구간별 혼잡도와 현재 운행 상태 (권고·시뮬레이션 공용)
 
-        현재 운행횟수는 최대 혼잡 구간의 값을 기준으로 합니다.
+        시간은 기점 출발 시각 기준이고, 현재 운행횟수는 그 시각의 기점 출발 횟수입니다.
+        출발이 없는 시간대(심야 등)는 ValueError.
         """
         day = self.analyze_day(route, date)
         seg = day["segments"][day["segments"]["hour"] == hour].dropna(subset=["congestion"])
         hrow = day["hourly"][day["hourly"]["hour"] == hour]
         if seg.empty or hrow.empty:
-            raise ValueError(f"{route}번 {hour}시는 운행 데이터가 없는 시간대입니다")
+            raise ValueError(f"{route}번 {hour}시는 기점에서 출발하는 버스가 없는 시간대입니다")
         hrow = hrow.iloc[0]
 
         top = seg.loc[seg["congestion"].idxmax()]
-        cur_trips = float(top["trips"]) if top["trips"] > 0 else float(hrow["trips"])
+        cur_trips = float(hrow["trips"])
         info = self.ds.route_info_for(route, day["daytype"])
         return {
             "day": day, "segments": seg, "hourly": hrow, "top": top, "info": info,
@@ -203,7 +224,7 @@ class BusAdvisor(Advisor):
             + (f", 실제 {hrow['actual']:.0f}명)" if pd.notna(hrow["actual"]) else ")"),
             f"최대 혼잡 구간 {peak_segment['from_name']} → {peak_segment['to_name']}: "
             f"버스 1대당 약 {top['per_bus']:.0f}명 / 정원 {BUS_CAPACITY}명 → 혼잡도 {c_max:.2f} ({level})",
-            f"현재 {cur_trips:.0f}회/시간 (약 {cur_interval:.1f}분 간격), 노선 기준 배차 {min_iv:.0f}~{max_iv:.0f}분",
+            f"현재 기점 출발 {cur_trips:.0f}회/시간 (약 {cur_interval:.1f}분 간격), 노선 기준 배차 {min_iv:.0f}~{max_iv:.0f}분",
             f"목표 혼잡도 {CONGESTION_TARGET} 기준 필요 운행 {needed}회/시간",
         ]
         if action == "increase_limited":

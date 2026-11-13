@@ -16,7 +16,7 @@
 from app.core.domain import InvalidRequest
 from app.domains.bus.advisor import BusAdvisor, congestion_level
 
-ASSUMPTION = "승객 수는 그대로라고 가정 (배차가 잦아져 늘어나는 승객은 반영하지 않음)"
+ASSUMPTION = "그 시각에 기점을 출발하는 버스 기준. 승객 수는 그대로라고 가정 (배차가 잦아져 늘어나는 승객은 반영하지 않음)"
 DAYTYPE_LABELS = {"weekday": "평일", "saturday": "토요일", "holiday": "공휴일"}
 
 
