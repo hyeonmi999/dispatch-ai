@@ -152,7 +152,7 @@ python scripts/build_index.py                # 규정 문서 FAISS 인덱스 (bg
 `.env`에서 `DATA_MODE=sample`로 바꾼 뒤 아래 3-4로 서버를 띄웁니다. (실데이터가 없으면 `auto`도 sample로 동작)
 
 ### 3-3. 실데이터로 실행
-**빠른 방법**: [Release `data-snapshot-20261107`](https://github.com/hyeonmi999/dispatch-ai/releases/tag/data-snapshot-20261107)에 데이터·모델·FAISS 인덱스 스냅샷이 있습니다 (실측 ~10-25, 예측 ~11-15). 프로젝트 루트에서 압축을 풀면 아래 수집·학습 없이 3-4로 넘어갈 수 있습니다. LLM·임베딩 모델(`hf_models/`)은 포함되지 않아 처음 쓸 때 내려받습니다.
+**빠른 방법**: [Release `data-snapshot-20261113`](https://github.com/hyeonmi999/dispatch-ai/releases/tag/data-snapshot-20261113)에 데이터·모델·FAISS 인덱스 스냅샷이 있습니다 (실측 ~11-01, 예측 ~11-22). 혼잡도 계산을 기점 출발 시각 기준으로 고치기 전의 코드에는 이 묶음이 맞지 않으니, 그 코드에는 `data-snapshot-20261107`을 쓰세요(섞어 쓰면 오류 없이 혼잡도만 틀립니다). 프로젝트 루트에서 압축을 풀면 아래 수집·학습 없이 3-4로 넘어갈 수 있습니다. LLM·임베딩 모델(`hf_models/`)은 포함되지 않아 처음 쓸 때 내려받습니다.
 ```bash
 tar -xzf dispatch-ai-data.tar.gz
 tar -xzf dispatch-ai-models.tar.gz
