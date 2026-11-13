@@ -33,6 +33,7 @@ from app.config import (
 )
 from app.core.advisor import Advisor
 from app.domains.bus.data import BusDataset
+from app.domains.bus.fleet import HOURS_PER_DAY, peak_on_road
 from app.domains.bus.forecaster import BusForecaster, forward_window
 
 ACTION_LABELS = {
@@ -63,6 +64,12 @@ def departures(frame: pd.DataFrame) -> pd.Series:
     """시간별 기점 출발 횟수: 정류장 순서가 가장 앞인 몇 곳의 운행횟수 중앙값 (한 곳만 보면 집계 누락에 흔들림)"""
     first = sorted(frame["stop_seq"].unique())[:BUS_DEPARTURE_STOPS]
     return frame[frame["stop_seq"].isin(first)].groupby("hour")["trips"].median()
+
+
+def departures_by_hour(day: dict) -> list[float]:
+    """하루 24시간의 기점 출발 횟수 (출발이 없는 시간대는 0)"""
+    trips = day["hourly"].set_index("hour")["trips"]
+    return [float(trips[h]) if h in trips.index and pd.notna(trips[h]) else 0.0 for h in range(HOURS_PER_DAY)]
 
 
 def _num(x, digits=1):
@@ -201,7 +208,27 @@ class BusAdvisor(Advisor):
             rec_interval = cur_interval if action == "keep" else min(cur_interval, min_iv)
 
         rec_trips = 60.0 / rec_interval
-        extra_buses = math.ceil(run_minutes / rec_interval) - math.ceil(run_minutes / cur_interval)
+
+        # 버스 대수: 이 시간대만 바꿨을 때 도로 위 버스가 가장 많은 순간 (배차 최적화와 같은 계산)
+        authorized = int(info.get("buses") or 0)
+        run = int(round(run_minutes))
+        trips_now = departures_by_hour(day)
+
+        def buses_for(trips: float) -> int:
+            return peak_on_road(trips_now[:hour] + [trips] + trips_now[hour + 1:], run, hour)
+
+        buses_now = buses_for(cur_trips)
+        limited_by = "최소 배차간격" if action == "increase_limited" else None
+        if action == "increase" and authorized > 0 and buses_for(rec_trips) > max(authorized, buses_now):
+            # 인가대수 안에서 보낼 수 있는 가장 많은 운행횟수로 낮춤. 한 회도 못 늘리면 별도 대책
+            fits = [t for t in range(math.floor(rec_trips), math.ceil(cur_trips), -1) if buses_for(t) <= max(authorized, buses_now)]
+            limited_by = "인가대수"
+            if fits:
+                rec_trips = float(fits[0])
+                rec_interval = 60.0 / rec_trips
+            else:
+                action, rec_trips, rec_interval = "increase_limited", cur_trips, cur_interval
+        extra_buses = buses_for(rec_trips) - buses_now
         expected_c = c_max * cur_trips / rec_trips
 
         stop_from = names.get((top["stop_id"], int(top["stop_seq"])), {})
@@ -227,7 +254,11 @@ class BusAdvisor(Advisor):
             f"현재 기점 출발 {cur_trips:.0f}회/시간 (약 {cur_interval:.1f}분 간격), 노선 기준 배차 {min_iv:.0f}~{max_iv:.0f}분",
             f"목표 혼잡도 {CONGESTION_TARGET} 기준 필요 운행 {needed}회/시간",
         ]
-        if action == "increase_limited":
+        if limited_by == "인가대수":
+            rationale.append(f"필요한 만큼 늘리면 버스가 인가대수({authorized}대)를 넘어, 그 안에서 가능한 만큼만 권고"
+                             if action == "increase" else
+                             f"지금도 버스 {buses_now}대가 필요해 인가대수({authorized}대) 안에서는 더 늘릴 수 없음 → 구간 맞춤버스(다람쥐버스) 등 검토")
+        elif action == "increase_limited":
             rationale.append("이미 최소 배차간격 수준이라 간격 단축만으로는 한계 → 구간 맞춤버스(다람쥐버스) 등 검토")
 
         return {
@@ -258,7 +289,9 @@ class BusAdvisor(Advisor):
             },
             "recommendation": {
                 "action": action,
-                "label": ACTION_LABELS[action],
+                "label": "인가대수 한계 - 별도 대책 검토" if (action, limited_by) == ("increase_limited", "인가대수") else ACTION_LABELS[action],
+                "limited_by": limited_by,
+                "buses_needed": buses_for(rec_trips),
                 "recommended_interval_min": round(rec_interval, 1),
                 "recommended_trips_per_hour": round(rec_trips, 1),
                 "extra_buses": int(extra_buses),

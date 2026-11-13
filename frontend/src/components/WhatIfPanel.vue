@@ -49,6 +49,18 @@
         </div>
       </div>
 
+      <div class="fleet" :class="{ over: fleetOver }">
+        <span class="lbl">필요한 버스</span>
+        <b class="num">{{ fleetNeed }}대</b>
+        <span v-if="result.fleet.authorized_buses != null" class="sm num">
+          / 인가 {{ result.fleet.authorized_buses }}대<template v-if="result.fleet.authorized_estimated"> (추정)</template>
+        </span>
+        <span v-if="fleetOver" class="warn-txt">! 인가대수를 넘음</span>
+      </div>
+      <p v-if="fleetOver" class="notice warn" role="alert">
+        이 간격은 버스가 {{ fleetNeed - result.fleet.authorized_buses }}대 모자랍니다. 다른 시간대를 그대로 두면 운행할 수 없습니다.
+      </p>
+
       <div class="sm seg-title">구간별 혼잡도 · 가장 붐비는 곳: {{ result.peak_segment.from_name }}</div>
       <div class="chart-box">
         <v-chart class="chart" :option="option" autoresize />
@@ -105,6 +117,9 @@ const segments = computed(() => {
   const segs = result.value?.segments ?? []
   return isNow.value ? segs.map((s) => ({ ...s, congestion: s.congestion_before, level: s.level_before })) : segs
 })
+// 필요한 버스 대수 (지금 간격에서는 지금 값)
+const fleetNeed = computed(() => (isNow.value ? result.value.fleet.buses_needed_before : result.value.fleet.buses_needed))
+const fleetOver = computed(() => result.value.fleet.authorized_buses != null && fleetNeed.value > result.value.fleet.authorized_buses)
 const delta = computed(() => (result.value ? after.value.max_congestion - result.value.current.max_congestion : 0))
 const deltaText = computed(() => {
   const d = Math.round(delta.value * 100) / 100
@@ -247,6 +262,10 @@ const option = computed(() => {
 .delta { color: var(--ink2); font-weight: 600; }
 .delta.up { color: var(--accent); }
 .meter { margin: 4px 0; }
+.fleet { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.fleet b { font-size: 15px; font-weight: 500; }
+.fleet.over b, .warn-txt { color: var(--accent); }
+.warn-txt { font-size: 12px; font-weight: 600; }
 .seg-title { margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chart-box { position: relative; height: 150px; min-width: 0; }
 .chart { position: absolute; inset: 0; }

@@ -44,8 +44,8 @@ from app.config import (
 from app.core.domain import InvalidRequest
 from app.domains.bus.advisor import BusAdvisor, congestion_level
 from app.domains.bus.calibration import ratio_for
+from app.domains.bus.fleet import HOURS_PER_DAY, checkpoints as _checkpoints, minutes_on_road as _minutes_on_road, on_road as _on_road
 
-HOURS_PER_DAY = 24
 LOAD_SCALE = 100       # 승객 수를 정수로 다루려고 1/100명 단위로 바꿈
 WEIGHT_SCALE = 10      # 가중치는 소수 첫째 자리까지
 ASSUMPTION = ("시간은 버스가 기점을 출발하는 시각 기준. 승객 수는 그대로라고 가정. "
@@ -60,14 +60,6 @@ LIMIT_EDGE = "첫차·막차 시간대 (운행 시간이 한 시간 미만)"
 # ==================================================
 # 1. 입력 모으기
 # ==================================================
-
-def _minutes_on_road(start_hour: int, run_minutes: int, at_minute: int) -> int:
-    """start_hour 시에 고르게 출발한 버스 중 at_minute 시각에 아직 도는 버스의 출발 시간 폭(분)
-
-    at_minute 직전 run_minutes 동안 출발한 버스가 도로 위에 있습니다.
-    """
-    return max(0, min(at_minute, (start_hour + 1) * 60) - max(at_minute - run_minutes, start_hour * 60))
-
 
 def _clock_minutes(value) -> int | None:
     """'04:10' → 250. 값이 없거나 형식이 다르면 None"""
@@ -143,18 +135,6 @@ def collect_inputs(advisor: BusAdvisor, table: dict, routes: list[str], date, ho
             "run_minutes": int(round(float(info.get("run_minutes") or 0))),
         }
     return out
-
-
-def _checkpoints(run_minutes: int, hours: list[int]) -> list[int]:
-    """버스 대수를 확인할 시각(분). 도로 위 버스 수는 정시와 '정시 + 운행시간'에서만 꺾이므로 그 시각만 보면 됩니다."""
-    first, last = min(hours) * 60, (max(hours) + 1) * 60 + run_minutes
-    points = {m for m in range(0, last + 60, 60)} | {h * 60 + run_minutes for h in range(HOURS_PER_DAY)}
-    return sorted(m for m in points if first < m <= last)
-
-
-def _on_road(trips: list[int], run_minutes: int, at_minute: int) -> float:
-    """at_minute 시각에 도로 위에 있는 버스 수"""
-    return sum(trips[h] * _minutes_on_road(h, run_minutes, at_minute) for h in range(HOURS_PER_DAY)) / 60.0
 
 
 def _fleet_limits(route: dict, hours: list[int]) -> dict[int, float]:

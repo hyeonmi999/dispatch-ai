@@ -185,3 +185,40 @@ def test_actual_congestion_is_observed_onboard_per_departure(sample_model):
     trips = departures(day["frame"])[row["hour"]]
     assert day["actual_source"] == "observed"
     assert row["congestion_actual"] == pytest.approx(observed / trips / BUS_CAPACITY)
+
+
+def test_rule_advice_never_exceeds_authorized_buses(sample_model, monkeypatch):
+    """시간대별 권고(규칙)도 인가대수 안에서만 늘림. 넘으면 가능한 만큼만 권고하고 이유를 남김"""
+    # 준비: 인가대수를 지금 필요한 대수보다 1대만 많게 줄인 노선 정보
+    from app.domains.bus.advisor import BusAdvisor, departures_by_hour
+    from app.domains.bus.data import BusDataset
+    from app.domains.bus.fleet import peak_on_road
+    from app.domains.bus.forecaster import BusForecaster
+    dataset = BusDataset("sample")
+    forecaster = BusForecaster(dataset)
+    assert forecaster.load()
+    advisor = BusAdvisor(None, forecaster, dataset)
+    date = forecaster.store.loc[forecaster.store["split"] == "valid", "date"].max()
+    forecaster.store.loc[forecaster.store["date"] == date, "pred"] *= 3     # 증차 권고가 나오도록 예측을 3배로
+    original = dataset.route_info_for
+
+    limited, checked = 0, 0
+    for route in dataset.routes:
+        day = advisor.analyze_day(route, date)
+        info = original(route, day["daytype"])
+        run = int(round(float(info["run_minutes"])))
+        trips = departures_by_hour(day)
+        for hour in range(24):
+            if trips[hour] < 1:
+                continue
+            now = peak_on_road(trips, run, hour)
+            monkeypatch.setattr(dataset, "route_info_for", lambda r, d, info=info, now=now: {**info, "buses": now + 1})
+
+            # 실행
+            rec = advisor.analyze_hour(route, date, hour)["recommendation"]
+
+            # 확인
+            checked += 1
+            assert rec["buses_needed"] <= now + 1
+            limited += rec["limited_by"] == "인가대수"
+    assert checked > 0 and limited > 0, "인가대수에 막히는 시간대가 하나는 있어야 이 테스트가 의미 있음"

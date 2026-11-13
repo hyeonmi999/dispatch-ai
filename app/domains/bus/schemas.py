@@ -52,6 +52,14 @@ class BusIntervalBounds(BaseModel):
     max_interval: float
 
 
+class BusFleetNeed(BaseModel):
+    buses_needed_before: int = Field(..., description="지금 운행에서 도로 위 버스가 가장 많은 순간의 대수")
+    buses_needed: int = Field(..., description="이 시간대만 바꿨을 때의 대수 (나머지 시간대는 지금대로)")
+    authorized_buses: int | None = Field(None, description="인가대수. 모르면 null")
+    authorized_estimated: bool = Field(False, description="True면 원본에 없어 보완한 인가대수")
+    over: bool = Field(..., description="True면 바꾼 뒤 필요한 대수가 인가대수를 넘음")
+
+
 class BusPeakSegment(BaseModel):
     seq: int
     from_name: str
@@ -75,6 +83,7 @@ class BusSimulateResponse(BaseModel):
     current: BusIntervalState
     simulated: BusIntervalState
     bounds: BusIntervalBounds = Field(..., description="이 노선·요일유형에서 허용되는 배차간격 범위")
+    fleet: BusFleetNeed = Field(..., description="필요한 버스 대수와 인가대수")
     peak_segment: BusPeakSegment = Field(..., description="지금 가장 붐비는 구간")
     segments: list[BusSimulatedSegment]
     assumption: str = Field(..., description="계산에 쓴 가정")

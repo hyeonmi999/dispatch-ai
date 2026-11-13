@@ -205,13 +205,13 @@
     "규칙": {
       "cells": 3103,
       "route_days": 160,
-      "overcrowded_cells": 356,
-      "overcrowded_pct": 11.47,
-      "total_trips": 25665.7,
-      "trips_vs_current_pct": 3.47,
-      "changed_cells": 611,
-      "fleet_over_days": 25,
-      "fleet_over_new_days": 25
+      "overcrowded_cells": 376,
+      "overcrowded_pct": 12.12,
+      "total_trips": 25576.7,
+      "trips_vs_current_pct": 3.11,
+      "changed_cells": 605,
+      "fleet_over_days": 15,
+      "fleet_over_new_days": 15
     },
     "그리디": {
       "cells": 3103,

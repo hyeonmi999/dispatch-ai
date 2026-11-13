@@ -90,3 +90,32 @@ def test_unknown_route_and_bad_input(client):
         r = client.post("/api/bus/simulate", json={
             "route": info["route"], "date": info["date"], "hour": HOUR, "interval": 6, **bad})
         assert r.status_code == 422
+
+
+def test_fleet_need_grows_with_shorter_interval(client):
+    """간격을 줄이면 필요한 버스가 늘고, 인가대수를 넘는지 알려 줌"""
+    # 준비
+    info = _route(client)
+
+    # 실행
+    short = _simulate(client, info, info["min_interval"]).json()["fleet"]
+    long = _simulate(client, info, info["max_interval"]).json()["fleet"]
+
+    # 확인: 지금 값은 같고, 자주 보낼수록 더 많이 필요하며, over는 인가대수와의 비교 그대로
+    assert short["buses_needed_before"] == long["buses_needed_before"] > 0
+    assert short["buses_needed"] >= long["buses_needed"]
+    assert short["over"] == (short["authorized_buses"] is not None and short["buses_needed"] > short["authorized_buses"])
+
+
+def test_fleet_need_counts_departures_in_last_run_time():
+    """왕복 120분, 매시간 10회 출발 → 도로 위 20대. 8시만 20회로 늘리면 30대"""
+    import pandas as pd
+    from app.domains.bus.simulator import fleet_need
+    hourly = pd.DataFrame({"hour": range(24), "trips": [10.0] * 24})
+    state = {"info": {"run_minutes": 120, "buses": 25}, "day": {"hourly": hourly}}
+
+    same = fleet_need(state, 8, 10.0)
+    more = fleet_need(state, 8, 20.0)
+
+    assert same["buses_needed_before"] == same["buses_needed"] == 20 and same["over"] is False
+    assert more["buses_needed"] == 30 and more["over"] is True and more["authorized_buses"] == 25
