@@ -29,6 +29,10 @@ class DomainNotImplemented(Exception):
         super().__init__(f"'{domain}' 도메인의 {feature} 기능은 아직 구현되지 않았습니다.")
 
 
+class InvalidRequest(Exception):
+    """형식은 맞지만 받을 수 없는 요청 값 (예: 노선 허용 범위 밖의 배차간격) → API에서 400으로 변환"""
+
+
 class DomainAdapter(ABC):
     """도메인 어댑터 공통 인터페이스"""
 

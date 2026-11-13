@@ -47,6 +47,7 @@ openpyxl                    # 노선 기본정보 xlsx
 scikit-learn
 xgboost
 holidays                    # 한국 공휴일
+ortools                     # 전 노선 배차 최적화 (CP-SAT)
 
 # Document Processing
 pymupdf                     # PDF 텍스트 추출(고속)

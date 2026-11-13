@@ -21,7 +21,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from app.config import BUS_ROUTES, BUS_SAMPLE_ROUTES, INTERIM_DIR, RAW_DIR, SAMPLE_DIR, resolve_data_mode
+from app.config import (
+    BUS_FLEET_OVERRIDES, BUS_ROUTES, BUS_SAMPLE_ROUTES, INTERIM_DIR, RAW_DIR, SAMPLE_DIR, resolve_data_mode,
+)
 
 ROUTE_INFO_XLSX = RAW_DIR / "서울시버스노선기본정보(20260902).xlsx"
 DAYTYPE_SHEETS = {"weekday": "평일공동배차", "saturday": "토요일공동배차", "holiday": "공휴일공동배차"}
@@ -128,6 +130,13 @@ class BusDataset:
     # 2. 구간 재차인원 → long
     # ------------------------------------------------
 
+    @cached_property
+    def section_long(self) -> pd.DataFrame:
+        """구간 재차인원 (서버에서 실제 혼잡도를 볼 때 여러 번 쓰므로 한 번만 읽음). 파일이 없으면 빈 표"""
+        if not (self.dir / "section.parquet").exists():
+            return pd.DataFrame(columns=["date", "route", "stop_id", "to_stop_id", "stop_seq", "hour", "onboard"])
+        return self.load_section_long()
+
     def load_section_long(self) -> pd.DataFrame:
         s = pd.read_parquet(self.dir / "section.parquet")
         ids = {"기준_날짜": "date", "노선명": "route", "출발_정류장_ID": "stop_id",
@@ -180,8 +189,9 @@ class BusDataset:
                 "last_bus": x["막차시간"],
             }))
         info = pd.concat(frames, ignore_index=True)
-        # 인가대수가 비어 있으면 왕복 운행시간 ÷ 배차간격으로 추정
+        # 인가대수가 비어 있으면 따로 확인한 값(BUS_FLEET_OVERRIDES), 그것도 없으면 왕복 운행시간 ÷ 배차간격으로 추정
         info["buses_estimated"] = info["buses"].isna()
+        info["buses"] = info["buses"].fillna(info["route"].map(BUS_FLEET_OVERRIDES))
         info["buses"] = info["buses"].fillna(np.ceil(info["run_minutes"] / info["interval"]))
         return info
 

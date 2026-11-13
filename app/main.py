@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.routes import router as common_router
-from app.core.domain import DomainNotImplemented
+from app.core.domain import DomainNotImplemented, InvalidRequest
 from app.core.llm import LLMConfigError, get_device
 from app.core.registry import registry
 from app.db.database import close_db, init_db
@@ -73,6 +73,11 @@ async def not_implemented_handler(request: Request, exc: DomainNotImplemented):
         "detail": f"'{exc.domain}' 도메인은 아직 구현되지 않았습니다 (인터페이스·스키마만 정의됨, 2차 스프린트 예정).",
         "schema_url": f"/api/{exc.domain}/schema",
     })
+
+
+@app.exception_handler(InvalidRequest)
+async def invalid_request_handler(request: Request, exc: InvalidRequest):
+    return JSONResponse(status_code=400, content={"status": "invalid_request", "detail": str(exc)})
 
 
 @app.exception_handler(LLMConfigError)

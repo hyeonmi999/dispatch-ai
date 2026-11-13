@@ -2,7 +2,7 @@
   <!-- 차트 아래 칸은 높이 제한 + 스크롤 (목록이 길어져도 차트가 찌그러지지 않게) -->
   <div class="chart-box">
     <v-chart v-if="stops.length" class="chart" :option="option" autoresize />
-    <div v-else class="empty muted">이 시간대 운행 데이터가 없습니다</div>
+    <div v-else class="empty muted">이 시간대에 기점에서 출발하는 버스가 없습니다</div>
   </div>
   <div v-if="stops.length" class="chart-foot">
     <template v-if="runs.length">
