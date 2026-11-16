@@ -89,6 +89,8 @@ ai서비스 기말과제/
 │   │   ├── rag.py              KnowledgeBase (문서 로드·조항 분할·FAISS·근거 기반 답변)
 │   │   ├── llm.py              Qwen3(로컬) / OpenAI 선택
 │   │   ├── advisor.py          권고 공통 처리 (근거·신뢰도·needs_review)
+│   │   ├── agent.py            배차 상담 챗봇 (의도 분류·값 뽑기·기능 호출·숫자 검증)
+│   │   ├── prompts.py          시스템 프롬프트 모음
 │   │   └── schemas.py
 │   ├── domains/
 │   │   ├── bus/                ── 1차 스프린트 ──
@@ -96,6 +98,7 @@ ai서비스 기말과제/
 │   │   │   ├── features.py     달력·공휴일·방학·날씨·lag 피처
 │   │   │   ├── forecaster.py   XGBoost 학습·시간순 분할·배치 추론
 │   │   │   ├── advisor.py      혼잡도·권고 규칙
+│   │   │   ├── guide.py        길안내 (직행·환승 한 번, 구간 혼잡도·배차간격)
 │   │   │   ├── schemas.py      버스 요청 스키마
 │   │   │   └── adapter.py      버스 어댑터 + 지도용 API
 │   │   ├── logistics/          인터페이스·스키마만 (501)
@@ -118,13 +121,21 @@ ai서비스 기말과제/
 ### 3-0. 사전 준비
 | 항목 | 비고 |
 |---|---|
-| Python 3.11 | `python3.11 --version` |
+| Python 3.11 또는 3.12 | 교수님 가이드 기준은 3.11. Windows에서는 3.12로 검증 |
 | Node.js 20+ | 프론트엔드 |
 | Docker Desktop | MariaDB |
 | `brew install libomp` | macOS에서 XGBoost 실행에 필요 |
 | (선택) 공공데이터포털 인증키 | 실데이터 날씨·노선 좌표 수집 시 |
 
 ### 3-1. 설치
+**스크립트로 한 번에** (가상환경 → 패키지 → 프론트 패키지 → `.env` → 데이터·모델 확인). 여러 번 실행해도 됩니다.
+```bash
+bash scripts/setup.sh        # macOS
+.\scripts\setup.ps1         # Windows PowerShell
+```
+PowerShell이 스크립트 실행을 막으면 `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1`로 실행합니다.
+
+**직접 설치** (macOS 기준. Windows는 `py -3.11 -m venv .venv` → `.venv\Scripts\Activate`)
 ```bash
 cd "ai서비스 기말과제"
 python3.11 -m venv .venv
@@ -167,6 +178,13 @@ python scripts/build_index.py
 ```
 
 ### 3-4. 서버 실행
+**스크립트로 한 번에** (MariaDB → API 서버 8000 → 화면 5173). 같은 포트를 쓰는 이전 서버가 있으면 알려 주고 멈춥니다.
+```bash
+bash scripts/run.sh          # macOS (Ctrl+C로 함께 종료)
+.\scripts\run.ps1           # Windows PowerShell (API 서버는 새 창)
+```
+
+**직접 실행**
 ```bash
 # MariaDB (Docker Desktop 실행 후)
 cp docker/.env.example docker/.env
@@ -179,13 +197,13 @@ python -m uvicorn app.main:app --port 8000      # API 문서: http://localhost:8
 cd frontend && npm run dev                      # http://localhost:5173
 ```
 - DB가 꺼져 있어도 API는 동작하고 응답에 `"db_saved": false`가 붙습니다.
-- **보안 주의**: `docker/maria_db.yml`은 3379 포트를 모든 네트워크에 열고, `.env.example`의 DB 비밀번호는 공개된 예시 값입니다. 공용 네트워크에서는 포트를 `127.0.0.1:3379:3306`으로 바꾸고 비밀번호를 변경하세요.
-- 로컬 LLM은 첫 질문 때 로드됩니다. 기본 Qwen3-1.7B(~4GB), `.env`의 `LOCAL_MODEL_NAME=Qwen/Qwen3-4B` 권장(~8GB, 처음 한 번 `HF_HUB_OFFLINE=0`으로 다운로드). Apple Silicon MPS에서 답변 약 5~10초.
+- **보안 주의**: `docker/maria_db.yml`은 3379 포트를 내 PC(`127.0.0.1`)에만 엽니다. `.env.example`의 DB 비밀번호는 공개된 예시 값이므로 포트를 외부에 열지 마세요.
+- 로컬 LLM은 첫 질문 때 로드됩니다. 팀 공통으로 Qwen3-1.7B(~4GB) 하나만 씁니다. Apple Silicon MPS에서 답변 약 5~10초.
 - LLM을 `openai`로 고르면 `.env`의 `OPENAI_API_KEY`가 필요합니다. 없으면 400과 함께 안내 문구를 반환합니다.
 
 ### 3-5. 테스트
 ```bash
-python -m pytest -q      # 합성 데이터 기준 17개: 시간순 분할·lag 누수·지표·운행횟수 선택·API 계약·501·OpenAI 키 오류
+python -m pytest -q      # 합성 데이터 기준 42개: 시간순 분할·lag 누수·지표·운행횟수 선택·API 계약·501·OpenAI 키 오류·챗봇(의도 분류·값 뽑기·숫자 검증·LLM 문장 검증)·길안내
 ```
 
 ---
@@ -348,6 +366,9 @@ python scripts/train_bus.py --mode real
 | POST | `/api/{domain}/predict` | 수요 예측 `{"route":"143","date":"2026-10-13","hour":8}` |
 | POST | `/api/{domain}/ask` | 규정 질의응답 `{"question":"…","llm":"qwen","embedding":"bge"}` → 답변 + 출처(문서명·조항·쪽) / 근거 없으면 `found:false`, "찾을 수 없음" |
 | POST | `/api/{domain}/advise` | 배차 권고 `{"route":"143","date":"2026-10-13","hour":7,"use_llm":true}` → 예상 승객·혼잡도·권고 간격·추가 차량·근거·신뢰도·`needs_review` |
+| POST | `/api/{domain}/chat` | 배차 상담 챗봇 `{"message":"160번 10월 28일 오후 3시에 혼잡해?","history":[]}` → 질문 속 단어로 기능(예측·권고·규정·길안내)을 골라 부르고 답변 + 부른 기능(`tools`) + 근거(`sources`) + 숫자 검증 결과(`numbers_verified`) + `needs_review`. 빠진 값은 되묻고(`intent: clarify`), 버스와 무관한 질문은 기능을 부르지 않음. 형식은 `docs/contracts.md` |
+| POST | `/api/bus/guide` | 버스 길안내 `{"origin":"정릉우체국앞","destination":"종로3가역","date":"2026-10-25","hour":8}` (출발 정류장 대신 `lat`·`lng`로 현재 위치를 줄 수 있음) → 직행·환승 한 번 경로, 경로별 탈 구간의 예상 혼잡도·배차간격·대략의 소요 시간, 추천 경로. 이 서비스의 노선만 안내 |
+| GET | `/api/bus/stops/search?q=` | 정류장 이름 검색 (이름·좌표·지나는 노선) |
 | POST | `/api/bus/advise/all` | 선택 시간대 **전체 노선** 권고 `{"date":"2026-10-28","hour":8}` → 증차 필요 → 별도 대책 → 감차 검토 → 유지 순 (규정 근거는 권고 유형별 1회 조회) |
 | GET | `/api/advisories/batches` | 권고 이력 — 시간대별 "전체 노선 권고" 묶음 (권고 유형별 건수, 검토 진행) |
 | GET | `/api/advisories/batches/{id}` | 묶음 1건의 노선별 저장된 권고 (현재 검토 상태 반영) |
@@ -410,6 +431,8 @@ python scripts/train_bus.py --mode real
 | 2. 조항 계층 분할 + 프롬프트 강화 (1.7B) | 6/12 | **8/8** | **0** | 109초 |
 | 3. 2 + **Qwen3-4B** ✅ 채택 | **10/12** | **8/8** | **0** | 128초 |
 | 4. 2 + 1.7B LoRA 파인튜닝 (55건, 3 epoch) | 6/12 | 8/8 | 0 | 48초 |
+| 6. 2 + 프롬프트 규칙 추가 (1.7B) | 10/12 | 7/8 | **1** | - |
+| 7. 6 + 거절 표현 보강 (1.7B) ✅ 팀 공통 모델 | **10/12** | **8/8** | **0** | 203초 (RTX 3050) |
 
 - **1 → 2 (환각 제거)**: 긴 조문을 항(①)·호(1.)·목(가.) 단위로 나누고 상위 문장을 함께 붙여(빵부스러기) 검색 정확도를 높이고,
   프롬프트에 "근거의 대상(시내/시외/택시·지역)이 질문과 다르면 쓰지 말 것", "답할 수 없으면 정해진 문장 그대로" 규칙을 추가.
