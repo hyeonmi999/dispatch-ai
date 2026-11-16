@@ -56,7 +56,7 @@ def main():
     random.seed(42)
     torch.manual_seed(42)
     device = get_device()
-    rows = [json.loads(l) for l in open(PROCESSED_DIR / "lora" / "train.jsonl")]
+    rows = [json.loads(l) for l in open(PROCESSED_DIR / "lora" / "train.jsonl", encoding="utf-8")]
 
     tokenizer = AutoTokenizer.from_pretrained(args.model, token=HF_TOKEN, cache_dir=HF_CACHE_DIR)
     model = AutoModelForCausalLM.from_pretrained(
@@ -109,7 +109,7 @@ def main():
     (out / "train_info.json").write_text(json.dumps({
         "base_model": args.model, "examples": len(examples), "epochs": args.epochs, "lr": args.lr,
         "rank": args.rank, "seconds": round(time.time() - t0),
-    }, ensure_ascii=False, indent=2))
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"✅ LoRA 어댑터 저장: {out}")
 
 

@@ -144,7 +144,7 @@ def main():
     random.shuffle(rows)
     out = PROCESSED_DIR / "lora"
     out.mkdir(parents=True, exist_ok=True)
-    with open(out / "train.jsonl", "w") as f:
+    with open(out / "train.jsonl", "w", encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps({**r, "system": SYSTEM_MESSAGE}, ensure_ascii=False) + "\n")
     print(f"✅ {out / 'train.jsonl'}: 정답형 {len(ANSWERABLE)} + 거절형 {len(REFUSE)} = {len(rows)}건")

@@ -175,8 +175,8 @@ class BusForecaster(Forecaster):
             # 원천 이상으로 학습·평가에서 뺀 노선·날짜 (화면에 사유 표시)
             "excluded_route_days": self.ds.anomalies.to_dict("records"),
         }
-        (self.model_dir / "meta.json").write_text(json.dumps(self.meta, ensure_ascii=False, indent=2))
-        (self.model_dir / "metrics.json").write_text(json.dumps(metrics, ensure_ascii=False, indent=2))
+        (self.model_dir / "meta.json").write_text(json.dumps(self.meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        (self.model_dir / "metrics.json").write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
 
         self.model, self.store = model, feats[STORE_COLS].copy()
         last = self.store["date"].max()
@@ -184,7 +184,7 @@ class BusForecaster(Forecaster):
         forecasts = self._future_frames([last + pd.Timedelta(days=k) for k in range(1, FORECAST_HORIZON_DAYS + 1)])
         store = pd.concat([self.store, forecasts], ignore_index=True)
         store.to_parquet(self.store_path, index=False)
-        (self.model_dir / "meta.json").write_text(json.dumps(self.meta, ensure_ascii=False, indent=2))
+        (self.model_dir / "meta.json").write_text(json.dumps(self.meta, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"      향후 {FORECAST_HORIZON_DAYS}일 예측 {len(forecasts):,}행 생성 (배치 추론, ~{last + pd.Timedelta(days=FORECAST_HORIZON_DAYS):%Y-%m-%d})")
         profile = self._build_load_profile(long, feats)
         profile.to_parquet(self.model_dir / "load_profile.parquet", index=False)
@@ -277,7 +277,7 @@ class BusForecaster(Forecaster):
         """서버용 로드: XGBoost 없이 예측 결과(store)와 메타만 읽습니다."""
         if not (self.store_path.exists() and (self.model_dir / "meta.json").exists()):
             return False
-        self.meta = json.loads((self.model_dir / "meta.json").read_text())
+        self.meta = json.loads((self.model_dir / "meta.json").read_text(encoding="utf-8"))
         self.store = pd.read_parquet(self.store_path)
         self.profile = pd.read_parquet(self.model_dir / "load_profile.parquet")
         print(f"✅ 버스 예측 모델 로드: {self.model_version} | store {len(self.store):,}행")

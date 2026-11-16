@@ -32,7 +32,7 @@ def test_lags_only_use_values_at_least_21_days_old():
 
 
 def test_metrics_saved_with_baseline_and_improvement():
-    m = json.loads((MODELS_DIR / "bus/sample/metrics.json").read_text())
+    m = json.loads((MODELS_DIR / "bus/sample/metrics.json").read_text(encoding="utf-8"))
     for key in ("stop_hour", "route_hour"):
         assert {"model_mae", "baseline_mae", "improvement_pct"} <= set(m[key])
     assert m["stop_hour"]["model_mae"] < m["stop_hour"]["baseline_mae"]

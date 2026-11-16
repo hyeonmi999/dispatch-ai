@@ -52,7 +52,7 @@ def main():
     elif args.adapter:
         llm_module.set_local_model(llm_module.LOCAL_MODEL_NAME, args.adapter)
 
-    items = json.loads((ROOT / "eval/rag_eval.json").read_text())
+    items = json.loads((ROOT / "eval/rag_eval.json").read_text(encoding="utf-8"))
     kb = KnowledgeBase("bus", DOCS_DIR / "bus")
     rows, t0 = [], time.time()
     for it in items:
@@ -75,7 +75,7 @@ def main():
     print("=" * 60, "\n", json.dumps(summary, ensure_ascii=False))
     out = ROOT / "eval/results"
     out.mkdir(parents=True, exist_ok=True)
-    (out / f"{args.name}.json").write_text(json.dumps({"summary": summary, "rows": rows}, ensure_ascii=False, indent=1))
+    (out / f"{args.name}.json").write_text(json.dumps({"summary": summary, "rows": rows}, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 if __name__ == "__main__":
