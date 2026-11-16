@@ -35,21 +35,14 @@ from app.config import (
 )
 from app.core import llm as llm_module
 from app.core.llm import LLMConfigError
+from app.core.prompts import RAG_SYSTEM_MESSAGE as SYSTEM_MESSAGE   # 프롬프트는 prompts.py 한 곳에
 
 EMBEDDING_CHOICES = ("bge", "openai")
 
-SYSTEM_MESSAGE = (
-    "당신은 시내버스 배차 담당자에게 운수 규정을 안내하는 한국어 어시스턴트입니다. 다음 규칙을 반드시 지키세요.\n"
-    "1. [근거]에 적힌 내용만 사용하세요. 근거에 없는 숫자·기준·금액·기관·날짜는 절대 만들지 마세요.\n"
-    "2. 질문의 대상(시내버스·시외버스·마을버스·택시, 서울·다른 지역 등)과 근거의 대상이 다르면 그 근거는 쓰지 마세요.\n"
-    "3. 답변에 사용한 근거 번호를 문장 끝에 [1]처럼 표시하세요.\n"
-    f"4. 질문에 직접 답하는 내용이 [근거]에 없으면 다른 설명 없이 정확히 '{NOT_FOUND_ANSWER}'라고만 쓰세요.\n"
-    "5. 추론 과정은 쓰지 말고 최종 답변만 3~5문장으로 쓰세요."
-)
-
 # LLM이 형식을 어기고 "명시되지 않았습니다"처럼 돌려 말해도 근거 없음으로 처리
 NOT_FOUND_HINTS = ("찾을 수 없", "명시되지 않", "언급되지 않", "나와 있지 않", "포함되어 있지 않",
-                   "정보가 없", "확인할 수 없", "규정되어 있지 않", "제공되지 않")
+                   "정보가 없", "확인할 수 없", "규정되어 있지 않", "제공되지 않",
+                   "발표되지 않", "답변할 수 없", "답할 수 없")
 
 
 # ==================================================
@@ -276,7 +269,7 @@ class KnowledgeBase:
             out["documents"] = len([p for p in self.docs_dir.glob("*") if p.suffix.lower() in {".pdf", ".txt"}])
         for emb in EMBEDDING_CHOICES:
             manifest = self.index_dir(emb) / "manifest.json"
-            out["indexes"][emb] = json.loads(manifest.read_text()) if manifest.exists() else None
+            out["indexes"][emb] = json.loads(manifest.read_text(encoding="utf-8")) if manifest.exists() else None
         return out
 
     # ------------------------------------------------
@@ -307,7 +300,7 @@ class KnowledgeBase:
             "fingerprint": docs_fingerprint(self.docs_dir),
             "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         }
-        (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+        (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"✅ [{self.domain}/{embedding}] FAISS 인덱스 생성: {len(documents)} chunks ({time.time() - t0:.0f}s)")
         return store
 
@@ -322,7 +315,7 @@ class KnowledgeBase:
 
             out = self.index_dir(embedding)
             manifest = out / "manifest.json"
-            fresh = manifest.exists() and json.loads(manifest.read_text()).get("fingerprint") == docs_fingerprint(self.docs_dir)
+            fresh = manifest.exists() and json.loads(manifest.read_text(encoding="utf-8")).get("fingerprint") == docs_fingerprint(self.docs_dir)
 
             if fresh:
                 # index.pkl은 이 프로젝트에서 직접 생성한 파일만 로드합니다 (pickle 역직렬화)

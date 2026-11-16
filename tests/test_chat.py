@@ -1,0 +1,138 @@
+# 배차 상담 챗봇 (F-25): 맞는 기능을 고르는지, 숫자가 기능 결과와 같은지
+import datetime as dt
+
+from app.core.agent import classify, extract, verify_numbers
+
+ROUTES = ["143", "272", "160", "150", "271"]
+TODAY = dt.date(2026, 11, 16)
+
+
+def meta(client):
+    m = client.get("/api/bus/meta").json()
+    return m["routes"][0]["route"], m["dates"]["max_date"]
+
+
+def chat(client, message, **extra):
+    r = client.post("/api/bus/chat", json={"message": message, **extra})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+# ==================================================
+# 1. API: 의도별 기능 호출
+# ==================================================
+
+def test_chat_predict_uses_numbers_from_predict(client):
+    route, date = meta(client)
+    body = chat(client, f"{route}번 {date} 8시 몇 명 타?")
+    assert body["intent"] == "predict"
+    assert body["tools"] == [{"name": "predict", "args": {"route": route, "date": date, "hour": 8}, "ok": True}]
+    assert body["numbers_verified"] is True and body["needs_review"] is True
+
+    predicted = client.post("/api/bus/predict", json={"route": route, "date": date, "hour": 8}).json()
+    pred = next(h["pred"] for h in predicted["hourly"] if h["hour"] == 8)
+    assert f"{int(round(pred)):,}명" in body["answer"]
+    assert predicted["congestion"]["level"] in body["answer"]
+
+
+def test_chat_advise_has_sources(client):
+    route, date = meta(client)
+    body = chat(client, f"{route}번 {date} 8시 증차해야 해?")
+    assert body["intent"] == "advise" and body["tools"][0]["name"] == "advise"
+    assert body["sources"] and body["numbers_verified"] is True
+
+
+def test_chat_regulation_question_goes_to_ask(client):
+    body = chat(client, "노선버스 운행횟수를 늘리는 사업계획 변경 절차는?")
+    assert body["intent"] == "ask" and body["tools"][0]["name"] == "ask"
+    assert all(s["document"] and s["article"] for s in body["sources"])
+    assert body["llm"] is None      # use_llm 기본값 False: 근거 조항만
+
+
+def test_chat_asks_back_when_value_missing(client):
+    route, _ = meta(client)
+    body = chat(client, f"{route}번 몇 명 타?")
+    assert body["intent"] == "clarify" and body["tools"] == []
+    assert "날짜" in body["answer"]
+
+
+def test_chat_follow_up_keeps_route_and_date(client):
+    route, date = meta(client)
+    history = [{"role": "user", "content": f"{route}번 {date} 8시 몇 명 타?"},
+               {"role": "assistant", "content": "..."}]
+    body = chat(client, "그럼 9시는?", history=history)
+    assert body["intent"] == "predict"
+    assert body["tools"][0]["args"] == {"route": route, "date": date, "hour": 9}
+
+
+def test_chat_follow_up_can_switch_to_advise(client):
+    # 재현: 노선 없이 "증차해야 해?"라고 이어 물으면 규정 질의로 잘못 분류됐음 (docs/lessons.md)
+    route, date = meta(client)
+    history = [{"role": "user", "content": f"{route}번 {date} 15시에 혼잡해?"}]
+    body = chat(client, "그럼 8시에 증차해야 해?", history=history)
+    assert body["intent"] == "advise"
+    assert body["tools"][0]["args"] == {"route": route, "date": date, "hour": 8}
+
+
+def test_chat_out_of_scope_calls_nothing(client):
+    body = chat(client, "오늘 점심 메뉴 추천해줘")
+    assert body["intent"] == "out_of_scope" and body["tools"] == [] and body["sources"] == []
+
+
+# ==================================================
+# 2. API: 오류
+# ==================================================
+
+def test_chat_unknown_route_answers_with_reason(client):
+    _, date = meta(client)
+    body = chat(client, f"9999번 {date} 8시 몇 명 타?")
+    assert body["tools"][0]["ok"] is False
+    assert "9999" in body["answer"]
+
+
+def test_chat_rejects_empty_and_too_long_message(client):
+    assert client.post("/api/bus/chat", json={"message": ""}).status_code == 422
+    assert client.post("/api/bus/chat", json={"message": "가" * 501}).status_code == 422
+
+
+def test_chat_not_implemented_domain(client):
+    r = client.post("/api/logistics/chat", json={"message": "내일 물량 얼마나 돼?"})
+    assert r.status_code == 501 and r.json()["status"] == "not_implemented"
+
+
+# ==================================================
+# 3. 규칙: 의도 분류 · 값 뽑기 · 숫자 검증
+# ==================================================
+
+def test_classify_keywords():
+    cases = [
+        ("160번 내일 오후 3시 붐벼?", "predict"),
+        ("143번 내일 8시 증차해야 해?", "advise"),
+        ("버스 늘리려면 뭐 해야 돼?", "ask"),
+        ("서울시 버스 혼잡도는 어떻게 구분하나요?", "ask"),
+        ("150번 내일 8시 간격을 5분으로 바꾸면?", "simulate"),
+        ("내일 출근 시간 전체 노선 최적화 해줘", "optimize"),
+        ("그럼 4시는?", None),
+    ]
+    for message, expected in cases:
+        has_route = "route" in extract(message, ROUTES, TODAY)
+        assert classify(message, has_route) == expected, message
+
+
+def test_extract_route_date_hour_interval():
+    assert extract("160번 내일 오후 3시 붐벼?", ROUTES, TODAY) == {"route": "160", "date": "2026-11-17", "hour": 15}
+    assert extract("271 모레 몇 명 타?", ROUTES, TODAY) == {"route": "271", "date": "2026-11-18"}
+    assert extract("10월 28일 143번 8시", ROUTES, TODAY) == {"route": "143", "date": "2026-10-28", "hour": 8}
+    # "3시 30분"의 분은 배차간격이 아님
+    assert extract("2026-11-20 272번 3시 30분 승객", ROUTES, TODAY) == {"route": "272", "date": "2026-11-20", "hour": 3}
+    assert extract("150번 간격을 5분으로 바꾸면?", ROUTES, TODAY) == {"route": "150", "interval": 5.0}
+    assert extract("퇴근 시간에 붐벼?", ROUTES, TODAY) == {"hour": 18}
+    # 날짜·시간의 숫자를 노선으로 잘못 읽지 않음
+    assert "route" not in extract("11월 20일 15시 기준", ROUTES + ["15", "20"], TODAY)
+
+
+def test_verify_numbers_rejects_invented_values():
+    facts = {"route": "160", "date": "2026-11-17", "hour": 15, "pred": 1234.0, "congestion": 0.618}
+    assert verify_numbers("160번 2026-11-17 15시 예상 승차는 1,234명, 혼잡도 0.61입니다.", facts)
+    assert not verify_numbers("160번 15시 예상 승차는 1,300명입니다.", facts)
+    assert not verify_numbers("혼잡도는 0.75입니다.", facts)

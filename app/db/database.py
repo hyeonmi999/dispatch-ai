@@ -92,6 +92,46 @@ class QALog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class ChatLog(Base):
+    """배차 상담 챗봇 대화 1건 (F-25). 어떤 기능을 불렀는지, 숫자 검증을 통과했는지 남김"""
+    __tablename__ = "chat_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    domain: Mapped[str] = mapped_column(String(30), index=True)
+    question: Mapped[str] = mapped_column(Text)
+    answer: Mapped[str] = mapped_column(Text)
+    intent: Mapped[str] = mapped_column(String(20), index=True)
+    slots: Mapped[dict | None] = mapped_column(JSON, nullable=True)       # {"route": "160", "date": "...", "hour": 15}
+    tools: Mapped[list | None] = mapped_column(JSON, nullable=True)       # [{"name": "predict", "args": {...}, "ok": true}]
+    sources: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    numbers_verified: Mapped[bool | None] = mapped_column(Boolean, nullable=True)   # 숫자를 대조하지 않는 답은 NULL
+    llm: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    llm_rejected: Mapped[bool] = mapped_column(Boolean, default=False)    # LLM 문장의 숫자가 달라 버렸으면 True
+    elapsed_sec: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class OptimizationRun(Base):
+    """전 노선 배차 최적화 1회 실행 (F-13). 결과 이력 보기·가중치만 바꾼 결과 비교에 사용"""
+    __tablename__ = "optimization_run"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    domain: Mapped[str] = mapped_column(String(30), index=True)
+    target_date: Mapped[datetime] = mapped_column(Date, index=True)
+    hours: Mapped[list | None] = mapped_column(JSON, nullable=True)       # [6, 7, 8, 9]
+    weights: Mapped[dict | None] = mapped_column(JSON, nullable=True)     # {"overload": 10, "trips": 1, "change": 0}
+    method: Mapped[str] = mapped_column(String(20), default="")
+    status: Mapped[str] = mapped_column(String(20), default="")
+    solve_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    overcrowded_before: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    overcrowded_after: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    extra_trips: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    kpi: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    plan: Mapped[list | None] = mapped_column(JSON, nullable=True)        # 노선·시간별 권고 운행횟수
+    binding: Mapped[list | None] = mapped_column(JSON, nullable=True)     # 버스가 모자라 더 못 늘린 곳
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 # ==================================================
 # Engine / Session
 # ==================================================

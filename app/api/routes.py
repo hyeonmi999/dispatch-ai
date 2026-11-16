@@ -8,6 +8,7 @@
 #   POST /api/{domain}/predict         수요 예측
 #   POST /api/{domain}/ask             규정 질의응답 (RAG)
 #   POST /api/{domain}/advise          배차 권고 (예측 + 규정 근거, needs_review)
+#   POST /api/{domain}/chat            배차 상담 챗봇 (질문 → 맞는 기능 호출 → 답변)
 #   GET  /api/advisories               권고 이력 (MariaDB, 개별)
 #   GET  /api/advisories/batches       권고 이력 (시간대별 전체 노선 묶음)
 #   POST /api/advisories/{id}/review   담당자 검토 결과 기록
@@ -16,10 +17,11 @@ from fastapi import APIRouter, Body, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import ValidationError
 
+from app.core import agent
 from app.core.domain import DomainAdapter, DomainNotImplemented
 from app.core.llm import llm_status
 from app.core.registry import registry
-from app.core.schemas import AskRequest, LLMOptions, ReviewRequest
+from app.core.schemas import AskRequest, ChatRequest, ChatResponse, LLMOptions, ReviewRequest
 from app.db import database as db
 from app.db import repository as repo
 
@@ -111,7 +113,23 @@ async def advise(domain: str, payload: dict = Body(..., examples=[{"route": "143
 
 
 # ==================================================
-# 5. 권고 이력 / 담당자 검토
+# 5. 배차 상담 챗봇
+# ==================================================
+
+@router.post("/{domain}/chat", response_model=ChatResponse, tags=["공통"], summary="배차 상담 챗봇 (needs_review)")
+async def chat(domain: str, req: ChatRequest):
+    adapter = get_domain(domain)
+    if not adapter.implemented:
+        raise DomainNotImplemented(domain, "chat")
+    history = [turn.model_dump() for turn in req.history]
+    location = req.location.model_dump() if req.location else None
+    result = await run_in_threadpool(agent.run, adapter, req.message, history, req.llm, req.embedding, req.use_llm, location)
+    chat_id = await repo.save_chat(domain, req.message, result)
+    return {**result, "domain": domain, "chat_id": chat_id, "db_saved": chat_id is not None}
+
+
+# ==================================================
+# 6. 권고 이력 / 담당자 검토
 # ==================================================
 
 @router.get("/advisories", tags=["이력"])
