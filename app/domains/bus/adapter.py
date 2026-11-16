@@ -10,17 +10,22 @@
 import datetime as dt
 import subprocess
 import sys
+from functools import cached_property
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 
+from app.config import GUIDE_SEARCH_LIMIT_MAX
 from app.core.domain import DomainAdapter
 from app.domains.bus.advisor import BusAdvisor, _num, congestion_level
 from app.domains.bus.data import BusDataset
 from app.domains.bus.forecaster import BusForecaster
+from app.domains.bus.guide import BusGuide, GuideError
 from app.db import repository as repo
-from app.domains.bus.schemas import BusAdviseAllRequest, BusAdviseRequest, BusPredictRequest
+from app.domains.bus.schemas import (
+    BusAdviseAllRequest, BusAdviseRequest, BusGuideRequest, BusGuideResponse, BusPredictRequest, BusStopSearchItem,
+)
 
 
 class BusAdapter(DomainAdapter):
@@ -57,6 +62,25 @@ class BusAdapter(DomainAdapter):
         out["data_mode"] = self.dataset.mode
         out["model_ready"] = self.forecaster.ready()
         return out
+
+    def targets(self) -> list[str]:
+        return list(self.dataset.routes)
+
+    # ------------------------------------------------
+    # 길안내 (F-28): 현재 위치·정류장 이름 → 직행·1회 환승 경로
+    # ------------------------------------------------
+
+    @cached_property
+    def guide_engine(self) -> BusGuide:
+        return BusGuide(self.advisor, self.dataset.routes)
+
+    def guide(self, payload: dict) -> dict:
+        req = BusGuideRequest(**payload)
+        self._require_model()
+        try:
+            return self.guide_engine.find(req.date, req.hour, req.destination, req.origin, req.lat, req.lng)
+        except ValueError as e:      # GuideError 포함 (없는 정류장, 예측 범위 밖 날짜 등)
+            raise HTTPException(422, str(e))
 
     def _require_model(self):
         if not self.forecaster.ready():
@@ -106,6 +130,11 @@ class BusAdapter(DomainAdapter):
             fh = frame[frame["hour"] == req.hour].sort_values("stop_seq")
             names = self.advisor.stop_names(req.route)
             out["hour"] = req.hour
+            # 이 시간대 가장 붐비는 구간의 혼잡도 (챗봇·화면이 승차 예측과 함께 보여 줌)
+            hrow = day["hourly"][day["hourly"]["hour"] == req.hour]
+            c = hrow["max_congestion"].iloc[0] if not hrow.empty else None
+            has_c = c is not None and pd.notna(c)
+            out["congestion"] = {"ratio": _num(c, 3) if has_c else None, "level": congestion_level(c) if has_c else None}
             out["stops"] = [
                 {"seq": int(r.stop_seq), "stop_id": r.stop_id,
                  "name": names.get((r.stop_id, int(r.stop_seq)), {}).get("name", r.stop_id),
@@ -244,5 +273,13 @@ class BusAdapter(DomainAdapter):
                 return {"date": f"{date:%Y-%m-%d}", **self.advisor.overview(self.dataset.routes, date, hour)}
             except ValueError as e:
                 raise HTTPException(422, str(e))
+
+        @r.get("/stops/search", response_model=list[BusStopSearchItem], summary="정류장 이름 검색 (길안내 입력용)")
+        def stop_search(q: str = Query(..., min_length=1, max_length=50), limit: int = Query(10, ge=1, le=GUIDE_SEARCH_LIMIT_MAX)):
+            return self.guide_engine.search(q, limit)
+
+        @r.post("/guide", response_model=BusGuideResponse, summary="버스 길안내 (직행·1회 환승, 혼잡도 반영)")
+        def guide_route(req: BusGuideRequest):
+            return self.guide(req.model_dump())
 
         return r

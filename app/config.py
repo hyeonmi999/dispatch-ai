@@ -5,12 +5,19 @@
 # 값은 .env로 덮어쓸 수 있습니다.
 
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 # Tokenizer 병렬 처리 관련 경고 방지
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+# Windows에서 출력을 파일·파이프로 보내면 기본 인코딩(cp949)이 로그의 이모지를 못 써서
+# 서버·스크립트가 UnicodeEncodeError로 멈춤 → 못 쓰는 글자만 '?'로 바꿔 계속 실행
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(errors="replace")
 
 ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / ".env")
@@ -70,6 +77,14 @@ RAG_TOP_K = 4
 RAG_SCORE_THRESHOLD = {"bge": 0.55, "openai": 0.35}
 NOT_FOUND_ANSWER = "제공된 규정 문서에서 근거를 찾을 수 없음"
 
+# 목록 API가 한 번에 돌려주는 최대 개수
+LIST_LIMIT_MAX = 100
+
+# 배차 상담 챗봇 (app/core/agent.py)
+CHAT_MESSAGE_MAX = 500      # 질문 한 건의 최대 글자 수
+CHAT_HISTORY_MAX = 10       # 이어 묻기에 쓰는 이전 대화 개수 상한
+CHAT_HISTORY_ITEM_MAX = 2000  # 이전 대화 한 건의 최대 글자 수
+
 
 # ==================================================
 # 4. 데이터 모드
@@ -113,6 +128,15 @@ CONGESTION_LEVELS = [
 CONGESTION_HIGH = 0.80     # 이 이상이면 배차간격 단축(증차) 권고
 CONGESTION_LOW = 0.25      # 이 미만이면 감차 검토 권고
 CONGESTION_TARGET = 0.70   # 권고 간격 계산 시 목표 혼잡도
+
+# 길안내 (app/domains/bus/guide.py)
+GUIDE_WALK_M = 500             # 이 거리 안의 정류장을 출발 후보로 봄 (걸어서 약 7분)
+GUIDE_TRANSFER_M = 150         # 갈아탈 때 걸어서 옮길 수 있는 정류장 사이 거리
+GUIDE_WALK_M_PER_MIN = 70      # 걷는 속도 (분당 m)
+GUIDE_MAX_OPTIONS = 3          # 보여 줄 경로 수
+GUIDE_NEAR_STOPS = 5           # 주변에 정류장이 없을 때 살펴볼 가까운 정류장 수
+GUIDE_CROWD_TRADEOFF_MIN = 10  # 덜 붐비는 경로가 이 시간(분) 이하로 더 걸리면 그쪽을 추천
+GUIDE_SEARCH_LIMIT_MAX = 20    # 정류장 검색 결과 최대 개수
 
 # 학기 중/방학 구분 (서울 초중고 대략 기준, 계절성 피처)
 SCHOOL_VACATIONS = [

@@ -67,6 +67,14 @@ class DomainAdapter(ABC):
     def advise(self, payload: dict, llm: str, embedding: str, use_llm: bool) -> dict:
         """예측 + 규정 근거를 결합한 배차 권고"""
 
+    def guide(self, payload: dict) -> dict:
+        """길안내 (출발·도착 → 경로). 지원하지 않는 도메인은 501"""
+        raise DomainNotImplemented(self.name, "guide")
+
+    def targets(self) -> list[str]:
+        """챗봇이 질문에서 찾을 대상 이름 (버스: 노선번호). 없으면 빈 목록"""
+        return []
+
     def router(self) -> APIRouter | None:
         """도메인 전용 부가 API (예: 버스 지도용 노선 좌표). 없으면 None"""
         return None
