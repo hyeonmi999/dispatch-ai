@@ -11,16 +11,17 @@ export const TITLES = {
   status: '배차 현황',
   advice: '배차 권고',
   qa: '규정 Q&A',
+  chat: '배차 상담 챗봇',
   metrics: '모델 성능',
   history: '권고 이력',
 }
 
 // 켤 때의 기본 크기 / 줄일 수 있는 최소 크기 [열, 행]
 const DEFAULT_SIZE = {
-  routes: [3, 7], map: [6, 9], forecast: [3, 6], stops: [3, 6], status: [3, 8], advice: [3, 15], qa: [4, 10], metrics: [4, 9], history: [3, 8],
+  routes: [3, 7], map: [6, 9], forecast: [3, 6], stops: [3, 6], status: [3, 8], advice: [3, 15], qa: [4, 10], metrics: [4, 9], history: [3, 8], chat: [4, 12],
 }
 export const MIN_SIZE = {
-  routes: [2, 4], map: [3, 5], forecast: [3, 5], stops: [3, 5], status: [2, 5], advice: [3, 5], qa: [3, 5], metrics: [3, 5], history: [2, 4],
+  routes: [2, 4], map: [3, 5], forecast: [3, 5], stops: [3, 5], status: [2, 5], advice: [3, 5], qa: [3, 5], metrics: [3, 5], history: [2, 4], chat: [3, 6],
 }
 
 export const PRESETS = [
@@ -28,6 +29,7 @@ export const PRESETS = [
   { id: 'ana', name: '분석', panels: { forecast: [0, 0, 6, 7], stops: [6, 0, 6, 7], metrics: [0, 7, 5, 9], routes: [5, 7, 4, 9], status: [9, 7, 3, 9] } },
   { id: 'demo', name: '발표', panels: { map: [0, 0, 8, 15], status: [8, 0, 4, 6], metrics: [8, 6, 4, 9] } },
   { id: 'rule', name: '규정 검토', panels: { advice: [0, 0, 5, 15], qa: [5, 0, 4, 15], history: [9, 0, 3, 15] } },
+  { id: 'chat', name: '상담', panels: { chat: [0, 0, 5, 15], map: [5, 0, 7, 9], forecast: [5, 9, 4, 6], status: [9, 9, 3, 6] } },
 ]
 
 export function makeLayout(presetId) {

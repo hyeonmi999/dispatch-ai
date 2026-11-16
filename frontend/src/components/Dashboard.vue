@@ -143,6 +143,10 @@
           <AskPanel domain="bus" :llm="llm" :embedding="embedding" />
         </template>
 
+        <template #chat>
+          <ChatPanel domain="bus" :llm="llm" :embedding="embedding" :geometries="geometries" @goto="goto" />
+        </template>
+
         <template #metrics>
           <MetricsCard :metrics="meta.metrics" />
         </template>
@@ -175,6 +179,7 @@ import { isNight, toggleTheme } from '../theme'
 import AdvicePanel from './AdvicePanel.vue'
 import AppLogo from './AppLogo.vue'
 import AskPanel from './AskPanel.vue'
+import ChatPanel from './ChatPanel.vue'
 import ComingSoon from './ComingSoon.vue'
 import ForecastChart from './ForecastChart.vue'
 import HistoryPanel from './HistoryPanel.vue'

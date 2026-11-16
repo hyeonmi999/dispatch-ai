@@ -25,6 +25,7 @@ export const api = {
   predict: (domain, body) => http.post(`/${domain}/predict`, body).then((r) => r.data),
   ask: (domain, body) => http.post(`/${domain}/ask`, body).then((r) => r.data),
   advise: (domain, body) => http.post(`/${domain}/advise`, body).then((r) => r.data),
+  chat: (domain, body) => http.post(`/${domain}/chat`, body).then((r) => r.data),
   adviseAll: (body) => http.post('/bus/advise/all', body).then((r) => r.data),
   advisoryBatches: (domain) => http.get('/advisories/batches', { params: { domain, limit: 30 } }).then((r) => r.data),
   advisoryBatch: (id) => http.get(`/advisories/batches/${id}`).then((r) => r.data),
