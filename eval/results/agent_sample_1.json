@@ -1,0 +1,396 @@
+{
+ "summary": {
+  "name": "agent_sample_1",
+  "file": "eval/agent_eval.sample.json",
+  "today": "2026-10-20",
+  "correct": "15/15",
+  "accuracy": 1.0,
+  "numbers_failed": 0,
+  "seconds": 13.0
+ },
+ "rows": [
+  {
+   "id": "S1",
+   "q": "160번 10월 21일 오후 3시에 혼잡해?",
+   "tools": [
+    "predict"
+   ],
+   "slots": {
+    "route": "160",
+    "hour": 15
+   },
+   "got_intent": "predict",
+   "got_tools": [
+    {
+     "name": "predict",
+     "args": {
+      "route": "160",
+      "date": "2026-10-21",
+      "hour": 15
+     },
+     "ok": true
+    }
+   ],
+   "got_slots": {
+    "route": "160",
+    "date": "2026-10-21",
+    "hour": 15
+   },
+   "numbers_verified": true,
+   "answer": "🚌 160번 2026-10-21 15시 예상 승차는 2,194명입니다. 작년 같은 요일·시간대는 2,136명이었습니다. 실제 승차는 2,041명이었습니다.\n🔴 가장 붐비는 구간의 혼잡도는 1.14(매우혼잡)입니다.",
+   "ok": true,
+   "wrong": []
+  },
+  {
+   "id": "S2",
+   "q": "143번 10월 21일 하루에 몇 명 타?",
+   "tools": [
+    "predict"
+   ],
+   "slots": {
+    "route": "143"
+   },
+   "got_intent": "predict",
+   "got_tools": [
+    {
+     "name": "predict",
+     "args": {
+      "route": "143",
+      "date": "2026-10-21"
+     },
+     "ok": true
+    }
+   ],
+   "got_slots": {
+    "route": "143",
+    "date": "2026-10-21"
+   },
+   "numbers_verified": true,
+   "answer": "🚌 143번 2026-10-21 하루 예상 승차는 41,724명입니다. 작년 같은 요일은 40,624명이었습니다. 실제 승차는 41,270명이었습니다.\n⏰ 승차가 가장 많은 시간대는 8시(3,333명)입니다.",
+   "ok": true,
+   "wrong": []
+  },
+  {
+   "id": "S3",
+   "q": "271번 10월 21일 8시 증차해야 해?",
+   "tools": [
+    "advise"
+   ],
+   "slots": {
+    "route": "271",
+    "hour": 8
+   },
+   "got_intent": "advise",
+   "got_tools": [
+    {
+     "name": "advise",
+     "args": {
+      "route": "271",
+      "date": "2026-10-21",
+      "hour": 8
+     },
+     "ok": true
+    }
+   ],
+   "got_slots": {
+    "route": "271",
+    "date": "2026-10-21",
+    "hour": 8
+   },
+   "numbers_verified": true,
+   "answer": "✅ 271번 2026-10-21 8시 권고는 '현행 유지'입니다.\n🚌 지금은 약 6분 간격(시간당 10회)이고,\n🟡 가장 붐비는 구간(중랑초등학교 → 서울우유앞)의 혼잡도는 0.64(보통)입니다.\n지금 배차간격을 유지해도 됩니다.\n📝 최종 결정은 담당자 검토가 필요합니다.",
+   "ok": true,
+   "wrong": []
+  },
+  {
+   "id": "S4",
+   "q": "150번 10월 21일 18시 배차간격 조정 권고해줘",
+   "tools": [
+    "advise"
+   ],
+   "slots": {
+    "route": "150",
+    "hour": 18
+   },
+   "got_intent": "advise",
+   "got_tools": [
+    {
+     "name": "advise",
+     "args": {
+      "route": "150",
+      "date": "2026-10-21",
+      "hour": 18
+     },
+     "ok": true
+    }
+   ],
+   "got_slots": {
+    "route": "150",
+    "date": "2026-10-21",
+    "hour": 18
+   },
+   "numbers_verified": true,
+   "answer": "✅ 150번 2026-10-21 18시 권고는 '현행 유지'입니다.\n🚌 지금은 약 10분 간격(시간당 6회)이고,\n🟡 가장 붐비는 구간(노량진수산시장.CTS기독교TV → 현대아파트.유한양행)의 혼잡도는 0.48(보통)입니다.\n지금 배차간격을 유지해도 됩니다.\n📝 최종 결정은 담당자 검토가 필요합니다.",
+   "ok": true,
+   "wrong": []
+  },
+  {
+   "id": "S5",
+   "q": "버스 늘리려면 뭐 해야 돼?",
+   "tools": [
+    "ask"
+   ],
+   "got_intent": "ask",
+   "got_tools": [
+    {
+     "name": "ask",
+     "args": {
+      "question": "버스 늘리려면 뭐 해야 돼?"
+     },
+     "ok": true
+    }
+   ],
+   "got_slots": {},
+   "numbers_verified": null,
+   "answer": "📚 관련 조항 4건을 찾았습니다. 아래 근거를 확인하세요.\n[1] 여객자동차 운수사업법 시행규칙 · 제15조(시외버스운송사업의 자동차 대수 산정기준)\n[2] 서울시 보도자료 - 콩나물 버스·지하철은 이제 그만! 대중교통 혼잡 줄이는 해법 · 본문 10\n[3] 여객자동차 운수사업법 시행규칙 · 제33조(사업계획의 변경신고) ① 제2호 가목\n[4] 여객자동차 운수사업법 시행규칙 · 제5조(협의ㆍ조정신청 등) ① 제2호",
+   "ok": true,
+   "wrong": []
+  },
+  {
+   "id": "S6",
+   "q": "서울시 버스 혼잡도는 어떻게 구분하나요?",
+   "tools": [
+    "ask"
+   ],
+   "got_intent": "ask",
+   "got_tools": [
+    {
+     "name": "ask",
+     "args": {
+      "question": "서울시 버스 혼잡도는 어떻게 구분하나요?"
+     },
+     "ok": true
+    }
+   ],
+   "got_slots": {},
+   "numbers_verified": null,
+   "answer": "📚 관련 조항 4건을 찾았습니다. 아래 근거를 확인하세요.\n[1] 서울시 보도자료 - 서울시 국내최초 버스혼잡도 안내 서비스 개시 · 본문 2\n[2] 서울시 보도자료 - 서울시 국내최초 버스혼잡도 안내 서비스 개시 · 본문 1\n[3] 서울시 보도자료 - 콩나물 버스·지하철은 이제 그만! 대중교통 혼잡 줄이는 해법 · 본문 2\n[4] 서울시 보도자료 - 서울 시내버스, 평일 22시 이후 야간 운행 정상화 · 본문 2",
+   "ok": true,
+   "wrong": []
+  },
+  {
+   "id": "S7",
+   "q": "시내버스 운수종사자 휴식시간 규정 알려줘",
+   "tools": [
+    "ask"
+   ],
+   "got_intent": "ask",
+   "got_tools": [
+    {
+     "name": "ask",
+     "args": {
+      "question": "시내버스 운수종사자 휴식시간 규정 알려줘"
+     },
+     "ok": true
+    }
+   ],
+   "got_slots": {},
+   "numbers_verified": null,
+   "answer": "📚 관련 조항 4건을 찾았습니다. 아래 근거를 확인하세요.\n[1] 여객자동차 운수사업법 시행규칙 · 제44조의6(운수종사자의 휴식시간 보장)\n[2] 여객자동차 운수사업법 · 제21조(운송사업자의 준수 사항) ⑪\n[3] 서울특별시 시내버스 준공영제 운영에 관한 조례 · 제17조(안전운행 증진을 위한 시책)\n[4] 서울특별시 시내버스 재정지원 및 안전 운행기준에 관한 조례 · 제11조(안전운행 방안)",
+   "ok": true,
+   "wrong": []
+  },
+  {
+   "id": "S8",
+   "q": "271번 몇 명 타?",
+   "tools": [],
+   "intent": "clarify",
+   "got_intent": "clarify",
+   "got_tools": [],
+   "got_slots": {
+    "route": "271"
+   },
+   "numbers_verified": null,
+   "answer": "🙋 다음 값을 알려 주세요: 날짜(예: 내일, 11월 20일)",
+   "ok": true,
+   "wrong": []
+  },
+  {
+   "id": "S9",
+   "q": "오늘 점심 메뉴 추천해줘",
+   "tools": [],
+   "intent": "out_of_scope",
+   "got_intent": "out_of_scope",
+   "got_tools": [],
+   "got_slots": {
+    "date": "2026-10-20"
+   },
+   "numbers_verified": null,
+   "answer": "🙏 버스 승객 예측, 배차 권고, 운수 규정에 대한 질문에만 답할 수 있어요.",
+   "ok": true,
+   "wrong": []
+  },
+  {
+   "id": "S10",
+   "q": "주식 뭐 사야 돼?",
+   "tools": [],
+   "intent": "out_of_scope",
+   "got_intent": "out_of_scope",
+   "got_tools": [],
+   "got_slots": {},
+   "numbers_verified": null,
+   "answer": "🙏 버스 승객 예측, 배차 권고, 운수 규정에 대한 질문에만 답할 수 있어요.",
+   "ok": true,
+   "wrong": []
+  },
+  {
+   "id": "S11",
+   "q": "정릉우체국앞에서 종로3가역 어떻게 가? 10월 21일 8시",
+   "tools": [
+    "guide"
+   ],
+   "slots": {
+    "origin": "정릉우체국앞",
+    "hour": 8
+   },
+   "got_intent": "guide",
+   "got_tools": [
+    {
+     "name": "guide",
+     "args": {
+      "origin": "정릉우체국앞",
+      "destination": "종로3가역",
+      "date": "2026-10-21",
+      "hour": 8
+     },
+     "ok": true
+    }
+   ],
+   "got_slots": {
+    "date": "2026-10-21",
+    "hour": 8,
+    "destination": "종로3가역",
+    "origin": "정릉우체국앞"
+   },
+   "numbers_verified": true,
+   "answer": "🧭 정릉우체국앞 → 종로3가역.탑골공원 (2026-10-21 8시 기준)\n🚌 1안 직행 · 약 26분 · 가장 빠름\n   143번: 정릉우체국앞 → 종로3가역.탑골공원 · 정류장 11개 · 약 23분 · 배차간격 약 6.7분, 혼잡도 0.71(보통) 🟡\n👉 추천은 1안입니다. 가장 빨리 도착합니다.\nℹ️ 소요 시간은 어림한 값이고, 이 서비스가 다루는 노선만 안내합니다.",
+   "ok": true,
+   "wrong": []
+  },
+  {
+   "id": "S12",
+   "q": "종로3가역 가는 법 알려줘",
+   "tools": [],
+   "intent": "clarify",
+   "got_intent": "clarify",
+   "got_tools": [],
+   "got_slots": {
+    "date": "2026-10-20",
+    "hour": 0,
+    "destination": "종로3가역"
+   },
+   "numbers_verified": null,
+   "answer": "🙋 어디에서 출발하시나요? 출발 정류장 이름을 알려 주시거나 '현재 위치' 버튼을 켜 주세요.",
+   "ok": true,
+   "wrong": []
+  },
+  {
+   "id": "S13",
+   "q": "그럼 9시는?",
+   "history": [
+    {
+     "role": "user",
+     "content": "160번 10월 21일 8시에 혼잡해?"
+    }
+   ],
+   "tools": [
+    "predict"
+   ],
+   "slots": {
+    "route": "160",
+    "hour": 9
+   },
+   "got_intent": "predict",
+   "got_tools": [
+    {
+     "name": "predict",
+     "args": {
+      "route": "160",
+      "date": "2026-10-21",
+      "hour": 9
+     },
+     "ok": true
+    }
+   ],
+   "got_slots": {
+    "route": "160",
+    "date": "2026-10-21",
+    "hour": 9
+   },
+   "numbers_verified": true,
+   "answer": "🚌 160번 2026-10-21 9시 예상 승차는 2,169명입니다. 작년 같은 요일·시간대는 2,089명이었습니다. 실제 승차는 2,029명이었습니다.\n🟢 가장 붐비는 구간의 혼잡도는 0.41(여유)입니다.",
+   "ok": true,
+   "wrong": []
+  },
+  {
+   "id": "S14",
+   "q": "그럼 8시에 증차해야 해?",
+   "history": [
+    {
+     "role": "user",
+     "content": "160번 10월 21일 15시에 혼잡해?"
+    }
+   ],
+   "tools": [
+    "advise"
+   ],
+   "slots": {
+    "route": "160",
+    "hour": 8
+   },
+   "got_intent": "advise",
+   "got_tools": [
+    {
+     "name": "advise",
+     "args": {
+      "route": "160",
+      "date": "2026-10-21",
+      "hour": 8
+     },
+     "ok": true
+    }
+   ],
+   "got_slots": {
+    "route": "160",
+    "date": "2026-10-21",
+    "hour": 8
+   },
+   "numbers_verified": true,
+   "answer": "✅ 160번 2026-10-21 8시 권고는 '현행 유지'입니다.\n🚌 지금은 약 6.7분 간격(시간당 9회)이고,\n🟡 가장 붐비는 구간(혜화동로터리.여운형활동터 → 명륜3가.성대입구)의 혼잡도는 0.63(보통)입니다.\n지금 배차간격을 유지해도 됩니다.\n📝 최종 결정은 담당자 검토가 필요합니다.",
+   "ok": true,
+   "wrong": []
+  },
+  {
+   "id": "S15",
+   "q": "환승 할인 요금 규정이 어떻게 돼?",
+   "tools": [
+    "ask"
+   ],
+   "got_intent": "ask",
+   "got_tools": [
+    {
+     "name": "ask",
+     "args": {
+      "question": "환승 할인 요금 규정이 어떻게 돼?"
+     },
+     "ok": true
+    }
+   ],
+   "got_slots": {},
+   "numbers_verified": null,
+   "answer": "제공된 규정 문서에서 근거를 찾을 수 없음",
+   "ok": true,
+   "wrong": []
+  }
+ ]
+}

@@ -1,0 +1,17 @@
+[
+  {"id": "S1", "q": "160번 10월 21일 오후 3시에 혼잡해?", "tools": ["predict"], "slots": {"route": "160", "hour": 15}},
+  {"id": "S2", "q": "143번 10월 21일 하루에 몇 명 타?", "tools": ["predict"], "slots": {"route": "143"}},
+  {"id": "S3", "q": "271번 10월 21일 8시 증차해야 해?", "tools": ["advise"], "slots": {"route": "271", "hour": 8}},
+  {"id": "S4", "q": "150번 10월 21일 18시 배차간격 조정 권고해줘", "tools": ["advise"], "slots": {"route": "150", "hour": 18}},
+  {"id": "S5", "q": "버스 늘리려면 뭐 해야 돼?", "tools": ["ask"]},
+  {"id": "S6", "q": "서울시 버스 혼잡도는 어떻게 구분하나요?", "tools": ["ask"]},
+  {"id": "S7", "q": "시내버스 운수종사자 휴식시간 규정 알려줘", "tools": ["ask"]},
+  {"id": "S8", "q": "271번 몇 명 타?", "tools": [], "intent": "clarify"},
+  {"id": "S9", "q": "오늘 점심 메뉴 추천해줘", "tools": [], "intent": "out_of_scope"},
+  {"id": "S10", "q": "주식 뭐 사야 돼?", "tools": [], "intent": "out_of_scope"},
+  {"id": "S11", "q": "정릉우체국앞에서 종로3가역 어떻게 가? 10월 21일 8시", "tools": ["guide"], "slots": {"origin": "정릉우체국앞", "hour": 8}},
+  {"id": "S12", "q": "종로3가역 가는 법 알려줘", "tools": [], "intent": "clarify"},
+  {"id": "S13", "q": "그럼 9시는?", "history": [{"role": "user", "content": "160번 10월 21일 8시에 혼잡해?"}], "tools": ["predict"], "slots": {"route": "160", "hour": 9}},
+  {"id": "S14", "q": "그럼 8시에 증차해야 해?", "history": [{"role": "user", "content": "160번 10월 21일 15시에 혼잡해?"}], "tools": ["advise"], "slots": {"route": "160", "hour": 8}},
+  {"id": "S15", "q": "환승 할인 요금 규정이 어떻게 돼?", "tools": ["ask"]}
+]
