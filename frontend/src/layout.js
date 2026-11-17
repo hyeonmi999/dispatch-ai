@@ -13,14 +13,15 @@ export const TITLES = {
   qa: '규정 Q&A',
   metrics: '모델 성능',
   history: '권고 이력',
+  documents: '법규 문서 관리',
 }
 
 // 켤 때의 기본 크기 / 줄일 수 있는 최소 크기 [열, 행]
 const DEFAULT_SIZE = {
-  routes: [3, 7], map: [6, 9], forecast: [3, 6], stops: [3, 6], status: [3, 8], advice: [3, 15], qa: [4, 10], metrics: [4, 9], history: [3, 8],
+  routes: [3, 7], map: [6, 9], forecast: [3, 6], stops: [3, 6], status: [3, 8], advice: [3, 15], qa: [4, 10], metrics: [4, 9], history: [3, 8], documents: [6, 12],
 }
 export const MIN_SIZE = {
-  routes: [2, 4], map: [3, 5], forecast: [3, 5], stops: [3, 5], status: [2, 5], advice: [3, 5], qa: [3, 5], metrics: [3, 5], history: [2, 4],
+  routes: [2, 4], map: [3, 5], forecast: [3, 5], stops: [3, 5], status: [2, 5], advice: [3, 5], qa: [3, 5], metrics: [3, 5], history: [2, 4], documents: [4, 6],
 }
 
 export const PRESETS = [
@@ -65,7 +66,10 @@ export function resolve(layout, active = null) {
 export function loadSaved() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) || 'null')
-    if (s?.layout && Object.keys(TITLES).every((id) => s.layout[id])) return s
+    if (s?.layout) {
+      const defaults = makeLayout(s.preset)
+      return { ...s, layout: { ...defaults, ...s.layout } }
+    }
   } catch {
     /* 저장소를 못 쓰면 기본 배치 */
   }

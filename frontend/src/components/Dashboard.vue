@@ -16,6 +16,14 @@
       </nav>
 
       <div class="bar-right">
+        <label v-if="domain === 'bus'" class="document-role">
+          문서 열람 역할 (시연)
+          <select v-model="documentRole">
+            <option value="citizen">시민</option>
+            <option value="staff">배차 담당자</option>
+            <option value="admin">관리자</option>
+          </select>
+        </label>
         <span v-if="meta" class="bstat">{{ meta.data_mode === 'real' ? '실데이터' : '합성 데이터' }}</span>
         <span class="bstat">DB {{ health?.db?.available ? '연결' : '미연결' }}</span>
         <n-popover trigger="click" placement="bottom-end">
@@ -140,11 +148,15 @@
         </template>
 
         <template #qa>
-          <AskPanel domain="bus" :llm="llm" :embedding="embedding" />
+          <AskPanel :key="documentRole" domain="bus" :llm="llm" :embedding="embedding" :role="documentRole" />
         </template>
 
         <template #metrics>
           <MetricsCard :metrics="meta.metrics" />
+        </template>
+
+        <template #documents>
+          <DocumentAdminPanel />
         </template>
 
         <template #history>
@@ -172,6 +184,7 @@ import { NDatePicker, NPopover, NSelect, NSlider, NSpin, useMessage } from 'naiv
 import { api, errorMessage, fmtCongestion, levelClass } from '../api'
 import { PRESETS, TITLES, loadSaved, makeLayout, resolve, saveLayout } from '../layout'
 import { isNight, toggleTheme } from '../theme'
+import DocumentAdminPanel from './DocumentAdminPanel.vue'
 import AdvicePanel from './AdvicePanel.vue'
 import AppLogo from './AppLogo.vue'
 import AskPanel from './AskPanel.vue'
@@ -193,6 +206,7 @@ const domains = ref([
   { name: 'field_service', title: '서비스 출동 배차', description: '권역별 출동 요청 예측과 기사 배치 권고 (준비 중)', status: 'not_implemented' },
 ])
 const domain = ref('bus')
+const documentRole = ref('citizen')
 const llm = ref('qwen')
 const embedding = ref('bge')
 // 로컬 모델 이름은 서버 설정(.env LOCAL_MODEL_NAME)을 따름
@@ -402,6 +416,8 @@ onBeforeUnmount(() => clearInterval(timer))
 </script>
 
 <style scoped>
+.document-role { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.document-role select { color: inherit; background: var(--paper); border: 1px solid var(--line); }
 .app { min-height: 100vh; display: flex; flex-direction: column; background: var(--ground); }
 .bar { background: #15181a; color: #f1f1ec; display: flex; flex-wrap: wrap; align-items: stretch; gap: 0 28px; padding: 0 16px; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 9px 0; }
