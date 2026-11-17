@@ -144,7 +144,7 @@
         </template>
 
         <template #chat>
-          <ChatPanel domain="bus" :llm="llm" :embedding="embedding" :geometries="geometries" @goto="goto" />
+          <ChatPanel domain="bus" :llm="llm" :embedding="embedding" :geometries="geometries" @goto="goto" @select-route="(r) => (selected = r)" />
         </template>
 
         <template #metrics>

@@ -31,6 +31,7 @@
             <span v-if="t.llm_rejected" class="tag">LLM 문장 버림 · 문장 틀 사용</span>
             <button v-if="canGoto(t)" class="link" @click="emit('goto', gotoTarget(t))">이 노선·시간 보기</button>
             <button v-if="t.data?.options" class="mapbtn" @click="openGuide(t)"><BusIcon :size="13" /> 지도로 보기</button>
+            <button v-if="isRouteInfo(t)" class="link" @click="emit('select-route', t.slots.route)">대시보드에서 이 노선 보기</button>
           </div>
           <SourceList v-if="(t.sources ?? []).length" :sources="t.sources" />
         </template>
@@ -55,9 +56,11 @@
 
     <div class="opts">
       <label><input v-model="useLlm" type="checkbox" />{{ llm === 'qwen' ? '로컬 모델' : 'GPT-4o-mini' }}로 문장 다듬기 (느림)</label>
-      <label :title="locationNote"><input type="checkbox" :checked="!!here" @change="toggleHere" />현재 위치 사용 (길안내)</label>
+      <label :title="locationNote"><input ref="hereBox" type="checkbox" :checked="!!here" @change="toggleHere" />현재 위치 사용 (길안내)</label>
       <button v-if="turns.length" class="link" @click="turns = []">대화 지우기</button>
     </div>
+    <!-- 위치를 못 가져온 이유는 마우스를 올리지 않아도 보이게 -->
+    <div v-if="locationError" class="locerr" role="status">{{ locationError }}</div>
   </div>
 </template>
 
@@ -75,15 +78,15 @@ const props = defineProps({
   embedding: { type: String, default: 'bge' },
   geometries: { type: Object, default: () => ({}) },     // 길안내 팝업 지도용 노선 좌표
 })
-// goto: 답변의 노선·날짜·시간으로 대시보드 이동
-const emit = defineEmits(['goto'])
+// goto: 답변의 노선·날짜·시간으로 대시보드 이동 / select-route: 그 노선을 대시보드에서 선택
+const emit = defineEmits(['goto', 'select-route'])
 
 // 서버 상한과 같은 값 (app/config.py CHAT_MESSAGE_MAX · CHAT_HISTORY_MAX · CHAT_HISTORY_ITEM_MAX)
 const MESSAGE_MAX = 500
 const HISTORY_MAX = 10
 const HISTORY_ITEM_MAX = 2000
-const TOOL_NAMES = { predict: '승객 예측', advise: '배차 권고', ask: '규정 질의응답', guide: '길안내', simulate: '배차간격 시뮬레이션', optimize: '전 노선 최적화' }
-const examples = ['143번 내일 오전 8시에 붐벼?', '143번 내일 8시 증차해야 해?', '운행횟수를 늘리려면 어떤 절차가 필요해?', '정릉우체국앞에서 종로3가역 어떻게 가?']
+const TOOL_NAMES = { predict: '승객 예측', advise: '배차 권고', ask: '규정 질의응답', guide: '길안내', route_info: '노선 정보', simulate: '배차간격 시뮬레이션', optimize: '전 노선 최적화' }
+const examples = ['160번 버스 노선 알려줘', '143번 내일 오전 8시에 붐벼?', '143번 내일 8시 증차해야 해?', '운행횟수를 늘리려면 어떤 절차가 필요해?', '정릉우체국앞에서 종로3가역 어떻게 가?']
 
 const turns = ref([])
 const draft = ref('')
@@ -94,25 +97,51 @@ const listEl = ref(null)
 // 현재 위치: 켜 두면 길안내 질문("여기서 ○○ 어떻게 가?")의 출발지로 보냄. 서버에 저장하지 않음
 const here = ref(null)
 const locationNote = ref('브라우저의 위치 권한이 필요합니다')
+const locationError = ref('')
+const hereBox = ref(null)
+// 체크 표시는 위치를 실제로 얻었을 때만 켜짐 (누르는 순간 브라우저가 먼저 켜 버리므로 되돌림)
+const syncBox = () => {
+  if (hereBox.value) hereBox.value.checked = !!here.value
+}
+function failHere(text) {
+  locationError.value = text
+  locationNote.value = text
+  syncBox()
+}
+// 현재 위치를 얻어 here에 넣고 돌려줌. 못 얻으면 이유를 화면에 보이고 null
+function locate() {
+  locationError.value = ''
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      failHere('이 브라우저는 현재 위치를 지원하지 않습니다. 출발 정류장 이름을 적어 주세요.')
+      resolve(null)
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        here.value = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        locationNote.value = `현재 위치 ${here.value.lat.toFixed(4)}, ${here.value.lng.toFixed(4)}`
+        syncBox()
+        resolve(here.value)
+      },
+      () => {
+        failHere('현재 위치를 가져오지 못했습니다. 브라우저의 위치 권한을 허용하거나 출발 정류장 이름을 적어 주세요.')
+        resolve(null)
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    )
+  })
+}
 function toggleHere() {
   if (here.value) {
+    locationError.value = ''
     here.value = null
+    locationNote.value = '브라우저의 위치 권한이 필요합니다'
+    syncBox()
     return
   }
-  if (!navigator.geolocation) {
-    locationNote.value = '이 브라우저는 현재 위치를 지원하지 않습니다'
-    return
-  }
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      here.value = { lat: pos.coords.latitude, lng: pos.coords.longitude }
-      locationNote.value = `현재 위치 ${here.value.lat.toFixed(4)}, ${here.value.lng.toFixed(4)}`
-    },
-    () => {
-      locationNote.value = '현재 위치를 가져오지 못했습니다. 위치 권한을 확인해 주세요'
-    },
-    { enableHighAccuracy: true, timeout: 10000 },
-  )
+  syncBox()
+  locate()
 }
 // 길안내는 답변으로 설명하고, '지도로 보기'를 누를 때만 팝업으로 경로를 보여 줌
 const guideOpen = ref(false)
@@ -122,6 +151,7 @@ function openGuide(t) {
   guideOpen.value = true
 }
 
+const isRouteInfo = (t) => (t.tools ?? []).some((x) => x.ok && x.name === 'route_info') && !!t.slots?.route
 const canGoto = (t) => !!(t.slots?.route && t.slots?.date && t.slots?.hour != null && (t.tools ?? []).some((x) => x.ok && x.name !== 'ask'))
 const gotoTarget = (t) => ({ route: t.slots.route, date: t.slots.date, hour: t.slots.hour })
 
@@ -143,10 +173,15 @@ async function send(text) {
   loading.value = true
   scrollDown()
   try {
-    const user = here.value
+    let user = here.value
     const body = { message, history, llm: props.llm, embedding: props.embedding, use_llm: useLlm.value }
     if (user) body.location = user
-    const r = await api.chat(props.domain, body)
+    let r = await api.chat(props.domain, body)
+    // "여기서 ○○ 어떻게 가?"인데 현재 위치가 꺼져 있으면, 되묻지 않고 위치를 얻어 한 번 더 물음
+    if (r?.intent === 'clarify' && r?.slots?.from_here && !user) {
+      user = await locate()
+      if (user) r = await api.chat(props.domain, { ...body, location: user })
+    }
     const turn = {
       role: 'assistant', content: r?.answer ?? '', intent: r?.intent, slots: r?.slots ?? {},
       tools: r?.tools ?? [], sources: r?.sources ?? [], numbers_verified: r?.numbers_verified ?? null,
@@ -186,4 +221,5 @@ async function send(text) {
 .opts { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 8px; margin-top: 4px; font-size: 11px; color: var(--ink3); }
 .opts label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
 .opts input { accent-color: var(--accent); margin: 0; }
+.locerr { margin-top: 4px; font-size: 11px; color: var(--accent); line-height: 1.4; }
 </style>
