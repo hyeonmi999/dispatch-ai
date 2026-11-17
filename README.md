@@ -177,6 +177,13 @@ python scripts/train_bus.py --mode real      # 약 7분 (M 시리즈, 2년치 84
 python scripts/build_index.py
 ```
 
+### 3-3-1. (선택) 길안내를 서울 버스 전체 노선으로
+길안내(F-28)는 기본으로 이 서비스가 예측하는 5개 노선만 압니다. 아래 스크립트로 전체 노선의 정류장 목록을 받아 두면 서울 버스 723개 노선에서 경로를 찾습니다. `.env`의 `DATA_GO_KR_API_KEY`(공공데이터포털 「서울특별시_버스노선정보조회」)가 필요하고, 노선마다 한 번씩 약 720번 호출해 5분쯤 걸립니다. 중간에 끊겨도 다시 실행하면 이어서 받습니다.
+```bash
+python scripts/fetch_network_stops.py        # → data/interim/network/stops.parquet, routes.parquet (커밋 제외)
+```
+받은 뒤 서버를 다시 띄우면 적용됩니다. 혼잡도는 여전히 5개 노선에만 나오고, 나머지 노선은 배차간격·대략의 시간만 안내합니다.
+
 ### 3-4. 서버 실행
 **스크립트로 한 번에** (MariaDB → API 서버 8000 → 화면 5173). 같은 포트를 쓰는 이전 서버가 있으면 알려 주고 멈춥니다.
 ```bash
@@ -203,7 +210,7 @@ cd frontend && npm run dev                      # http://localhost:5173
 
 ### 3-5. 테스트
 ```bash
-python -m pytest -q      # 합성 데이터 기준 48개: 시간순 분할·lag 누수·지표·운행횟수 선택·API 계약·501·OpenAI 키 오류·챗봇(의도 분류·값 뽑기·숫자 검증·LLM 문장 검증)·길안내·노선 정보
+python -m pytest -q      # 합성 데이터 기준 51개: 시간순 분할·lag 누수·지표·운행횟수 선택·API 계약·501·OpenAI 키 오류·챗봇(의도 분류·값 뽑기·숫자 검증·LLM 문장 검증)·길안내·노선 정보
 ```
 
 ---
@@ -367,7 +374,7 @@ python scripts/train_bus.py --mode real
 | POST | `/api/{domain}/ask` | 규정 질의응답 `{"question":"…","llm":"qwen","embedding":"bge"}` → 답변 + 출처(문서명·조항·쪽) / 근거 없으면 `found:false`, "찾을 수 없음" |
 | POST | `/api/{domain}/advise` | 배차 권고 `{"route":"143","date":"2026-10-13","hour":7,"use_llm":true}` → 예상 승객·혼잡도·권고 간격·추가 차량·근거·신뢰도·`needs_review` |
 | POST | `/api/{domain}/chat` | 배차 상담 챗봇 `{"message":"160번 10월 28일 오후 3시에 혼잡해?","history":[]}` → 질문 속 단어로 기능(예측·권고·규정·길안내·노선 정보)을 골라 부르고 답변 + 부른 기능(`tools`) + 근거(`sources`) + 숫자 검증 결과(`numbers_verified`) + `needs_review`. 빠진 값은 되묻고(`intent: clarify`), 버스와 무관한 질문은 기능을 부르지 않음. 형식은 `docs/contracts.md` |
-| POST | `/api/bus/guide` | 버스 길안내 `{"origin":"정릉우체국앞","destination":"종로3가역","date":"2026-10-25","hour":8}` (출발 정류장 대신 `lat`·`lng`로 현재 위치를 줄 수 있음) → 직행·환승 한 번 경로, 경로별 탈 구간의 예상 혼잡도·배차간격·대략의 소요 시간, 추천 경로. 이 서비스의 노선만 안내 |
+| POST | `/api/bus/guide` | 버스 길안내 `{"origin":"정릉우체국앞","destination":"종로3가역","date":"2026-10-25","hour":8}` (출발 정류장 대신 `lat`·`lng`로 현재 위치를 줄 수 있음) → 직행·환승 한 번 경로, 경로별 탈 구간의 예상 혼잡도·배차간격·대략의 소요 시간, 추천 경로. 전체 노선 정류장 파일이 있으면 서울 버스 전체에서 찾고(혼잡도는 예측하는 5개 노선만), 없으면 5개 노선만 안내 |
 | GET | `/api/bus/stops/search?q=` | 정류장 이름 검색 (이름·좌표·지나는 노선) |
 | GET | `/api/bus/routes/{route}/info` | 노선 기본 정보: 기점·종점, 첫차·막차, 배차간격, 한 바퀴 운행시간, 인가대수, 주요 정류장 |
 | POST | `/api/bus/advise/all` | 선택 시간대 **전체 노선** 권고 `{"date":"2026-10-28","hour":8}` → 증차 필요 → 별도 대책 → 감차 검토 → 유지 순 (규정 근거는 권고 유형별 1회 조회) |
