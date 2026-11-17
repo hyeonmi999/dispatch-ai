@@ -191,7 +191,7 @@ def extract(message: str, routes: list[str], today: dt.date) -> dict:
 
 # 길안내의 출발·도착: "정릉우체국앞에서 종로3가역 어떻게 가?" / "여기서 신동중학교 가는 법"
 FROM_SUFFIXES = ("에서", "부터", "서")
-HERE_WORDS = ("여기", "위치", "이곳", "지금")
+HERE_WORDS = ("여기", "위치", "이곳", "지금", "내가 있는", "근처")
 _NOT_A_PLACE_RE = re.compile(r"^(?:[0-9]+(?:시|월|일|분|번)?|오전|오후|아침|저녁|밤|새벽|오늘|내일|모레|버스로?|지금)$")
 
 
@@ -409,10 +409,14 @@ def _guide(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, list[di
     args = {k: slots[k] for k in ("origin", "destination", "lat", "lng", "date", "hour") if slots.get(k) is not None}
     result = adapter.guide(dict(args))
     origin, dest, options = result["origin"], result["destination"], result["options"]
+    history_note = (f"↩️ 출발지는 앞에서 말씀하신 {origin['stop']}(으)로 했습니다. 다른 곳이면 '○○에서' 또는 '여기서'라고 알려 주세요."
+                    if slots.get("origin_from_history") else None)
 
     lines = [f"🧭 {origin['stop']} → {dest['stop']} ({result['date']} {result['hour']}시 기준)"]
     facts = {"date": result["date"], "hour": result["hour"], "origin": origin["stop"], "destination": dest["stop"],
              "numbers": list(range(1, len(options) + 1)), "options": []}
+    if history_note:
+        lines.append(history_note)
     if result.get("requested_date"):
         facts["requested_date"] = result["requested_date"]
         lines.append(f"📅 {result['requested_date']}은 예측 범위 밖이라, 같은 요일인 {result['date']}의 혼잡도·배차간격으로 안내합니다.")
@@ -549,8 +553,10 @@ def run(adapter: DomainAdapter, message: str, history: list[dict] | None = None,
     slots.update(current)
 
     intent = classify(message, "route" in current)
+    said: dict = {}          # 이번 질문에서 직접 말한 출발·도착
     if intent == "guide":
-        places.update(extract_places(message))
+        said = extract_places(message)
+        places.update(said)
     elif intent is None and previous_intent == "guide" and not _has(message, DOMAIN_WORDS):
         intent = "guide"                              # 길안내 되묻기에 대한 답
         if not current:
@@ -580,10 +586,20 @@ def run(adapter: DomainAdapter, message: str, history: list[dict] | None = None,
         slots = {"date": slots.get("date", today.isoformat()), "hour": slots.get("hour", now.hour)}
         if places.get("destination"):
             slots["destination"] = places["destination"]
-        if places.get("origin"):
+        # 출발지 우선순위: ① 이번 질문에서 말한 정류장 ② 이번 질문의 "여기서·내 위치에서" ③ 켜 둔 현재 위치
+        #                 ④ 앞 대화에서 말한 정류장 (이때는 답변에 그 사실을 적음)
+        wants_here = bool(said.get("from_here")) or (not said.get("origin") and places.get("from_here") and not places.get("origin"))
+        if said.get("origin"):
+            slots["origin"] = said["origin"]
+        elif wants_here or location:
+            if location:
+                slots["lat"], slots["lng"] = location["lat"], location["lng"]
+            else:
+                places["from_here"] = True
+                places.pop("origin", None)
+        elif places.get("origin"):
             slots["origin"] = places["origin"]
-        elif location:
-            slots["lat"], slots["lng"] = location["lat"], location["lng"]
+            slots["origin_from_history"] = True
         if "destination" not in slots:
             return done("clarify", "🙋 어디로 가시나요? 도착 정류장 이름을 알려 주세요. (예: 종로3가역 어떻게 가?)")
         if "origin" not in slots and "lat" not in slots:

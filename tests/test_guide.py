@@ -209,3 +209,33 @@ def test_route_info_does_not_steal_other_intents():
     assert classify("143번 노선 변경 절차 알려줘", True) == "ask"            # 절차는 규정
     assert classify("160번 10월 21일 정류장별 승객 알려줘", True) == "predict"
     assert classify("160번 버스 노선알려줘", True) == "route_info"
+
+
+# ==================================================
+# 5. 출발지 우선순위 (이어 묻기)
+# ==================================================
+
+def test_chat_guide_here_overrides_origin_from_history(client):
+    # 재현: 앞에서 "A에서 B 어떻게 가?"를 물은 뒤 "지금 내위치에서 C 어떻게 가냐고" 해도 A에서 출발하는 경로를 답했음
+    routes, date = meta(client)
+    stops = stops_of(client, routes[0])
+    first = f"{stops[2]['name'].replace(' ', '')}에서 {stops[10]['name'].replace(' ', '')} 어떻게 가? {date} 8시"
+    history = [{"role": "user", "content": first}, {"role": "assistant", "content": "..."}]
+    dest = stops[20]["name"].replace(" ", "")
+    here = {"lat": stops[14]["lat"], "lng": stops[14]["lng"]}
+
+    # 위치가 있으면 그 위치에서 출발
+    body = client.post("/api/bus/chat", json={"message": f"아니 지금 내위치에서 {dest} 어떻게 가냐고", "history": history, "location": here}).json()
+    assert body["intent"] == "guide" and "origin" not in body["slots"] and body["slots"]["lat"] == here["lat"]
+
+    # 위치가 없으면 예전 출발지를 쓰지 않고 위치를 요청
+    body = client.post("/api/bus/chat", json={"message": f"아니 지금 내위치에서 {dest} 어떻게 가냐고", "history": history}).json()
+    assert body["intent"] == "clarify" and body["slots"].get("from_here") is True and body["tools"] == []
+
+    # 출발지를 말하지 않았고 현재 위치가 켜져 있으면 현재 위치가 우선
+    body = client.post("/api/bus/chat", json={"message": f"{dest} 어떻게가", "history": history, "location": here}).json()
+    assert "origin" not in body["slots"] and body["slots"]["lat"] == here["lat"]
+
+    # 출발지도 위치도 없으면 앞에서 말한 출발지를 쓰고, 그 사실을 답변에 적음
+    body = client.post("/api/bus/chat", json={"message": f"{dest} 어떻게가", "history": history}).json()
+    assert body["slots"].get("origin_from_history") is True and "앞에서 말씀하신" in body["answer"]
