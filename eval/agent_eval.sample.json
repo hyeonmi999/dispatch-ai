@@ -13,5 +13,8 @@
   {"id": "S12", "q": "종로3가역 가는 법 알려줘", "tools": [], "intent": "clarify"},
   {"id": "S13", "q": "그럼 9시는?", "history": [{"role": "user", "content": "160번 10월 21일 8시에 혼잡해?"}], "tools": ["predict"], "slots": {"route": "160", "hour": 9}},
   {"id": "S14", "q": "그럼 8시에 증차해야 해?", "history": [{"role": "user", "content": "160번 10월 21일 15시에 혼잡해?"}], "tools": ["advise"], "slots": {"route": "160", "hour": 8}},
-  {"id": "S15", "q": "환승 할인 요금 규정이 어떻게 돼?", "tools": ["ask"]}
+  {"id": "S15", "q": "환승 할인 요금 규정이 어떻게 돼?", "tools": ["ask"]},
+  {"id": "S16", "q": "160번 버스 노선알려줘", "tools": ["route_info"], "slots": {"route": "160"}},
+  {"id": "S17", "q": "143번 첫차 몇 시야?", "tools": ["route_info"], "slots": {"route": "143"}},
+  {"id": "S18", "q": "여기서 서울역 어떻게가", "location": {"lat": 37.5704, "lng": 126.9831}, "tools": ["guide"]}
 ]

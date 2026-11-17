@@ -1,0 +1,121 @@
+{
+ "summary": {
+  "name": "chat_llm_rewrite_1",
+  "model": "Qwen/Qwen3-1.7B",
+  "questions": 12,
+  "llm_used": 9,
+  "llm_rejected": 3,
+  "numbers_failed": 0,
+  "median_seconds": 1.4
+ },
+ "rows": [
+  {
+   "q": "160번 10월 21일 15시 혼잡해?",
+   "intent": "predict",
+   "llm": "qwen",
+   "llm_rejected": false,
+   "numbers_verified": true,
+   "seconds": 11.3,
+   "answer": "160번 10월 21일 15시는 매우혼잡합니다."
+  },
+  {
+   "q": "143번 10월 21일 8시 증차해야 해?",
+   "intent": "advise",
+   "llm": null,
+   "llm_rejected": true,
+   "numbers_verified": true,
+   "seconds": 6.2,
+   "answer": "✅ 143번 2026-10-21 8시 권고는 '현행 유지'입니다.\n🚌 지금은 약 6분 간격(시간당 10회)이고,\n🟡 가장 붐비는 구간(정릉길음시장 → 미아리고개.미아리예술극장)의 혼잡도는 0.71(보통)입니다.\n지금 배차간격을 유지해도 됩니다.\n📝 최종 결정은 담당자 검토가 필요합니다."
+  },
+  {
+   "q": "271번 10월 21일 18시 몇 명 타?",
+   "intent": "predict",
+   "llm": "qwen",
+   "llm_rejected": false,
+   "numbers_verified": true,
+   "seconds": 1.4,
+   "answer": "271번 2026-10-21 18시에는 3,003명이 탑니다."
+  },
+  {
+   "q": "150번 10월 22일 7시 붐벼?",
+   "intent": "predict",
+   "llm": "qwen",
+   "llm_rejected": false,
+   "numbers_verified": true,
+   "seconds": 1.0,
+   "answer": "150번 10월 22일 7시는 혼잡합니다."
+  },
+  {
+   "q": "272번 10월 21일 8시 증차해야 해?",
+   "intent": "advise",
+   "llm": "qwen",
+   "llm_rejected": false,
+   "numbers_verified": true,
+   "seconds": 1.6,
+   "answer": "272번 10월 21일 8시 증차는 필요 없습니다. 현재 배차간격을 유지해도 됩니다."
+  },
+  {
+   "q": "160번 10월 23일 8시 배차간격 조정 권고해줘",
+   "intent": "advise",
+   "llm": "qwen",
+   "llm_rejected": false,
+   "numbers_verified": true,
+   "seconds": 1.5,
+   "answer": "160번 10월 23일 8시 배차간격 조정 권고는 '현행 유지'입니다."
+  },
+  {
+   "q": "143번 10월 24일 18시 혼잡해?",
+   "intent": "predict",
+   "llm": "qwen",
+   "llm_rejected": false,
+   "numbers_verified": true,
+   "seconds": 1.3,
+   "answer": "143번 10월 24일 18시는 보통 혼잡도로 나타납니다."
+  },
+  {
+   "q": "271번 10월 22일 9시 감차해도 돼?",
+   "intent": "advise",
+   "llm": null,
+   "llm_rejected": true,
+   "numbers_verified": true,
+   "seconds": 1.1,
+   "answer": "✅ 271번 2026-10-22 9시 권고는 '현행 유지'입니다.\n🚌 지금은 약 7.5분 간격(시간당 8회)이고,\n🟡 가장 붐비는 구간(중랑초등학교 → 서울우유앞)의 혼잡도는 0.50(보통)입니다.\n지금 배차간격을 유지해도 됩니다.\n📝 최종 결정은 담당자 검토가 필요합니다."
+  },
+  {
+   "q": "150번 10월 21일 17시 승객 수요 예측해줘",
+   "intent": "predict",
+   "llm": "qwen",
+   "llm_rejected": false,
+   "numbers_verified": true,
+   "seconds": 1.5,
+   "answer": "150번 2026-10-21 17시 예상 승차는 2,873명입니다."
+  },
+  {
+   "q": "272번 10월 23일 19시 붐벼?",
+   "intent": "predict",
+   "llm": "qwen",
+   "llm_rejected": false,
+   "numbers_verified": true,
+   "seconds": 1.3,
+   "answer": "272번 10월 23일 19시는 보통 수준에서 붐비고 있습니다."
+  },
+  {
+   "q": "160번 10월 25일 12시 몇 명 타?",
+   "intent": "predict",
+   "llm": "qwen",
+   "llm_rejected": false,
+   "numbers_verified": true,
+   "seconds": 1.4,
+   "answer": "160번 2026-10-25 12시에는 1,450명이 탑니다."
+  },
+  {
+   "q": "143번 10월 22일 7시 증차 권고해줘",
+   "intent": "advise",
+   "llm": null,
+   "llm_rejected": true,
+   "numbers_verified": true,
+   "seconds": 1.2,
+   "answer": "✅ 143번 2026-10-22 7시 권고는 '현행 유지'입니다.\n🚌 지금은 약 5.5분 간격(시간당 11회)이고,\n🟡 가장 붐비는 구간(돈암사거리.성신여대입구 → 삼선교.한성대학교)의 혼잡도는 0.75(보통)입니다.\n지금 배차간격을 유지해도 됩니다.\n📝 최종 결정은 담당자 검토가 필요합니다."
+  }
+ ]
+}
