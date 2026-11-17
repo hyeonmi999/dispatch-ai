@@ -243,8 +243,11 @@ function drawGuide() {
   }
   const legs = option.legs ?? []
   legs.forEach((leg, i) => {
+    // 서버가 준 정류장 좌표를 쓰고(전체 노선), 없으면 화면이 가진 노선 좌표에서 뽑음
     const stops = props.geometries[leg.route]?.stops ?? []
-    const line = stops.filter((s) => s.seq >= leg.board.seq && s.seq <= leg.alight.seq).map((s) => [s.lat, s.lng])
+    const line = leg.path?.length
+      ? leg.path
+      : stops.filter((s) => s.seq >= leg.board.seq && s.seq <= leg.alight.seq).map((s) => [s.lat, s.lng])
     if (line.length > 1) {
       L.polyline(line, { color: palette.value.panel, weight: 9, opacity: 0.95, smoothFactor: 0 }).addTo(guideLayer)
       L.polyline(line, { color: palette.value.accent, weight: 5, opacity: 1, dashArray: '1 9', lineCap: 'round', smoothFactor: 0 }).addTo(guideLayer)

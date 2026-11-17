@@ -151,7 +151,8 @@ function openGuide(t) {
   guideOpen.value = true
 }
 
-const isRouteInfo = (t) => (t.tools ?? []).some((x) => x.ok && x.name === 'route_info') && !!t.slots?.route
+// 대시보드에 있는(예측하는) 노선일 때만 '이 노선 보기'를 보임
+const isRouteInfo = (t) => (t.tools ?? []).some((x) => x.ok && x.name === 'route_info') && !!props.geometries?.[t.slots?.route]
 const canGoto = (t) => !!(t.slots?.route && t.slots?.date && t.slots?.hour != null && (t.tools ?? []).some((x) => x.ok && x.name !== 'ask'))
 const gotoTarget = (t) => ({ route: t.slots.route, date: t.slots.date, hour: t.slots.hour })
 

@@ -438,15 +438,17 @@ def _guide(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, list[di
         tag += " · 덜 붐빔" if option["least_crowded"] and not option["fastest"] else ""
         lines.append(f"{'🚌' if option['kind'] == 'direct' else '🔁'} {number}안 {kind} · 약 {option['total_min']}분{tag}")
         for leg in option["legs"]:
-            crowd = f", 혼잡도 {_floor2(leg['congestion'])}({leg['level']}) {LEVEL_MARK.get(leg['level'], '')}" if leg["congestion"] is not None else ""
+            crowd = (f", 혼잡도 {_floor2(leg['congestion'])}({leg['level']}) {LEVEL_MARK.get(leg['level'], '')}"
+                     if leg["congestion"] is not None else ", 혼잡도 예측 없음")
             walk = f" (걸어서 약 {leg['walk_m']}m)" if leg["walk_m"] else ""
+            exit_walk = f" (내려서 약 {leg['exit_walk_m']}m 걷기)" if leg.get("exit_walk_m") else ""
             lines.append(
-                f"   {leg['route']}번: {leg['board']['name']}{walk} → {leg['alight']['name']}"
+                f"   {leg['route']}번: {leg['board']['name']}{walk} → {leg['alight']['name']}{exit_walk}"
                 f" · 정류장 {leg['stops']}개 · 약 {leg['ride_min']}분 · 배차간격 약 {_short(leg['interval_min'])}분{crowd}"
             )
         facts["options"].append({
             "total_min": option["total_min"],
-            "legs": [{k: leg[k] for k in ("route", "stops", "walk_m", "ride_min", "interval_min", "congestion")}
+            "legs": [{k: leg[k] for k in ("route", "stops", "walk_m", "exit_walk_m", "ride_min", "interval_min", "congestion")}
                      | {"board": leg["board"]["name"], "alight": leg["alight"]["name"]} for leg in option["legs"]],
         })
 
@@ -458,7 +460,7 @@ def _guide(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, list[di
             lines.append(f"👉 추천은 {number}안입니다. 약 {rec['slower_by_min']}분 더 걸리지만 덜 붐빕니다.")
         else:
             lines.append(f"👉 추천은 {number}안입니다. 가장 빨리 도착합니다.")
-    lines.append("ℹ️ 소요 시간은 어림한 값이고, 이 서비스가 다루는 노선만 안내합니다.")
+    lines.append("ℹ️ 버스만 안내하고(지하철 제외), 소요 시간은 어림한 값입니다.")
     return args, "\n".join(lines), [], {**facts, "data": result}
 
 
@@ -486,6 +488,8 @@ def _route_info(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, li
         lines.append("🚏 " + " · ".join(extra))
     if r.get("key_stops"):
         lines.append("🗺️ 주요 정류장: " + " → ".join(r["key_stops"]))
+    if r.get("predicted") is False:
+        lines.append("ℹ️ 이 노선은 승객 수·혼잡도 예측을 하지 않습니다. 기본 정보만 안내합니다.")
     return args, "\n".join(lines), [], dict(r)
 
 

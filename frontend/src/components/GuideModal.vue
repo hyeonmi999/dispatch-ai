@@ -24,10 +24,10 @@
         <span class="path">
           {{ leg.board?.name }} → {{ leg.alight?.name }}
           <span class="sm">
-            <template v-if="leg.walk_m">걸어서 {{ leg.walk_m }}m · </template>정류장 {{ leg.stops }}개 · 약 {{ leg.ride_min }}분 · 배차간격 약 {{ leg.interval_min }}분
+            <template v-if="leg.walk_m">걸어서 {{ leg.walk_m }}m · </template>정류장 {{ leg.stops }}개<template v-if="leg.exit_walk_m"> · 내려서 {{ leg.exit_walk_m }}m 걷기</template> · 약 {{ leg.ride_min }}분 · 배차간격 약 {{ leg.interval_min }}분
           </span>
         </span>
-        <span class="lv"><i class="chip" :class="levelClass(leg.level)"></i>{{ leg.level || '-' }}</span>
+        <span class="lv"><i class="chip" :class="levelClass(leg.level)"></i>{{ leg.level || '예측 없음' }}</span>
       </span>
     </button>
     <div class="sm note">{{ guide?.assumption }}</div>
