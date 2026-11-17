@@ -147,4 +147,5 @@
 - **[필수] CRITICAL·HIGH가 남아 있으면 머지하지 않습니다.**
 - **[필수] 교훈 기록**: 버그나 삽질을 해결하면 [docs/lessons.md](docs/lessons.md)에 `증상 / 원인 / 방지 규칙`을 남깁니다. 같은 원인이 이미 있으면 새로 쓰지 말고 재발 날짜만 추가합니다.
 - **[권장] 리뷰 관점 세 가지**: 정확성(결과가 맞나), 단순함(더 짧은 방법은 없나), 영향 범위(다른 기능을 깨지 않나).
-- **[권장] AI 코딩 도구를 쓸 때**는 [CLAUDE.md](CLAUDE.md)의 규칙을 따릅니다.
+- **[필수] 작업 기록**: 작업을 끝낼 때마다 [docs/worklog/](docs/worklog/README.md)의 자기 파일 맨 위에 한 일·바뀐 것·확인한 것·확인하지 못한 것·다음 할 일을 적고, 그 작업의 PR에 함께 넣습니다. AI 도구로 작업했으면 AI가 씁니다.
+- **[필수] AI 코딩 도구를 쓸 때**는 도구가 [AGENTS.md](AGENTS.md)를 읽고 시작하게 합니다. Claude Code(`CLAUDE.md`)·Gemini CLI(`GEMINI.md`)·Copilot(`.github/copilot-instructions.md`)은 자동으로 읽는 파일이 `AGENTS.md`를 가리키고, 그 밖의 도구는 "AGENTS.md를 읽고 시작해줘"라고 한 번 말해 줍니다.
