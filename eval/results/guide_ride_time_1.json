@@ -1,0 +1,15 @@
+{
+ "summary": {
+  "name": "guide_ride_time_1",
+  "legs": 2824,
+  "routes_with_timetable": 451,
+  "routes": 723,
+  "old_median_ratio": 1.284,
+  "old_mean_abs_min": 11.2,
+  "old_off_by_30pct": 0.508,
+  "new_median_ratio": 1.0,
+  "new_mean_abs_min": 0.0,
+  "reference": "정류장별 막차 시간표(lastTm)의 구간 소요 시간. 실제 운행 기록이 아니라 공식 시간표임",
+  "note": "새 방식은 낮 시간에 이 시간표를 그대로 쓰므로 같게 나오는 것이 당연함. 예전 방식이 얼마나 벗어났는지를 보는 표"
+ }
+}
