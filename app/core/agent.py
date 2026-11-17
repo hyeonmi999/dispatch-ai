@@ -53,6 +53,11 @@ ADVISE_WORDS = ("권고", "추천", "증차", "감차", "늘려야", "줄여야"
 GUIDE_WORDS = ("어떻게 가", "어떻게가", "가는 법", "가는법", "가는 방법", "가는 길", "가려면", "가고 싶", "갈 수 있",
                "갈래", "길안내", "길 안내", "길 알려", "환승", "몇 번 타", "뭐 타", "무슨 버스")
 GUIDE_BLOCK = ("규정", "법", "조례", "요금", "할인", "절차")
+# 노선 기본 정보: "160번 노선 알려줘", "143번 첫차 몇 시야?" (노선을 말했을 때만)
+ROUTE_INFO_WORDS = ("노선 알려", "노선알려", "노선 정보", "노선정보", "노선도", "노선 좀", "어디서 어디", "어디 가", "어디가",
+                    "어디로 가", "어디까지", "어디를", "경유", "지나", "정류장", "첫차", "막차", "기점", "종점",
+                    "몇 분마다", "몇분마다", "배차간격이", "배차 간격이", "배차간격은", "배차 간격은", "운행시간", "운행 시간",
+                    "인가대수", "몇 대", "어떤 버스", "무슨 노선", "소개")
 PREDICT_WORDS = ("몇 명", "몇명", "승객", "승차", "붐", "혼잡", "예측", "수요", "사람 많", "사람이 많", "여유", "한가", "탈까", "타나")
 # 버스 업무와 관련된 질문인지 가리는 단어 (하나도 없고 노선도 없으면 범위 밖)
 DOMAIN_WORDS = ("버스", "노선", "배차", "운행", "정류", "운수", "요금", "기사", "차량", "증차", "감차", "승객", "혼잡")
@@ -63,10 +68,11 @@ REQUIRED = {
     "advise": ("route", "date", "hour"),
     "simulate": ("route", "date", "hour", "interval"),
     "optimize": ("date", "hour"),
+    "route_info": ("route",),
 }
 NOT_CONNECTED = {"simulate": "배차간격 시뮬레이션", "optimize": "전 노선 배차 최적화"}   # 엔진 연결 전
 
-OUT_OF_SCOPE_ANSWER = "🙏 버스 승객 예측, 배차 권고, 운수 규정에 대한 질문에만 답할 수 있어요."
+OUT_OF_SCOPE_ANSWER = "🙏 버스 승객 예측, 배차 권고, 노선 정보, 길안내, 운수 규정에 대한 질문에만 답할 수 있어요."
 
 # 답변을 읽기 쉽게 하는 표시 (숫자가 아니므로 숫자 검증과 무관)
 LEVEL_MARK = {"여유": "🟢", "보통": "🟡", "혼잡": "🟠", "매우혼잡": "🔴"}
@@ -97,6 +103,8 @@ def classify(message: str, has_route: bool) -> str | None:
         return "advise"
     if _has(message, PREDICT_WORDS):
         return "predict"
+    if _has(message, ROUTE_INFO_WORDS):
+        return "route_info"
     return None
 
 
@@ -259,6 +267,40 @@ def verify_numbers(answer: str, *evidence) -> bool:
     return True
 
 
+# LLM이 문장을 다듬다가 결론을 뒤집는 것을 막는 확인 (숫자는 같아도 "유지"를 "감차해도 됨"으로 바꾸는 경우)
+# 권고마다 답변에 꼭 있어야 하는 말과, 있으면 안 되는 말
+ACTION_MUST = {
+    "increase": ("단축", "증차", "늘리", "늘려"),
+    "increase_limited": ("최소 배차간격", "별도 대책", "한계"),
+    "decrease": ("감차", "줄이", "줄여"),
+    "keep": ("유지",),
+}
+ACTION_FORBID = {
+    "increase": ("유지", "않아도", "필요 없", "필요없", "감차"),
+    "increase_limited": ("감차해도",),
+    "decrease": ("증차해야", "늘려야", "단축해야"),
+    "keep": ("증차해야", "증차가 필요", "늘려야", "단축해야", "감차해도", "감차가 필요", "감차해야", "줄여도", "줄여야"),
+}
+LEVELS = ("매우혼잡", "혼잡", "보통", "여유")
+
+
+def keeps_meaning(answer: str, facts: dict) -> bool:
+    """다시 쓴 답변이 권고 방향과 혼잡 단계를 그대로 전하면 True"""
+    action = facts.get("action")
+    if action:
+        if not _has(answer, ACTION_MUST.get(action, ())) or _has(answer, ACTION_FORBID.get(action, ())):
+            return False
+    level = facts.get("level")
+    if level:
+        # 답변에 혼잡 단계를 적었다면 기능 결과의 단계여야 함 ("혼잡"은 "매우혼잡"에도 들어 있어 긴 말부터 지우며 확인)
+        rest = answer.replace("혼잡도", " ").replace("혼잡 구간", " ").replace("혼잡 단계", " ")   # 단계가 아닌 말
+        for word in LEVELS:
+            if word in rest and word != level:
+                return False
+            rest = rest.replace(word, " ")
+    return True
+
+
 # ==================================================
 # 4. 기능 호출 → 답변에 쓸 값(facts) → 문장
 # ==================================================
@@ -371,6 +413,9 @@ def _guide(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, list[di
     lines = [f"🧭 {origin['stop']} → {dest['stop']} ({result['date']} {result['hour']}시 기준)"]
     facts = {"date": result["date"], "hour": result["hour"], "origin": origin["stop"], "destination": dest["stop"],
              "numbers": list(range(1, len(options) + 1)), "options": []}
+    if result.get("requested_date"):
+        facts["requested_date"] = result["requested_date"]
+        lines.append(f"📅 {result['requested_date']}은 예측 범위 밖이라, 같은 요일인 {result['date']}의 혼잡도·배차간격으로 안내합니다.")
     if origin["far"]:
         km = round(origin["walk_m"] / 1000, 1)
         facts["origin_km"] = km
@@ -413,7 +458,34 @@ def _guide(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, list[di
     return args, "\n".join(lines), [], {**facts, "data": result}
 
 
-HANDLERS = {"predict": _predict, "advise": _advise, "ask": _ask, "guide": _guide}
+def _route_info(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, list[dict], dict]:
+    args = {"route": slots["route"]}
+    r = adapter.route_info(dict(args))
+    kind = " · ".join(x for x in (r.get("route_type"), r.get("company")) if x)
+    lines = [f"🚌 {r['route']}번" + (f" ({kind})" if kind else "")]
+    if r.get("start") and r.get("end"):
+        length = f" · 약 {_short(r['distance_km'])}km" if r.get("distance_km") else ""
+        lines.append(f"📍 {r['start']} ↔ {r['end']} · 정류장 {r['stops_count']}개{length}")
+    if r.get("first_bus") and r.get("last_bus"):
+        lines.append(f"⏰ 첫차 {r['first_bus']} · 막차 {r['last_bus']}")
+    if r.get("interval_weekday") is not None:
+        line = f"⏱️ 평일 배차간격 약 {_short(r['interval_weekday'])}분"
+        if r.get("min_interval") is not None and r.get("max_interval") is not None:
+            line += f" (시간대에 따라 {_short(r['min_interval'])}~{_short(r['max_interval'])}분)"
+        lines.append(line)
+    extra = []
+    if r.get("run_minutes") is not None:
+        extra.append(f"한 바퀴 약 {_short(r['run_minutes'])}분")
+    if r.get("authorized_buses") is not None:
+        extra.append(f"인가대수 {_short(r['authorized_buses'])}대" + (" (추정)" if r.get("authorized_estimated") else ""))
+    if extra:
+        lines.append("🚏 " + " · ".join(extra))
+    if r.get("key_stops"):
+        lines.append("🗺️ 주요 정류장: " + " → ".join(r["key_stops"]))
+    return args, "\n".join(lines), [], dict(r)
+
+
+HANDLERS = {"predict": _predict, "advise": _advise, "ask": _ask, "guide": _guide, "route_info": _route_info}
 
 
 def _rewrite(llm: str, message: str, template: str, facts: dict) -> str | None:
@@ -427,7 +499,8 @@ def _rewrite(llm: str, message: str, template: str, facts: dict) -> str | None:
     except Exception as error:      # 모델 로드 실패·메모리 부족 등: 문장 틀 답변으로 계속
         logger.warning("챗봇 LLM 문장 작성 실패, 문장 틀 답변 사용: %s", error)
         return None
-    return answer if answer and verify_numbers(answer, shown, template) else None
+    ok = bool(answer) and verify_numbers(answer, shown, template) and keeps_meaning(answer, shown)
+    return answer if ok else None
 
 
 # ==================================================
@@ -514,7 +587,10 @@ def run(adapter: DomainAdapter, message: str, history: list[dict] | None = None,
         if "destination" not in slots:
             return done("clarify", "🙋 어디로 가시나요? 도착 정류장 이름을 알려 주세요. (예: 종로3가역 어떻게 가?)")
         if "origin" not in slots and "lat" not in slots:
-            return done("clarify", "🙋 어디에서 출발하시나요? 출발 정류장 이름을 알려 주시거나 '현재 위치' 버튼을 켜 주세요.")
+            if places.get("from_here"):
+                slots["from_here"] = True     # 화면이 이 값을 보고 현재 위치를 얻어 다시 물음
+                return done("clarify", "📍 현재 위치가 필요합니다. '현재 위치 사용'을 켜거나 출발 정류장 이름을 알려 주세요.")
+            return done("clarify", "🙋 어디에서 출발하시나요? 출발 정류장 이름을 알려 주시거나 '현재 위치 사용'을 켜 주세요.")
     elif question := _clarify(intent, slots, routes):
         return done("clarify", question)
     if intent in NOT_CONNECTED:
@@ -538,7 +614,7 @@ def run(adapter: DomainAdapter, message: str, history: list[dict] | None = None,
     data = facts.get("data")          # 길안내 결과 전체 (화면이 지도에 그림)
     evidence = {k: v for k, v in facts.items() if k != "data"}
     # 문장 틀 답변이 기본. use_llm이면 LLM이 다시 쓰되, 숫자가 달라지면 버리고 문장 틀 답변을 씀
-    if use_llm and intent != "guide":   # 길안내는 줄 단위 목록이라 다시 쓰지 않음
+    if use_llm and intent in ("predict", "advise"):   # 길안내·노선 정보는 줄 단위 목록이라 다시 쓰지 않음
         rewritten = _rewrite(llm, message, answer, evidence)
         if rewritten:
             return done(intent, rewritten, tools, sources, verified=True, used_llm=llm, data=data)

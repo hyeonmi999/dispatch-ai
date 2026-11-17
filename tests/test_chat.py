@@ -136,3 +136,16 @@ def test_verify_numbers_rejects_invented_values():
     assert verify_numbers("160번 2026-11-17 15시 예상 승차는 1,234명, 혼잡도 0.61입니다.", facts)
     assert not verify_numbers("160번 15시 예상 승차는 1,300명입니다.", facts)
     assert not verify_numbers("혼잡도는 0.75입니다.", facts)
+
+
+def test_llm_rewrite_must_keep_recommendation_and_level():
+    # 재현: 권고가 '현행 유지'인데 LLM이 "감차해도 돼요"로 바꿈. 숫자는 같아서 숫자 검증만으로는 통과했음
+    from app.core.agent import keeps_meaning
+    keep = {"action": "keep", "level": "보통"}
+    assert keeps_meaning("271번 9시 권고는 현행 유지입니다. 혼잡도는 보통입니다.", keep)
+    assert not keeps_meaning("271번 9시 감차해도 돼요.", keep)                       # 결론이 뒤집힘
+    assert not keeps_meaning("271번 9시는 현행 유지이고 매우혼잡입니다.", keep)       # 혼잡 단계가 다름
+    increase = {"action": "increase", "level": "혼잡"}
+    assert keeps_meaning("배차간격을 단축해 증차하는 것을 권고합니다. 지금은 혼잡입니다.", increase)
+    assert not keeps_meaning("증차하지 않아도 됩니다.", increase)
+    assert keeps_meaning("160번 15시에는 2,194명이 탈 것으로 보이며 매우혼잡입니다.", {"level": "매우혼잡"})

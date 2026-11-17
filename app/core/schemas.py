@@ -60,7 +60,7 @@ class ChatRequest(LLMOptions):
 
 
 class ChatToolCall(BaseModel):
-    name: str = Field(..., description="predict / advise / ask / guide / simulate / optimize")
+    name: str = Field(..., description="predict / advise / ask / guide / route_info / simulate / optimize")
     args: dict = Field(default_factory=dict)
     ok: bool = Field(True, description="False면 기능이 오류를 돌려줌 (answer에 이유)")
 
@@ -78,7 +78,7 @@ class ChatSource(BaseModel):
 class ChatResponse(BaseModel):
     domain: str
     answer: str
-    intent: str = Field(..., description="predict / advise / ask / guide / simulate / optimize / clarify / out_of_scope")
+    intent: str = Field(..., description="predict / advise / ask / guide / route_info / simulate / optimize / clarify / out_of_scope")
     slots: dict = Field(default_factory=dict, description="질문에서 뽑은 값 (route, date, hour, interval, origin, destination)")
     tools: list[ChatToolCall] = Field(default_factory=list, description="부른 기능 목록")
     sources: list[ChatSource] = Field(default_factory=list, description="근거 조항")
