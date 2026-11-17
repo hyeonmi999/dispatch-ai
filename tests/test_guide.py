@@ -103,6 +103,14 @@ def test_chat_guide_with_location(client):
     assert body["data"]["options"] and routes[0] + "번" in body["answer"]
 
 
+def test_chat_guide_from_here_without_location_flags_it(client):
+    # 재현: "여기서 ○○ 어떻게 가?"인데 위치가 꺼져 있으면 되묻기만 했음 → 화면이 위치를 얻어 다시 묻도록 표시
+    routes, _ = meta(client)
+    dest = stops_of(client, routes[0])[12]["name"].replace(" ", "")
+    body = client.post("/api/bus/chat", json={"message": f"여기서 {dest} 어떻게가"}).json()
+    assert body["intent"] == "clarify" and body["slots"].get("from_here") is True and body["tools"] == []
+
+
 def test_chat_guide_asks_for_origin_without_location(client):
     routes, _ = meta(client)
     dest = stops_of(client, routes[0])[12]["name"].replace(" ", "")
@@ -160,3 +168,44 @@ def test_llm_failure_falls_back_to_template(monkeypatch):
     monkeypatch.setattr(agent.llm_module, "generate", boom)
     out = agent.run(FakeAdapter(), "160번 내일 15시 몇 명 타?", use_llm=True, now=NOW)
     assert "1,234명" in out["answer"] and out["llm"] is None and out["llm_rejected"] is True
+
+
+# ==================================================
+# 4. 예측 범위 밖 날짜 · 노선 정보
+# ==================================================
+
+def test_guide_date_out_of_range_falls_back_to_same_weekday(client):
+    routes, _ = meta(client)
+    latest = dt.date.fromisoformat(client.get("/api/bus/meta").json()["dates"]["max_forecast_date"])
+    asked = latest + dt.timedelta(days=3)
+    stops = stops_of(client, routes[0])
+    r = client.post("/api/bus/guide", json={
+        "origin": stops[2]["name"], "destination": stops[10]["name"], "date": asked.isoformat(), "hour": 8})
+    body = r.json()
+    assert r.status_code == 200, r.text
+    used = dt.date.fromisoformat(body["date"])
+    assert body["requested_date"] == asked.isoformat()
+    assert used <= latest and (asked - used).days % 7 == 0 and body["options"]
+
+
+def test_route_info_api(client):
+    routes, _ = meta(client)
+    body = client.get(f"/api/bus/routes/{routes[0]}/info").json()
+    assert body["route"] == routes[0] and body["stops_count"] > 0
+    assert body["start"] and body["end"] and body["key_stops"]
+    assert client.get("/api/bus/routes/9999/info").status_code == 404
+
+
+def test_chat_route_info(client):
+    routes, _ = meta(client)
+    for message in (f"{routes[0]}번 버스 노선알려줘", f"{routes[0]}번 첫차 몇 시야?", f"{routes[0]}번 어디서 어디까지 가?"):
+        body = client.post("/api/bus/chat", json={"message": message}).json()
+        assert body["intent"] == "route_info", message
+        assert body["tools"] == [{"name": "route_info", "args": {"route": routes[0]}, "ok": True}]
+        assert body["numbers_verified"] is True and "첫차" in body["answer"]
+
+
+def test_route_info_does_not_steal_other_intents():
+    assert classify("143번 노선 변경 절차 알려줘", True) == "ask"            # 절차는 규정
+    assert classify("160번 10월 21일 정류장별 승객 알려줘", True) == "predict"
+    assert classify("160번 버스 노선알려줘", True) == "route_info"

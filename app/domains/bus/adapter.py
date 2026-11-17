@@ -16,7 +16,7 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 
-from app.config import GUIDE_SEARCH_LIMIT_MAX
+from app.config import GUIDE_DATE_FALLBACK_WEEKS, GUIDE_SEARCH_LIMIT_MAX, ROUTE_INFO_KEY_STOPS
 from app.core.domain import DomainAdapter
 from app.domains.bus.advisor import BusAdvisor, _num, congestion_level
 from app.domains.bus.data import BusDataset
@@ -24,7 +24,8 @@ from app.domains.bus.forecaster import BusForecaster
 from app.domains.bus.guide import BusGuide, GuideError
 from app.db import repository as repo
 from app.domains.bus.schemas import (
-    BusAdviseAllRequest, BusAdviseRequest, BusGuideRequest, BusGuideResponse, BusPredictRequest, BusStopSearchItem,
+    BusAdviseAllRequest, BusAdviseRequest, BusGuideRequest, BusGuideResponse, BusPredictRequest,
+    BusRouteInfoRequest, BusRouteInfoResponse, BusStopSearchItem,
 )
 
 
@@ -77,10 +78,59 @@ class BusAdapter(DomainAdapter):
     def guide(self, payload: dict) -> dict:
         req = BusGuideRequest(**payload)
         self._require_model()
+        # 길은 날짜와 상관없이 같으므로, 요청한 날이 예측 범위 밖이면 범위 안의 가장 가까운 같은 요일로 계산
+        latest = dt.date.fromisoformat(self.forecaster.date_range()["max_forecast_date"])
+        date = req.date
+        for _ in range(GUIDE_DATE_FALLBACK_WEEKS):
+            if date <= latest:
+                break
+            date -= dt.timedelta(days=7)
         try:
-            return self.guide_engine.find(req.date, req.hour, req.destination, req.origin, req.lat, req.lng)
-        except ValueError as e:      # GuideError 포함 (없는 정류장, 예측 범위 밖 날짜 등)
+            result = self.guide_engine.find(date, req.hour, req.destination, req.origin, req.lat, req.lng)
+        except ValueError as e:      # GuideError 포함 (없는 정류장 등)
             raise HTTPException(422, str(e))
+        if date != req.date:
+            result["requested_date"] = req.date.isoformat()
+        return result
+
+    # ------------------------------------------------
+    # 노선 기본 정보 (지도 화면의 meta와 챗봇이 같이 씀)
+    # ------------------------------------------------
+
+    def _route_row(self, route: str) -> dict:
+        info = self.dataset.route_info_for(route, "weekday")
+        return {
+            "route": route,
+            "route_type": info.get("route_type"),
+            "start": info.get("start"),
+            "end": info.get("end"),
+            "company": info.get("company"),
+            "authorized_buses": _num(info.get("buses"), 0),
+            "interval_weekday": _num(info.get("interval")),
+            "min_interval": _num(info.get("min_interval")),
+            "max_interval": _num(info.get("max_interval")),
+            "run_minutes": _num(info.get("run_minutes"), 0),
+            "first_bus": info.get("first_bus"),
+            "last_bus": info.get("last_bus"),
+        }
+
+    def route_info(self, payload: dict) -> dict:
+        req = BusRouteInfoRequest(**payload)
+        self._check_route(req.route)
+        info = self.dataset.route_info_for(req.route, "weekday")
+        stops = (self.dataset.geo(req.route) or {}).get("stops", [])
+        # 기점에서 회차 지점까지(한 방향)에서 고르게 뽑음
+        turn = next((s["seq"] for s in stops if s.get("is_turn")), len(stops))
+        outbound = [s["name"] for s in stops if s["seq"] <= turn]
+        step = max(1, (len(outbound) - 1) // max(ROUTE_INFO_KEY_STOPS - 1, 1))
+        key_stops = outbound[::step][:ROUTE_INFO_KEY_STOPS - 1] + outbound[-1:] if outbound else []
+        return {
+            **self._route_row(req.route),
+            "authorized_estimated": bool(info.get("buses_estimated")),
+            "distance_km": _num(info.get("distance_km")),
+            "stops_count": len(stops),
+            "key_stops": list(dict.fromkeys(key_stops)),
+        }
 
     def _require_model(self):
         if not self.forecaster.ready():
@@ -168,23 +218,7 @@ class BusAdapter(DomainAdapter):
         @r.get("/meta", summary="데이터 기간·노선·평가 지표")
         def meta():
             self._require_model()
-            routes = []
-            for route in self.dataset.routes:
-                info = self.dataset.route_info_for(route, "weekday")
-                routes.append({
-                    "route": route,
-                    "route_type": info.get("route_type"),
-                    "start": info.get("start"),
-                    "end": info.get("end"),
-                    "company": info.get("company"),
-                    "authorized_buses": _num(info.get("buses"), 0),
-                    "interval_weekday": _num(info.get("interval")),
-                    "min_interval": _num(info.get("min_interval")),
-                    "max_interval": _num(info.get("max_interval")),
-                    "run_minutes": _num(info.get("run_minutes"), 0),
-                    "first_bus": info.get("first_bus"),
-                    "last_bus": info.get("last_bus"),
-                })
+            routes = [self._route_row(route) for route in self.dataset.routes]
             return {
                 "data_mode": self.dataset.mode,
                 "model_version": self.forecaster.model_version,
@@ -277,6 +311,10 @@ class BusAdapter(DomainAdapter):
         @r.get("/stops/search", response_model=list[BusStopSearchItem], summary="정류장 이름 검색 (길안내 입력용)")
         def stop_search(q: str = Query(..., min_length=1, max_length=50), limit: int = Query(10, ge=1, le=GUIDE_SEARCH_LIMIT_MAX)):
             return self.guide_engine.search(q, limit)
+
+        @r.get("/routes/{route}/info", response_model=BusRouteInfoResponse, summary="노선 기본 정보 (기점·종점·첫차·막차·배차간격·주요 정류장)")
+        def route_info_api(route: str):
+            return self.route_info({"route": route})
 
         @r.post("/guide", response_model=BusGuideResponse, summary="버스 길안내 (직행·1회 환승, 혼잡도 반영)")
         def guide_route(req: BusGuideRequest):

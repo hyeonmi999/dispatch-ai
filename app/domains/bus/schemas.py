@@ -76,7 +76,8 @@ class BusGuideRecommendation(BaseModel):
 
 
 class BusGuideResponse(BaseModel):
-    date: str
+    date: str = Field(..., description="혼잡도·배차간격을 계산한 날짜")
+    requested_date: str | None = Field(None, description="요청한 날짜가 예측 범위 밖이어서 date로 바꿨을 때만, 원래 요청한 날짜")
     hour: int
     is_forecast: bool
     origin: BusGuidePlace
@@ -84,6 +85,29 @@ class BusGuideResponse(BaseModel):
     options: list[BusGuideOption] = Field(..., description="빠른 순. 경로가 없으면 빈 목록")
     recommendation: BusGuideRecommendation | None = None
     assumption: str
+
+
+class BusRouteInfoRequest(BaseModel):
+    route: str = Field(..., examples=["160"])
+
+
+class BusRouteInfoResponse(BaseModel):
+    route: str
+    route_type: str | None = None
+    company: str | None = None
+    start: str | None = Field(None, description="기점")
+    end: str | None = Field(None, description="종점")
+    first_bus: str | None = None
+    last_bus: str | None = None
+    interval_weekday: float | None = Field(None, description="평일 기준 배차간격(분)")
+    min_interval: float | None = None
+    max_interval: float | None = None
+    run_minutes: float | None = Field(None, description="한 바퀴 운행시간(분)")
+    authorized_buses: float | None = Field(None, description="인가대수")
+    authorized_estimated: bool = Field(False, description="True면 원본에 없어 보완한 인가대수")
+    distance_km: float | None = None
+    stops_count: int = Field(..., description="정류장 수 (왕복)")
+    key_stops: list[str] = Field(..., description="기점에서 회차 지점까지 고르게 뽑은 주요 정류장")
 
 
 class BusStopSearchItem(BaseModel):

@@ -71,6 +71,10 @@ class DomainAdapter(ABC):
         """길안내 (출발·도착 → 경로). 지원하지 않는 도메인은 501"""
         raise DomainNotImplemented(self.name, "guide")
 
+    def route_info(self, payload: dict) -> dict:
+        """대상 하나의 기본 정보 (버스: 노선의 기점·종점·첫차·막차·배차간격·주요 정류장). 지원하지 않으면 501"""
+        raise DomainNotImplemented(self.name, "route_info")
+
     def targets(self) -> list[str]:
         """챗봇이 질문에서 찾을 대상 이름 (버스: 노선번호). 없으면 빈 목록"""
         return []

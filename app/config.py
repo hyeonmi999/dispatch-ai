@@ -137,6 +137,8 @@ GUIDE_MAX_OPTIONS = 3          # 보여 줄 경로 수
 GUIDE_NEAR_STOPS = 5           # 주변에 정류장이 없을 때 살펴볼 가까운 정류장 수
 GUIDE_CROWD_TRADEOFF_MIN = 10  # 덜 붐비는 경로가 이 시간(분) 이하로 더 걸리면 그쪽을 추천
 GUIDE_SEARCH_LIMIT_MAX = 20    # 정류장 검색 결과 최대 개수
+GUIDE_DATE_FALLBACK_WEEKS = 8  # 요청한 날이 예측 범위 밖이면 같은 요일로 몇 주까지 거슬러 찾을지
+ROUTE_INFO_KEY_STOPS = 8       # 노선 정보에 보여 줄 주요 정류장 수
 
 # 학기 중/방학 구분 (서울 초중고 대략 기준, 계절성 피처)
 SCHOOL_VACATIONS = [
