@@ -116,7 +116,8 @@ class BusAdapter(DomainAdapter):
 
     def route_info(self, payload: dict) -> dict:
         req = BusRouteInfoRequest(**payload)
-        self._check_route(req.route)
+        if req.route not in self.dataset.routes:
+            return self._other_route_info(req.route)
         info = self.dataset.route_info_for(req.route, "weekday")
         stops = (self.dataset.geo(req.route) or {}).get("stops", [])
         # 기점에서 회차 지점까지(한 방향)에서 고르게 뽑음
@@ -130,6 +131,26 @@ class BusAdapter(DomainAdapter):
             "distance_km": _num(info.get("distance_km")),
             "stops_count": len(stops),
             "key_stops": list(dict.fromkeys(key_stops)),
+            "predicted": True,
+        }
+
+    def _other_route_info(self, route: str) -> dict:
+        """승객을 예측하지 않는 노선: 전체 노선 정류장 파일과 노선 기본정보에 있는 값만"""
+        guide = self.guide_engine
+        guide._build()
+        line, meta = guide.by_route.get(route, []), guide.route_meta.get(route, {})
+        if not line and not meta:
+            raise HTTPException(404, f"{route}번 노선 정보가 없습니다. 서울 버스 노선번호를 확인해 주세요.")
+        outbound = [s["name"] for s in line[: max(len(line) // 2, 1)]]      # 앞쪽 절반 = 한 방향
+        step = max(1, (len(outbound) - 1) // max(ROUTE_INFO_KEY_STOPS - 1, 1))
+        key_stops = outbound[::step][:ROUTE_INFO_KEY_STOPS - 1] + outbound[-1:] if outbound else []
+        return {
+            "route": route, "route_type": meta.get("route_type"), "company": meta.get("company") or None,
+            "start": meta.get("start"), "end": meta.get("end"),
+            "first_bus": meta.get("first_bus"), "last_bus": meta.get("last_bus"),
+            "interval_weekday": _num(meta.get("interval")), "min_interval": None, "max_interval": None,
+            "run_minutes": _num(meta.get("run_minutes"), 0), "authorized_buses": None, "authorized_estimated": False,
+            "distance_km": None, "stops_count": len(line), "key_stops": list(dict.fromkeys(key_stops)), "predicted": False,
         }
 
     def _require_model(self):

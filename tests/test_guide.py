@@ -193,7 +193,7 @@ def test_route_info_api(client):
     body = client.get(f"/api/bus/routes/{routes[0]}/info").json()
     assert body["route"] == routes[0] and body["stops_count"] > 0
     assert body["start"] and body["end"] and body["key_stops"]
-    assert client.get("/api/bus/routes/9999/info").status_code == 404
+    assert client.get("/api/bus/routes/9999/info").status_code == 404      # 어느 파일에도 없는 노선
 
 
 def test_chat_route_info(client):
@@ -239,3 +239,50 @@ def test_chat_guide_here_overrides_origin_from_history(client):
     # 출발지도 위치도 없으면 앞에서 말한 출발지를 쓰고, 그 사실을 답변에 적음
     body = client.post("/api/bus/chat", json={"message": f"{dest} 어떻게가", "history": history}).json()
     assert body["slots"].get("origin_from_history") is True and "앞에서 말씀하신" in body["answer"]
+
+
+# ==================================================
+# 6. 전체 노선 (혼잡도를 예측하지 않는 노선 포함)
+# ==================================================
+
+def test_guide_uses_routes_without_prediction(client):
+    """예측하는 노선 A의 정류장에서 예측하지 않는 노선 X로 갈아타 X만 가는 정류장에 도착"""
+    import pandas as pd
+    from app.core.registry import registry
+    from app.domains.bus.guide import BusGuide
+
+    adapter = registry.get("bus")
+    routes, date = meta(client)
+    a = stops_of(client, routes[0])
+    rows = [{"route": r, "seq": s["seq"], "station_id": s["station_id"], "name": s["name"], "lat": s["lat"], "lng": s["lng"],
+             "direction": s.get("direction")} for r in routes for s in stops_of(client, r)]
+    # 가상의 노선 X9: A의 10번째 정류장(같은 정류장ID)을 지나 A가 가지 않는 "가상시장"으로 감
+    hub = a[10]
+    rows += [
+        {"route": "X9", "seq": 1, "station_id": "X-1", "name": "가상차고지", "lat": hub["lat"] + 0.02, "lng": hub["lng"], "direction": ""},
+        {"route": "X9", "seq": 2, "station_id": hub["station_id"], "name": hub["name"], "lat": hub["lat"], "lng": hub["lng"], "direction": ""},
+        {"route": "X9", "seq": 3, "station_id": "X-3", "name": "가상시장.가상구청", "lat": hub["lat"] - 0.02, "lng": hub["lng"], "direction": ""},
+    ]
+    info = pd.DataFrame([{"route": "X9", "route_type": "지선", "company": "", "start": "가상차고지", "end": "가상시장",
+                          "interval": 12.0, "run_minutes": 40.0, "first_bus": "05:00", "last_bus": "23:00"}])
+    guide = BusGuide(adapter.advisor, adapter.dataset.routes, network=(pd.DataFrame(rows), info))
+
+    result = guide.find(dt.date.fromisoformat(date), 8, "가상시장", origin=a[2]["name"])
+    best = result["options"][0]
+    assert best["kind"] == "transfer" and best["routes"] == [routes[0], "X9"]
+    first, second = best["legs"]
+    assert first["predicted"] is True and second["predicted"] is False
+    assert second["congestion"] is None and second["interval_min"] == 12.0 and second["path"]
+    assert "가상시장" in result["destination"]["stop"]
+
+    # 운행하지 않는 시간대의 노선은 경로에서 빠짐
+    assert guide.find(dt.date.fromisoformat(date), 2, "가상시장", origin=a[2]["name"])["options"] == []
+
+
+def test_stop_name_matching_rules(client):
+    from app.core.registry import registry
+    guide = registry.get("bus").guide_engine
+    guide._build()
+    name = next(iter(guide.names))
+    assert {s["name"] for s in guide.by_name(name)} >= {name}
+    assert {s["name"] for s in guide.by_name(name + "으로")} >= {name}       # 조사가 붙어도 찾음

@@ -132,8 +132,12 @@ CONGESTION_TARGET = 0.70   # 권고 간격 계산 시 목표 혼잡도
 # 길안내 (app/domains/bus/guide.py)
 GUIDE_WALK_M = 500             # 이 거리 안의 정류장을 출발 후보로 봄 (걸어서 약 7분)
 GUIDE_TRANSFER_M = 150         # 갈아탈 때 걸어서 옮길 수 있는 정류장 사이 거리
+GUIDE_PLACE_M = 300            # 이름으로 찾은 정류장 주변 이 거리 안의 정류장도 타고 내릴 곳으로 봄 (길 건너·다른 출구)
 GUIDE_WALK_M_PER_MIN = 70      # 걷는 속도 (분당 m)
 GUIDE_MAX_OPTIONS = 3          # 보여 줄 경로 수
+GUIDE_CANDIDATES = 12          # 시간·혼잡도를 계산해 볼 경로 후보 수 (정류장 수가 적은 순)
+GUIDE_SCAN_FACTOR = 10         # 운행하지 않는 노선을 건너뛰며 후보를 최대 몇 배까지 더 볼지
+GUIDE_DEFAULT_MIN_PER_STOP = 2.5   # 운행시간 정보가 없는 노선의 정류장 하나당 시간(분)
 GUIDE_NEAR_STOPS = 5           # 주변에 정류장이 없을 때 살펴볼 가까운 정류장 수
 GUIDE_CROWD_TRADEOFF_MIN = 10  # 덜 붐비는 경로가 이 시간(분) 이하로 더 걸리면 그쪽을 추천
 GUIDE_SEARCH_LIMIT_MAX = 20    # 정류장 검색 결과 최대 개수

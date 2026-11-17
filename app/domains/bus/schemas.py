@@ -40,12 +40,15 @@ class BusGuideLeg(BaseModel):
     direction: str | None = None
     stops: int = Field(..., description="타고 가는 정류장 수")
     walk_m: int = Field(..., description="타는 정류장까지 걷는 거리(m)")
-    walk_min: int
+    walk_min: int = Field(..., description="걷는 시간(분): 타러 가는 길 + 내려서 도착지까지")
+    exit_walk_m: int = Field(0, description="내린 정류장에서 도착지까지 걷는 거리(m)")
     interval_min: float = Field(..., description="이 시간대 배차간격(분)")
     wait_min: float = Field(..., description="평균 대기 시간 = 배차간격의 절반")
     ride_min: int = Field(..., description="대략의 탑승 시간(분)")
-    congestion: float | None = Field(None, description="타는 구간에서 가장 붐비는 곳의 예상 혼잡도")
+    congestion: float | None = Field(None, description="타는 구간에서 가장 붐비는 곳의 예상 혼잡도. 예측하지 않는 노선은 null")
     level: str | None = None
+    predicted: bool = Field(True, description="False면 혼잡도를 예측하지 않는 노선 (배차간격은 평일 기준 기본값)")
+    path: list[list[float]] = Field(default_factory=list, description="타고 가는 정류장들의 [위도, 경도] (지도에 그림)")
 
 
 class BusGuideOption(BaseModel):
@@ -108,6 +111,7 @@ class BusRouteInfoResponse(BaseModel):
     distance_km: float | None = None
     stops_count: int = Field(..., description="정류장 수 (왕복)")
     key_stops: list[str] = Field(..., description="기점에서 회차 지점까지 고르게 뽑은 주요 정류장")
+    predicted: bool = Field(True, description="False면 승객·혼잡도를 예측하지 않는 노선 (기본 정보만 있음)")
 
 
 class BusStopSearchItem(BaseModel):
