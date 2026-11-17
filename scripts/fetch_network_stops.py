@@ -3,6 +3,7 @@
 
 공공데이터포털 '서울특별시 버스노선정보조회'의 getStaionByRoute로 노선마다 경유 정류장(순서·이름·좌표)을 받아
 한 파일로 모읍니다. 경로 좌표(getRoutePath)는 받지 않습니다 (길안내는 정류장만 있으면 됨, 호출 수 절반).
+소요 시간 계산용으로 정류장별 누적 거리(cum_m)와 공식 시간표의 누적 분(t_first: 첫차, t_last: 막차)도 함께 저장합니다.
 
 - 노선 1개당 호출 1번 (전체 약 720번). 개발 계정 하루 호출 한도에 걸리면 다음 날 다시 실행하면 이어서 받습니다.
 - 이미 받은 노선은 건너뜁니다 (data/interim/network/parts/<노선>.json).
@@ -34,18 +35,57 @@ PAUSE_SEC = 0.15          # 호출 사이 간격 (서버에 부담을 주지 않
 MAX_FAILS_IN_A_ROW = 5    # 연속으로 이만큼 실패하면 멈춤 (호출 한도 초과·키 오류)
 
 
+def _clock(text) -> int | None:
+    """'04:03' → 243분. 비어 있거나 ':'만 있으면 None"""
+    try:
+        hour, minute = str(text).strip().split(":")[:2]
+        return int(hour) * 60 + int(minute)
+    except (ValueError, AttributeError):
+        return None
+
+
+def _elapsed(clocks: list[int | None]) -> list[float | None]:
+    """정류장별 시각 → 첫 정류장부터의 누적 분. 자정을 넘기면 하루를 더하고, 시각이 없는 곳은 None"""
+    out, total, prev = [], 0, None
+    for now in clocks:
+        if now is None:
+            out.append(None)
+            continue
+        if prev is not None:
+            step = now - prev
+            if step < -600:          # 23:58 → 00:02
+                step += 1440
+            total += max(step, 0)
+        prev = now
+        out.append(float(total))
+    return out
+
+
 def fetch_route(route: str, route_id: str) -> list[dict]:
-    stations = call_api("getStaionByRoute", route_id)
-    rows = []
-    for s in sorted(stations, key=lambda s: int(s["seq"])):
+    stations = sorted(call_api("getStaionByRoute", route_id), key=lambda s: int(s["seq"]))
+    t_first = _elapsed([_clock(s.get("beginTm")) for s in stations])
+    t_last = _elapsed([_clock(s.get("lastTm")) for s in stations])
+    rows, cum_m = [], 0.0
+    for s, first, last in zip(stations, t_first, t_last):
+        cum_m += float(s.get("fullSectDist") or 0)       # 앞 정류장에서 이 정류장까지의 도로 거리(m)
         if not s.get("gpsY") or not s.get("gpsX"):
             continue
         rows.append({
             "route": route, "seq": int(s["seq"]), "station_id": s["station"], "ars_id": s.get("arsId", ""),
             "name": s["stationNm"], "lat": float(s["gpsY"]), "lng": float(s["gpsX"]),
             "direction": s.get("direction", ""), "is_turn": s["station"] == s.get("trnstnid"),
+            "cum_m": cum_m, "t_first": first, "t_last": last,
         })
     return rows
+
+
+def has_timing(part: Path) -> bool:
+    """예전 형식(거리·시간표 없음)으로 받은 조각이면 False → 다시 받음"""
+    try:
+        rows = json.loads(part.read_text(encoding="utf-8"))
+        return not rows or "cum_m" in rows[0]
+    except (ValueError, OSError):
+        return False
 
 
 def write_routes() -> int:
@@ -76,7 +116,7 @@ def main():
     done = fails = 0
     for i, route in enumerate(routes, start=1):
         part = PARTS_DIR / f"{route}.json"
-        if part.exists():
+        if part.exists() and has_timing(part):
             continue
         if route not in mapping:
             print(f"- {route}: 노선ID정보에 없음, 건너뜀")

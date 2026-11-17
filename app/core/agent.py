@@ -442,13 +442,14 @@ def _guide(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, list[di
                      if leg["congestion"] is not None else ", 혼잡도 예측 없음")
             walk = f" (걸어서 약 {leg['walk_m']}m)" if leg["walk_m"] else ""
             exit_walk = f" (내려서 약 {leg['exit_walk_m']}m 걷기)" if leg.get("exit_walk_m") else ""
+            distance = f"({_short(leg['distance_km'])}km)" if leg.get("distance_km") else ""
             lines.append(
                 f"   {leg['route']}번: {leg['board']['name']}{walk} → {leg['alight']['name']}{exit_walk}"
-                f" · 정류장 {leg['stops']}개 · 약 {leg['ride_min']}분 · 배차간격 약 {_short(leg['interval_min'])}분{crowd}"
+                f" · 정류장 {leg['stops']}개{distance} · 약 {leg['ride_min']}분 · 배차간격 약 {_short(leg['interval_min'])}분{crowd}"
             )
         facts["options"].append({
             "total_min": option["total_min"],
-            "legs": [{k: leg[k] for k in ("route", "stops", "walk_m", "exit_walk_m", "ride_min", "interval_min", "congestion")}
+            "legs": [{k: leg[k] for k in ("route", "stops", "walk_m", "exit_walk_m", "ride_min", "distance_km", "interval_min", "congestion")}
                      | {"board": leg["board"]["name"], "alight": leg["alight"]["name"]} for leg in option["legs"]],
         })
 
@@ -460,7 +461,7 @@ def _guide(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, list[di
             lines.append(f"👉 추천은 {number}안입니다. 약 {rec['slower_by_min']}분 더 걸리지만 덜 붐빕니다.")
         else:
             lines.append(f"👉 추천은 {number}안입니다. 가장 빨리 도착합니다.")
-    lines.append("ℹ️ 버스만 안내하고(지하철 제외), 소요 시간은 어림한 값입니다.")
+    lines.append("ℹ️ 버스만 안내합니다(지하철 제외). 시간은 버스 시간표 기준이라 실제 교통 상황에 따라 달라질 수 있습니다.")
     return args, "\n".join(lines), [], {**facts, "data": result}
 
 

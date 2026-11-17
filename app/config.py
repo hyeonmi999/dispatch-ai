@@ -138,6 +138,13 @@ GUIDE_MAX_OPTIONS = 3          # 보여 줄 경로 수
 GUIDE_CANDIDATES = 12          # 시간·혼잡도를 계산해 볼 경로 후보 수 (정류장 수가 적은 순)
 GUIDE_SCAN_FACTOR = 10         # 운행하지 않는 노선을 건너뛰며 후보를 최대 몇 배까지 더 볼지
 GUIDE_DEFAULT_MIN_PER_STOP = 2.5   # 운행시간 정보가 없는 노선의 정류장 하나당 시간(분)
+# 탑승 시간 계산 (정류장별 공식 시간표 기준)
+GUIDE_EARLY_HOUR = 5           # 이 시각 이하는 첫차 시간표(도로가 빈 시간), 그 뒤는 막차 시간표(저녁)를 기준으로 봄
+GUIDE_PEAK_HOURS = (7, 8, 9, 17, 18, 19)
+GUIDE_PEAK_FACTOR = 1.15       # 출퇴근 시간에 시간표보다 더 걸린다고 보는 비율 (가정값. 실측으로 정한 값이 아님)
+GUIDE_SPEED_RANGE_KMH = (6, 60)    # 시간표로 계산한 속도가 이 범위를 벗어나면 시간표 값이 잘못된 것으로 보고 쓰지 않음
+GUIDE_DEFAULT_KMH = 17         # 시간표를 쓸 수 없는 노선의 평균 속도. 시간표가 있는 451개 노선의 중앙값 17.1km/h (정차 포함)
+GUIDE_SHORT_LEG_MIN = 3        # 시간표는 분 단위라, 이보다 짧은 구간은 거리 ÷ 노선 평균 속도로 계산
 GUIDE_NEAR_STOPS = 5           # 주변에 정류장이 없을 때 살펴볼 가까운 정류장 수
 GUIDE_CROWD_TRADEOFF_MIN = 10  # 덜 붐비는 경로가 이 시간(분) 이하로 더 걸리면 그쪽을 추천
 GUIDE_SEARCH_LIMIT_MAX = 20    # 정류장 검색 결과 최대 개수

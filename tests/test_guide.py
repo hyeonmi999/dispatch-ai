@@ -286,3 +286,52 @@ def test_stop_name_matching_rules(client):
     name = next(iter(guide.names))
     assert {s["name"] for s in guide.by_name(name)} >= {name}
     assert {s["name"] for s in guide.by_name(name + "으로")} >= {name}       # 조사가 붙어도 찾음
+
+
+# ==================================================
+# 7. 탑승 시간: 시간표 기준
+# ==================================================
+
+def _timed_guide(client, extra_rows=()):
+    import pandas as pd
+    from app.core.registry import registry
+    from app.domains.bus.guide import BusGuide
+    adapter = registry.get("bus")
+    rows = [
+        # 가상의 노선 T1: 정류장 사이 600m, 시간표는 첫차 2분·막차 3분 간격
+        {"route": "T1", "seq": i + 1, "station_id": f"T-{i}", "name": f"시간표정류장{i}", "lat": 37.5 + i * 0.005, "lng": 127.0,
+         "direction": "", "cum_m": i * 600.0, "t_first": i * 2.0, "t_last": i * 3.0}
+        for i in range(12)
+    ] + list(extra_rows)
+    info = pd.DataFrame([{"route": "T1", "route_type": "간선", "company": "", "start": "", "end": "",
+                          "interval": 10.0, "run_minutes": 200.0, "first_bus": "04:00", "last_bus": "23:30"}])
+    guide = BusGuide(adapter.advisor, adapter.dataset.routes, network=(pd.DataFrame(rows), info))
+    guide._build()
+    return guide
+
+
+def test_ride_time_follows_timetable_by_hour(client):
+    guide = _timed_guide(client)
+    line = guide.by_route["T1"]
+    a, b = line[1], line[9]                                  # 8구간, 4.8km
+    assert guide.ride_minutes(a, b, 14) == (24.0, 4.8)       # 낮: 막차 시간표 3분 × 8
+    assert guide.ride_minutes(a, b, 4) == (16.0, 4.8)        # 새벽: 첫차 시간표 2분 × 8
+    peak, _ = guide.ride_minutes(a, b, 8)
+    assert round(peak, 1) == 27.6                            # 출근 시간: 24분 × 1.15
+    # 예전 방식(한 바퀴 200분 ÷ 정류장 수)이면 145분쯤 나오던 구간
+    _, date = meta(client)
+    option = guide.find(dt.date.fromisoformat(date), 14, "시간표정류장9", origin="시간표정류장1")["options"][0]
+    assert option["legs"][0]["ride_min"] == 24 and option["legs"][0]["distance_km"] == 4.8
+
+
+def test_ride_time_ignores_broken_timetable(client):
+    guide = _timed_guide(client)
+    line = guide.by_route["T1"]
+    # 짧은 구간(시간표 3분 미만 차이)은 거리 ÷ 노선 평균 속도
+    short, km = guide.ride_minutes(line[1], line[1 + 0] | {"cum_m": line[1]["cum_m"] + 600, "t_last": line[1]["t_last"] + 1}, 14)
+    assert km == 0.6 and 2.5 < short < 3.5                   # 600m ÷ 12km/h = 3분 (시간표의 1분이 아님)
+    # 시간표가 말이 안 되는 구간(600m에 300분)은 버리고 거리로 계산
+    broken, _ = guide.ride_minutes(line[1], line[1] | {"cum_m": line[1]["cum_m"] + 600, "t_last": line[1]["t_last"] + 300}, 14)
+    assert 2.5 < broken < 3.5
+    # 거리 정보가 없으면 (None, None) → 예전 방식으로 어림
+    assert guide.ride_minutes({"route": "T1"}, {"route": "T1"}, 14) == (None, None)

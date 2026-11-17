@@ -33,11 +33,17 @@ import pandas as pd
 from app.config import (
     GUIDE_CANDIDATES,
     GUIDE_CROWD_TRADEOFF_MIN,
+    GUIDE_DEFAULT_KMH,
     GUIDE_DEFAULT_MIN_PER_STOP,
+    GUIDE_EARLY_HOUR,
     GUIDE_MAX_OPTIONS,
     GUIDE_NEAR_STOPS,
+    GUIDE_PEAK_FACTOR,
+    GUIDE_PEAK_HOURS,
     GUIDE_PLACE_M,
     GUIDE_SCAN_FACTOR,
+    GUIDE_SHORT_LEG_MIN,
+    GUIDE_SPEED_RANGE_KMH,
     GUIDE_TRANSFER_M,
     GUIDE_WALK_M,
     GUIDE_WALK_M_PER_MIN,
@@ -109,9 +115,13 @@ class BusGuide:
         network = self._load_network()
         if network is not None:
             table, meta = network
+            num = lambda v: None if v is None or pd.isna(v) else float(v)
             for r in table.itertuples():
                 stops.append({"route": str(r.route), "seq": int(r.seq), "station_id": str(r.station_id), "name": r.name,
-                              "lat": float(r.lat), "lng": float(r.lng), "direction": getattr(r, "direction", None)})
+                              "lat": float(r.lat), "lng": float(r.lng), "direction": getattr(r, "direction", None),
+                              # 소요 시간 계산용 (없는 파일도 있음): 누적 도로 거리(m), 시간표 누적 분(첫차·막차)
+                              "cum_m": num(getattr(r, "cum_m", None)), "t_first": num(getattr(r, "t_first", None)),
+                              "t_last": num(getattr(r, "t_last", None))})
             self.route_meta = {str(m["route"]): m for m in meta.to_dict("records")}
         have = {s["route"] for s in stops}
         for route in self.routes:      # 예측하는 노선은 항상 포함 (전체 노선 파일에 없더라도)
@@ -171,6 +181,52 @@ class BusGuide:
 
     def last_seq(self, route: str) -> int:
         return self.by_route[route][-1]["seq"]
+
+    # ==================================================
+    # 탑승 시간: 정류장별 공식 시간표(첫차·막차)와 도로 거리로 계산
+    # ==================================================
+
+    def _timetable_speed(self, route: str, table: str) -> float | None:
+        """노선 전체의 시간표 평균 속도(km/h, 정차 포함). 시간표가 이상하면 None"""
+        cache = self.__dict__.setdefault("_speed_cache", {})
+        if (route, table) not in cache:
+            timed = [s for s in self.by_route[route] if s.get(table) is not None and s.get("cum_m") is not None]
+            speed = None
+            if len(timed) >= 2:
+                minutes, km = timed[-1][table] - timed[0][table], (timed[-1]["cum_m"] - timed[0]["cum_m"]) / 1000
+                if minutes > 0 and GUIDE_SPEED_RANGE_KMH[0] <= km / (minutes / 60) <= GUIDE_SPEED_RANGE_KMH[1]:
+                    speed = km / (minutes / 60)
+            cache[(route, table)] = speed
+        return cache[(route, table)]
+
+    def ride_minutes(self, board: dict, alight: dict, hour: int) -> tuple[float | None, float | None]:
+        """(탑승 시간 분, 거리 km). 시간표·거리가 없으면 (None, None) → 부르는 쪽이 예전 방식으로 어림
+
+        새벽은 첫차 시간표, 그 밖은 막차 시간표를 기준으로 하고 출퇴근 시간에는 GUIDE_PEAK_FACTOR를 곱함.
+        시간표가 분 단위라 짧은 구간이나, 시간표 속도가 말이 안 되는 구간은 거리 ÷ 노선 평균 속도로 계산.
+        """
+        if board.get("cum_m") is None or alight.get("cum_m") is None:
+            return None, None
+        km = (alight["cum_m"] - board["cum_m"]) / 1000
+        if km <= 0:
+            return None, None
+        # 쓰려는 시간표가 비었거나 이상하면 다른 쪽 시간표를 씀 (두 시간표의 소요 시간은 노선 중앙값 기준으로 같음)
+        tables = ("t_first", "t_last") if hour <= GUIDE_EARLY_HOUR else ("t_last", "t_first")
+        minutes = None
+        for table in tables:
+            if board.get(table) is None or alight.get(table) is None:
+                continue
+            timed = alight[table] - board[table]
+            if timed >= GUIDE_SHORT_LEG_MIN and GUIDE_SPEED_RANGE_KMH[0] <= km / (timed / 60) <= GUIDE_SPEED_RANGE_KMH[1]:
+                minutes = timed
+                break
+        if minutes is None:
+            route = board["route"]
+            speed = self._timetable_speed(route, tables[0]) or self._timetable_speed(route, tables[1]) or GUIDE_DEFAULT_KMH
+            minutes = km / speed * 60
+        if hour in GUIDE_PEAK_HOURS:
+            minutes *= GUIDE_PEAK_FACTOR
+        return minutes, km
 
     # ==================================================
     # 2. 정류장 찾기
@@ -332,7 +388,9 @@ class BusGuide:
             run = meta.get("run_minutes")
             run_minutes = float(run) if run is not None and pd.notna(run) else 0.0
 
-        ride = run_minutes * stops / span if run_minutes > 0 else stops * GUIDE_DEFAULT_MIN_PER_STOP
+        ride, km = self.ride_minutes(board, alight, hour)
+        if ride is None:      # 시간표·거리 정보가 없는 노선(합성 데이터 등): 한 바퀴 운행시간을 정류장 수로 나눔
+            ride = run_minutes * stops / span if run_minutes > 0 else stops * GUIDE_DEFAULT_MIN_PER_STOP
         walk_m = float(board.get("walk_m", 0))
         exit_walk_m = float(alight.get("walk_m", 0))      # 내린 정류장에서 도착지까지 (이름으로 찾은 곳의 주변 정류장일 때)
         line = self.by_route[route]
@@ -348,6 +406,7 @@ class BusGuide:
             "interval_min": round(interval, 1),
             "wait_min": round(interval / 2, 1),
             "ride_min": max(round(ride), 1),
+            "distance_km": round(km, 1) if km is not None else None,
             "congestion": _num(c, 3) if has_c else None,
             "level": congestion_level(c) if has_c else None,
             "predicted": route in self.routes,
@@ -357,7 +416,7 @@ class BusGuide:
     def assumption(self) -> str:
         if self.whole_network:
             return (f"버스만 안내합니다(환승 한 번까지, 지하철 제외). 혼잡도 예측은 {', '.join(self.routes)}번만 있고, "
-                    "나머지 노선은 평일 기준 배차간격과 어림한 시간만 안내합니다.")
+                    "나머지 노선은 평일 기준 배차간격만 안내합니다. 탑승 시간은 정류장별 공식 시간표로 계산했고 실시간 교통 상황은 반영하지 않습니다.")
         return "이 서비스가 다루는 노선만 안내합니다. 소요 시간은 운행시간에서 어림한 값이고, 혼잡도는 예측값입니다."
 
     def find(self, date, hour: int, destination: str, origin: str | None = None,
