@@ -135,14 +135,28 @@ async def save_qa(domain: str, result: dict) -> int | None:
     ))
 
 
+LOCATION_KEYS = ("lat", "lng")
+
+
+def without_location(result: dict) -> tuple[dict, list]:
+    """대화 기록에 남길 slots·tools에서 현재 위치 좌표를 뺌 (썼다는 사실만 남김). 응답 자체는 바꾸지 않음"""
+    slots = {k: v for k, v in (result.get("slots") or {}).items() if k not in LOCATION_KEYS}
+    if any(k in (result.get("slots") or {}) for k in LOCATION_KEYS):
+        slots["location_used"] = True
+    tools = [{**t, "args": {k: v for k, v in (t.get("args") or {}).items() if k not in LOCATION_KEYS}}
+             for t in result.get("tools") or []]
+    return slots, tools
+
+
 async def save_chat(domain: str, question: str, result: dict) -> int | None:
+    slots, tools = without_location(result)
     return await _add(ChatLog(
         domain=domain,
         question=question,
         answer=result["answer"],
         intent=result["intent"],
-        slots=result.get("slots"),
-        tools=result.get("tools"),
+        slots=slots,
+        tools=tools,
         sources=result.get("sources"),
         numbers_verified=result.get("numbers_verified"),
         llm=result.get("llm"),
