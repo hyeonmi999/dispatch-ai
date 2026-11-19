@@ -29,6 +29,8 @@ from app.config import (
     NOT_FOUND_ANSWER,
     OPENAI_API_KEY,
     OPENAI_EMBEDDING_MODEL_NAME,
+    RAG_DOCUMENT_SUFFIXES,
+    RAG_ROLE_OVERFETCH,
     RAG_SCORE_THRESHOLD,
     RAG_TOP_K,
     VECTORSTORE_DIR,
@@ -257,7 +259,8 @@ def load_documents(docs_dir: Path) -> list[dict]:
                         for part, text in enumerate(split_long(page.get_text().strip(), size=700, overlap=100))
                         if text
                     ]
-        elif path.suffix.lower() in {".txt", ".md"} and path.name.lower() != "readme.md":
+        elif path.suffix.lower() == ".txt":
+            # .md(출처 목록·README)는 규정 문서가 아니므로 읽지 않음 (SOURCES.md가 답변 근거로 뽑힌 적이 있음)
             parts = load_txt(path)
         else:
             continue
@@ -275,7 +278,7 @@ def load_documents(docs_dir: Path) -> list[dict]:
 def docs_fingerprint(docs_dir: Path) -> str:
     h = hashlib.md5(f"chunk-v{CHUNK_VERSION}".encode())
     for path in sorted(docs_dir.glob("*")):
-        if not path.is_symlink() and path.is_file() and path.suffix.lower() in {".pdf", ".txt", ".md"}:
+        if not path.is_symlink() and path.is_file() and path.suffix.lower() in RAG_DOCUMENT_SUFFIXES:
             h.update(f"{path.name}:{path.stat().st_size}:{int(path.stat().st_mtime)}".encode())
     manifest = docs_dir / MANIFEST_NAME
     try:
@@ -384,18 +387,24 @@ class KnowledgeBase:
         store = self.get_store(embedding)
         if store is None:
             return []
-        candidates = store.similarity_search_with_score(query, k=k * 3)
         records = read_document_manifest(self.docs_dir)
         allowed = ROLE_GRADES[role]
-        hits = []
-        for doc, score in candidates:
-            # 기존 인덱스에도 파일명이 있으므로 최신 목록의 등급을 우선 적용합니다.
-            record = records.get(doc.metadata.get("file"), {})
-            grade = record.get("grade", doc.metadata.get("grade", "공개"))
-            if record.get("active") is not False and grade in allowed:
-                hits.append((doc, score))
-                if len(hits) == k:
-                    break
+        total = store.index.ntotal
+        fetch = min(k * RAG_ROLE_OVERFETCH, total)
+        while True:
+            hits = []
+            for doc, score in store.similarity_search_with_score(query, k=fetch):
+                # 기존 인덱스에도 파일명이 있으므로 최신 목록의 등급을 우선 적용합니다.
+                record = records.get(doc.metadata.get("file"), {})
+                grade = record.get("grade", doc.metadata.get("grade", "공개"))
+                if record.get("active") is not False and grade in allowed:
+                    hits.append((doc, score))
+                    if len(hits) == k:
+                        break
+            # 볼 수 없는 등급의 조각이 앞을 차지하면 허용된 조각이 모자람 → 더 가져와서 다시 거름
+            if len(hits) == k or fetch >= total:
+                break
+            fetch = min(fetch * 2, total)
         return [
             {
                 "document": doc.metadata.get("document"),

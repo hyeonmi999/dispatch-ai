@@ -76,6 +76,10 @@ REPETITION_PENALTY = 1.1
 RAG_TOP_K = 4
 RAG_SCORE_THRESHOLD = {"bge": 0.55, "openai": 0.35}
 NOT_FOUND_ANSWER = "제공된 규정 문서에서 근거를 찾을 수 없음"
+# 역할별 검색: 볼 수 없는 등급의 조각을 거르면 결과가 모자랄 수 있어 처음에 k의 몇 배를 가져올지.
+# 그래도 모자라면 허용된 조각이 k개 찰 때까지 두 배씩 늘려 다시 가져옴 (색인 전체까지)
+RAG_ROLE_OVERFETCH = 3
+RAG_DOCUMENT_SUFFIXES = (".pdf", ".txt")     # 규정 문서로 읽는 파일 (출처 목록 같은 .md는 읽지 않음)
 
 # 목록 API가 한 번에 돌려주는 최대 개수
 LIST_LIMIT_MAX = 100

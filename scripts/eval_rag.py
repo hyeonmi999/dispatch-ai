@@ -66,7 +66,9 @@ def main():
     ans = [r for r in rows if r["type"] == "answer"]
     ref = [r for r in rows if r["type"] == "refuse"]
     summary = {
-        "name": args.name, "model": llm_module.LOCAL_MODEL_NAME, "adapter": llm_module.LOCAL_ADAPTER,
+        "name": args.name, "llm": args.llm,
+        "model": llm_module.OPENAI_MODEL_NAME if args.llm == "openai" else llm_module.LOCAL_MODEL_NAME,
+        "adapter": None if args.llm == "openai" else llm_module.LOCAL_ADAPTER,
         "answer_correct": f"{sum(r['ok'] for r in ans)}/{len(ans)}",
         "refusal_correct": f"{sum(r['ok'] for r in ref)}/{len(ref)}",
         "hallucinations": sum(r["hallucination"] for r in rows),
