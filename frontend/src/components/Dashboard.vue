@@ -139,6 +139,14 @@
           />
         </template>
 
+        <template #optimize>
+          <OptimizePanel :date="date" :hour="hour" :selected-route="selected" :routes="meta.routes.map((r) => r.route)" @goto="goto" />
+        </template>
+
+        <template #whatif>
+          <WhatIfPanel :route="selectedMeta" :date="date" :hour="hour" />
+        </template>
+
         <template #qa>
           <AskPanel domain="bus" :llm="llm" :embedding="embedding" />
         </template>
@@ -180,9 +188,11 @@ import ForecastChart from './ForecastChart.vue'
 import HistoryPanel from './HistoryPanel.vue'
 import MapView from './MapView.vue'
 import MetricsCard from './MetricsCard.vue'
+import OptimizePanel from './OptimizePanel.vue'
 import PanelGrid from './PanelGrid.vue'
 import StatusPanel from './StatusPanel.vue'
 import StopChart from './StopChart.vue'
+import WhatIfPanel from './WhatIfPanel.vue'
 
 const message = useMessage()
 
@@ -325,12 +335,14 @@ const hotspotCount = computed(() =>
   (overview.value?.routes || []).reduce((n, r) => n + r.segments.filter((s) => s.congestion >= 0.8).length, 0),
 )
 const metas = computed(() => ({
-  routes: `${hour.value}시 최대 혼잡도`,
-  map: `${hour.value}시 혼잡 구간 ${hotspotCount.value}곳`,
+  routes: `${hour.value}시 출발 버스 · 최대 혼잡도`,
+  map: `${hour.value}시 출발 버스 · 혼잡 구간 ${hotspotCount.value}곳`,
   forecast: `${selected.value}번 노선 전체`,
-  stops: `${selected.value}번 ${hour.value}시`,
+  stops: `${selected.value}번 ${hour.value}시 출발 버스`,
   status: `${date.value} ${hour.value}시`,
   advice: `${date.value} ${hour.value}시`,
+  optimize: `${date.value} 전 노선`,
+  whatif: `${selected.value}번 ${hour.value}시`,
   metrics: '검증 구간',
 }))
 

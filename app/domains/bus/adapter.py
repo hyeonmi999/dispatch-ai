@@ -6,6 +6,8 @@
 #   GET /api/bus/routes/{route}/geometry      노선 경로·정류소·구간 좌표
 #   GET /api/bus/routes/{route}/timeseries    24시간 실제/예측/베이스라인 + 시간대별 최대 혼잡도
 #   GET /api/bus/overview?date=&hour=         전체 노선 구간별 혼잡도 (지도 색칠)
+#   POST /api/bus/simulate                    배차간격을 바꿨을 때의 구간별 혼잡도
+#   POST /api/bus/optimize                    전 노선 운행횟수를 인가대수 안에서 한꺼번에 권고
 
 import datetime as dt
 import subprocess
@@ -20,7 +22,13 @@ from app.domains.bus.advisor import BusAdvisor, _num, congestion_level
 from app.domains.bus.data import BusDataset
 from app.domains.bus.forecaster import BusForecaster
 from app.db import repository as repo
-from app.domains.bus.schemas import BusAdviseAllRequest, BusAdviseRequest, BusPredictRequest
+from app.domains.bus.calibration import load_ratios
+from app.domains.bus.optimizer import optimize
+from app.domains.bus.schemas import (
+    BusAdviseAllRequest, BusAdviseRequest, BusOptimizeRequest, BusOptimizeResponse, BusPredictRequest,
+    BusSimulateRequest, BusSimulateResponse,
+)
+from app.domains.bus.simulator import simulate
 
 
 class BusAdapter(DomainAdapter):
@@ -35,6 +43,8 @@ class BusAdapter(DomainAdapter):
         self.dataset = BusDataset()
         self.forecaster = BusForecaster(self.dataset)
         self.advisor = BusAdvisor(self.knowledge_base, self.forecaster, self.dataset)
+        self.p90_path = self.forecaster.model_dir / "p90.json"
+        self.p90: dict | None = None      # 승객 수 상한 비율표 (scripts/calibrate_p90.py 결과)
 
     # ------------------------------------------------
     # 시작: 모델 로드 (합성 데이터 모드에서 모델이 없으면 바로 학습 - 수 초)
@@ -42,6 +52,9 @@ class BusAdapter(DomainAdapter):
 
     def startup(self) -> None:
         print(f"🚌 버스 도메인 데이터 모드: {self.dataset.mode} ({self.dataset.dir})")
+        self.p90 = load_ratios(self.p90_path)
+        if self.p90 is None:
+            print("ℹ️ 승객 수 상한 비율표가 없습니다. 배차 최적화를 쓰려면 python scripts/calibrate_p90.py 를 실행하세요.")
         if self.forecaster.load():
             return
         if self.dataset.mode == "sample" and self.dataset.exists():
@@ -61,6 +74,13 @@ class BusAdapter(DomainAdapter):
     def _require_model(self):
         if not self.forecaster.ready():
             raise HTTPException(503, "버스 예측 모델이 준비되지 않았습니다. python scripts/train_bus.py 를 먼저 실행하세요.")
+
+    def _require_p90(self) -> dict:
+        if self.p90 is None:
+            self.p90 = load_ratios(self.p90_path)     # 서버를 띄운 뒤에 만들었을 수 있음
+        if self.p90 is None:
+            raise HTTPException(503, "승객 수 상한 비율표가 없습니다. python scripts/calibrate_p90.py 를 먼저 실행하세요.")
+        return self.p90
 
     def _check_route(self, route: str):
         if route not in self.dataset.routes:
@@ -236,6 +256,24 @@ class BusAdapter(DomainAdapter):
             ids = [i["advisory_id"] for i in ok if i.get("advisory_id")]
             batch_id = await repo.save_batch("bus", f"{req.date:%Y-%m-%d}", req.hour, req.llm, summary, ids) if ids else None
             return {"batch_id": batch_id, "date": f"{req.date:%Y-%m-%d}", "hour": req.hour, "summary": summary, "items": items}
+
+        @r.post("/simulate", response_model=BusSimulateResponse, summary="배차간격 변경 시뮬레이션 (needs_review)")
+        def simulate_interval(req: BusSimulateRequest):
+            self._require_model()
+            self._check_route(req.route)
+            try:
+                return simulate(self.advisor, req.route, req.date, req.hour, req.interval)
+            except ValueError as e:
+                raise HTTPException(422, str(e))
+
+        @r.post("/optimize", response_model=BusOptimizeResponse, summary="전 노선 배차 최적화 (needs_review)")
+        def optimize_dispatch(req: BusOptimizeRequest):
+            self._require_model()
+            table = self._require_p90()
+            try:
+                return optimize(self.advisor, table, self.dataset.routes, req.date, req.hours, req.weights.model_dump())
+            except ValueError as e:
+                raise HTTPException(422, str(e))
 
         @r.get("/overview", summary="전체 노선 구간별 혼잡도 (지도)")
         def overview(date: dt.date = Query(...), hour: int = Query(..., ge=0, le=23)):
