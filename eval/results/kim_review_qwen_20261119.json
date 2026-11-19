@@ -1,0 +1,58 @@
+{
+ "summary": {
+  "name": "kim_review_qwen_20261119",
+  "llm": "qwen",
+  "model": "Qwen/Qwen3-1.7B",
+  "adapter": null,
+  "answer_correct": "0/1",
+  "refusal_correct": "0/0",
+  "hallucinations": 0,
+  "seconds": 323,
+  "complete": false,
+  "conditions": "Actual BGE contexts captured first, model unloaded before answer generation; Qwen CPU dynamic int8 linear layers, float32 remaining layers (production CPU default float32); citizen role; scripts.eval_rag.judge unchanged",
+  "status": "incomplete_nonstandard_cpu_trial_not_release_evaluation",
+  "limitation": "Stopped after first item: CPU execution took several minutes per answer; int8 is not the production float32 condition. Do not use score to claim production regression or completion."
+ },
+ "rows": [
+  {
+   "id": "A1",
+   "type": "answer",
+   "q": "노선버스 운행횟수를 늘리려면 관할관청의 인가를 받아야 하나요, 신고만 하면 되나요?",
+   "must": [
+    [
+     "신고"
+    ],
+    [
+     "10퍼센트",
+     "10%",
+     "경미"
+    ]
+   ],
+   "forbid": [],
+   "doc": "시행규칙",
+   "answer": "Okay, let's try to figure out what the user is asking here. The original text seems to be a mix of Korean and English phrases, possibly from some kind of legal or technical document. The user provided a long block of text that looks like it's from a legal case study or something related to regulations, maybe in the context of public administration or business operations.\n\nThe user then asks for an explanation of this text, but the response they provided is just a copy-paste of the original content without any analysis. They also included some code blocks with numbers and symbols that might be part of a formatting system. The user wants to know how to interpret or understand this text, but the assistant just repeated the same content.\n\nLooking at the structure, there are several sections with numbers (like 1, 2, 3...) and various terms in parentheses, which might be examples of different rules or regulations. The user might be looking for help understanding these rules, perhaps in the context of administrative procedures, legal frameworks, or business operations.\n\nThe key points seem to involve different types of regulations (e.g., \"근거\" meaning basis, \"관할\" meaning jurisdiction, \"운송\" meaning transportation), and their variations. There are mentions of \"시내버스\", \"시외버스\", \"시내버스운송\", etc., which could refer to different modes of transport or administrative processes.\n\nThe user might be interested in understanding how these regulations interact, their implications, or how to apply them in real scenarios. However, since the original text is complex and filled with technical jargon, breaking it down into simpler parts would be necessary.\n\nPossible areas of interest include:\n- Understanding the difference between \"근거\" and \"관할\"\n- Interpreting the meanings of specific terms like \"운송\", \"운행\", \"운행횟수\"\n- Recognizing the structure",
+   "found": true,
+   "note": null,
+   "sources": [
+    "여객자동차 운수사업법 시행규칙 제33조(사업계획의 변경신고) ① 제2호 아목",
+    "여객자동차 운수사업법 시행규칙 제33조(사업계획의 변경신고) ②",
+    "여객자동차 운수사업법 시행규칙 제33조(사업계획의 변경신고) ① 제2호 마목",
+    "여객자동차 운수사업법 시행규칙 제33조(사업계획의 변경신고) ① 제3호"
+   ],
+   "ok": false,
+   "missing": [
+    [
+     "신고"
+    ],
+    [
+     "10퍼센트",
+     "10%",
+     "경미"
+    ]
+   ],
+   "forbidden": [],
+   "cited": true,
+   "hallucination": false
+  }
+ ]
+}
