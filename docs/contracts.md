@@ -86,7 +86,7 @@
 | `message` | 2~500자 |
 | `history` | 최대 10건, 오래된 것부터. 이어 묻기("그럼 4시는?")에 사용. 생략 가능 |
 | `use_llm` | `false`(기본)면 정해진 문장 틀로 답함. `true`면 규정 답변은 LLM이 요약하고, 예측·권고 답변은 LLM이 문장을 다듬음 |
-| `location` | 현재 위치. 길안내 질문에서 출발 정류장을 말하지 않았을 때만 씀. 서버에 저장하지 않음 |
+| `location` | 현재 위치. 길안내 질문에서 출발 정류장을 말하지 않았을 때만 씀. 응답의 `slots`·`tools`에는 좌표가 들어 있지만, 대화 기록(`chat_log`)에는 좌표를 빼고 `slots.location_used: true`만 남김 |
 | `role` | 문서 열람 역할 `citizen`(기본) · `staff` · `admin`. 규정 검색에 전달 (6번) |
 | `intent` | `predict` · `advise` · `ask` · `guide` · `route_info` · `simulate` · `optimize` · `clarify`(빠진 값 되묻기) · `out_of_scope` |
 | `tools[].name` | 실제로 부른 기능: `predict`(F-02) · `advise`(F-04) · `ask`(F-05) · `guide`(F-28) · `route_info`(F-29) · `simulate`(F-12) · `optimize`(F-13). 되묻기·범위 밖은 빈 목록 |
