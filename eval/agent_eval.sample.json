@@ -16,5 +16,8 @@
   {"id": "S15", "q": "환승 할인 요금 규정이 어떻게 돼?", "tools": ["ask"]},
   {"id": "S16", "q": "160번 버스 노선알려줘", "tools": ["route_info"], "slots": {"route": "160"}},
   {"id": "S17", "q": "143번 첫차 몇 시야?", "tools": ["route_info"], "slots": {"route": "143"}},
-  {"id": "S18", "q": "여기서 서울역 어떻게가", "location": {"lat": 37.5704, "lng": 126.9831}, "tools": ["guide"]}
+  {"id": "S18", "q": "여기서 서울역 어떻게가", "location": {"lat": 37.5704, "lng": 126.9831}, "tools": ["guide"]},
+  {"id": "S19", "q": "150번 10월 21일 8시 간격을 7분으로 바꾸면?", "tools": ["simulate"], "slots": {"route": "150", "hour": 8, "interval": 7.0}},
+  {"id": "S20", "q": "10월 21일 7시부터 9시 전체 노선 최적화 해줘", "tools": ["optimize"], "slots": {"hours": [7, 8, 9]}},
+  {"id": "S21", "q": "10월 21일 퇴근 시간 전 노선 최적 배차 알려줘", "tools": ["optimize"], "slots": {"hours": [17, 18, 19]}}
 ]
