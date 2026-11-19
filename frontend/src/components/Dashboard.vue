@@ -99,7 +99,7 @@
         <div v-if="excludedNote" class="notice warn excl">실측 제외: {{ excludedNote }}. 그래프에 실제 승차가 표시되지 않습니다.</div>
       </div>
 
-      <PanelGrid v-if="meta" v-model:layout="layout" :metas="metas" @commit="commitLayout" @close="togglePanel">
+      <PanelGrid v-if="meta" v-model:layout="layout" :metas="metas" :allowed-panels="panelIds" @commit="commitLayout" @close="togglePanel">
         <template #routes>
           <div class="routes">
             <button v-for="r in routeRows" :key="r.route" class="rt" :class="{ on: r.route === selected }" :aria-pressed="r.route === selected" @click="selected = r.route">
@@ -168,7 +168,7 @@
         </template>
 
         <template #documents>
-          <DocumentAdminPanel />
+          <DocumentAdminPanel v-if="documentRole === 'admin'" :role="documentRole" />
         </template>
 
         <template #history>
@@ -240,10 +240,10 @@ const embeddingOptions = [
 
 // 패널 배치
 const saved = loadSaved()
-const panelIds = Object.keys(TITLES)
+const panelIds = computed(() => Object.keys(TITLES).filter((id) => id !== 'documents' || documentRole.value === 'admin'))
 const layout = ref(saved?.layout ?? makeLayout('ops'))
 const preset = ref(saved ? saved.preset : 'ops')
-const visibleCount = computed(() => panelIds.filter((id) => layout.value[id].on).length)
+const visibleCount = computed(() => panelIds.value.filter((id) => layout.value[id].on).length)
 const historyTick = ref(0)
 
 function commitLayout(next) {
@@ -434,7 +434,7 @@ onBeforeUnmount(() => clearInterval(timer))
 
 <style scoped>
 .document-role { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-.document-role select { color: inherit; background: var(--paper); border: 1px solid var(--line); }
+.document-role select { color: inherit; background: var(--panel); border: 1px solid var(--line); }
 .app { min-height: 100vh; display: flex; flex-direction: column; background: var(--ground); }
 .bar { background: #15181a; color: #f1f1ec; display: flex; flex-wrap: wrap; align-items: stretch; gap: 0 28px; padding: 0 16px; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 9px 0; }

@@ -54,7 +54,7 @@
             <td>
               <div class="actions">
                 <n-button size="tiny" :disabled="saving || !!pendingDelete" @click="edit(doc)">수정</n-button>
-                <n-button size="tiny" type="error" secondary :disabled="saving || !!pendingDelete"
+                <n-button v-if="doc.deletable !== false" size="tiny" type="error" secondary :disabled="saving || !!pendingDelete"
                   @click="confirmDelete(doc)">삭제</n-button>
               </div>
             </td>
@@ -79,6 +79,8 @@ import { onMounted, ref } from 'vue'
 import { NButton } from 'naive-ui'
 import { api, errorMessage } from '../api'
 
+const props = defineProps({ role: { type: String, default: 'citizen' } })
+
 const types = ['법령', '조례', '보도자료', '내부자료']
 const grades = ['공개', '내부', '제한']
 const emptyForm = () => ({ title: '', type: types[0], grade: grades[0], active: true })
@@ -98,7 +100,7 @@ async function loadDocuments() {
   loading.value = true
   loadError.value = ''
   try {
-    const result = await api.busDocuments()
+    const result = await api.busDocuments(props.role)
     documents.value = Array.isArray(result) ? result : result?.items ?? []
   } catch (error) {
     loadError.value = errorMessage(error)
@@ -132,7 +134,7 @@ async function save() {
   saving.value = true
   try {
     if (editing.value) {
-      await api.updateBusDocument(editing.value, form.value)
+      await api.updateBusDocument(editing.value, form.value, props.role)
     } else {
       const upload = file.value
       if (!upload || !/\.(pdf|txt)$/i.test(upload.name) || upload.size > 20 * 1024 * 1024) {
@@ -142,7 +144,7 @@ async function save() {
       const body = new FormData()
       body.append('file', upload)
       for (const field of ['title', 'type', 'grade']) body.append(field, form.value[field])
-      await api.createBusDocument(body)
+      await api.createBusDocument(body, props.role)
     }
     resetForm()
     await loadDocuments()
@@ -169,7 +171,7 @@ async function remove() {
   saving.value = true
   try {
     const name = pendingDelete.value.file
-    await api.deleteBusDocument(name)
+    await api.deleteBusDocument(name, props.role)
     cancelDelete()
     if (editing.value === name) resetForm()
     await loadDocuments()
@@ -188,7 +190,7 @@ onMounted(loadDocuments)
 .document-form, .confirmation { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; }
 h3, p { margin: 0; }
 label { display: grid; gap: 4px; min-width: 0; }
-input, select { max-width: 100%; min-width: 0; color: inherit; background: var(--paper); border: 1px solid var(--line); padding: 5px; }
+input, select { max-width: 100%; min-width: 0; color: inherit; background: var(--panel); border: 1px solid var(--line); padding: 5px; }
 .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .checkbox { display: flex; align-items: center; }
 .actions { display: flex; align-items: center; gap: 6px; }

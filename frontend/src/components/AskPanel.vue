@@ -12,6 +12,8 @@
     </div>
     <n-button type="primary" size="small" block :loading="loading" @click="send">질문하기 ({{ llm === 'qwen' ? '로컬 모델' : 'GPT-4o-mini' }})</n-button>
 
+    <p v-if="loading" class="sm" role="status">{{ pendingNotice }}</p>
+
     <div v-if="result" class="result">
       <div v-if="!result.found" class="notice warn">
         <b>답변 거절 · 문서에 근거 없음</b><br />{{ result.answer }}<div class="sm">{{ result.note }}</div>
@@ -40,6 +42,7 @@ const props = defineProps({
 const message = useMessage()
 const question = ref('')
 const loading = ref(false)
+const pendingNotice = ref('문서 검색 상태를 확인하는 중입니다.')
 const result = ref(null)
 const examples = [
   '노선버스 운행횟수를 늘리는 사업계획 변경 절차는?',
@@ -49,8 +52,13 @@ const examples = [
 
 async function send() {
   if (question.value.trim().length < 2) return
+  pendingNotice.value = '문서 검색 상태를 확인하는 중입니다.'
   loading.value = true
   try {
+    const status = await api.knowledgeStatus(props.domain, props.embedding)
+    pendingNotice.value = status?.rebuild_required
+      ? '문서가 변경되어 검색 색인을 갱신한 후 답변을 생성합니다. 시간이 더 걸릴 수 있습니다.'
+      : '문서를 검색하고 답변을 생성하는 중입니다.'
     result.value = await api.ask(props.domain, { question: question.value, llm: props.llm, embedding: props.embedding, role: props.role })
   } catch (e) {
     message.error(errorMessage(e))
