@@ -221,6 +221,9 @@ function placeTags() {
   }
 }
 
+// 툴팁은 HTML 문자열로 들어가므로, 서버에서 온 이름은 글자 그대로 보이게 바꿔서 넣음
+const escapeHtml = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+
 // 길안내 경로: 타는 구간을 점선으로, 승차·환승·도착 지점과 현재 위치를 표시
 function drawGuide() {
   if (!map || !guideLayer) return
@@ -253,8 +256,8 @@ function drawGuide() {
       L.polyline(line, { color: palette.value.accent, weight: 5, opacity: 1, dashArray: '1 9', lineCap: 'round', smoothFactor: 0 }).addTo(guideLayer)
     }
     const last = i === legs.length - 1
-    pin(leg.board.lat, leg.board.lng, 'board', busSvg(18), `<b>${leg.route}번 승차</b><br/>${leg.board.name}`)
-    pin(leg.alight.lat, leg.alight.lng, last ? 'end' : 'xfer', last ? '도착' : '환승', `<b>${last ? '도착' : `${leg.route}번 하차 · 환승`}</b><br/>${leg.alight.name}`)
+    pin(leg.board.lat, leg.board.lng, 'board', busSvg(18), `<b>${escapeHtml(leg.route)}번 승차</b><br/>${escapeHtml(leg.board.name)}`)
+    pin(leg.alight.lat, leg.alight.lng, last ? 'end' : 'xfer', last ? '도착' : '환승', `<b>${last ? '도착' : `${escapeHtml(leg.route)}번 하차 · 환승`}</b><br/>${escapeHtml(leg.alight.name)}`)
     points.push(...line, [leg.board.lat, leg.board.lng], [leg.alight.lat, leg.alight.lng])
   })
   if (points.length) {

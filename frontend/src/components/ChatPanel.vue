@@ -57,7 +57,7 @@
     <div class="opts">
       <label><input v-model="useLlm" type="checkbox" />{{ llm === 'qwen' ? '로컬 모델' : 'GPT-4o-mini' }}로 문장 다듬기 (느림)</label>
       <label :title="locationNote"><input ref="hereBox" type="checkbox" :checked="!!here" @change="toggleHere" />현재 위치 사용 (길안내)</label>
-      <button v-if="turns.length" class="link" @click="turns = []">대화 지우기</button>
+      <button v-if="turns.length" class="link" :disabled="loading" @click="turns = []">대화 지우기</button>
     </div>
     <!-- 위치를 못 가져온 이유는 마우스를 올리지 않아도 보이게 -->
     <div v-if="locationError" class="locerr" role="status">{{ locationError }}</div>
@@ -187,7 +187,8 @@ async function send(text) {
     const turn = {
       role: 'assistant', content: r?.answer ?? '', intent: r?.intent, slots: r?.slots ?? {},
       tools: r?.tools ?? [], sources: r?.sources ?? [], numbers_verified: r?.numbers_verified ?? null,
-      llm_rejected: !!r?.llm_rejected, data: r?.data ?? null, user,
+      llm_rejected: !!r?.llm_rejected, data: r?.data ?? null,
+      user: r?.slots?.lat != null ? user : null, // 현재 위치에서 출발한 답일 때만 지도에 현재 위치를 표시
     }
     turns.value.push(turn)
   } catch (e) {
