@@ -34,7 +34,7 @@
 - **[필수] 중복 금지**: 같은 기능을 두 곳에 만들지 않습니다. 새로 만들기 전에 `app/core/`(공통 계층)와 `frontend/src/`에 비슷한 게 있는지 먼저 찾습니다. 복사 후 수정하지 말고 파라미터로 확장합니다.
 - **[필수] 계층 지키기**: `app/api/routes.py`(라우터)에는 로직을 두지 않습니다. 계산은 `app/domains/bus/`, 공통 처리는 `app/core/`, DB 접근은 `app/db/repository.py`에 둡니다.
 - **[필수] 설정값은 한 곳**: 임계값·정원·경로 같은 숫자와 문자열은 `app/config.py`(또는 `.env`)에 둡니다. 코드 중간에 `0.8`, `55`를 직접 쓰지 않습니다.
-- **[필수] 새 라이브러리 추가 전 확인**: Python 3.11과 Windows·macOS 둘 다에서 설치되는지 확인한 뒤 PR에 적습니다.
+- **[필수] 새 라이브러리 추가 전 확인**: Python 3.11·3.12와 Windows·macOS 둘 다에서 설치되는지 확인한 뒤 PR에 적습니다.
 - **[권장] 기존 스타일 따르기**: 주변 코드의 네이밍·주석 형식(`# ===` 구분선, 한국어 주석)을 따릅니다.
 - **[권장] 남기지 않을 것**: 주석 처리된 코드, 안 쓰는 import, 빈 `except:`, 기한 없는 TODO.
 
@@ -129,7 +129,7 @@
 
 ## 9. 환경 · 크로스플랫폼 룰 (Windows + macOS)
 
-- **[필수] Python 3.11 통일**: 교수님 개발환경 가이드 기준입니다. 가상환경은 프로젝트 루트 `.venv/`에 둡니다.
+- **[필수] Python 3.11 또는 3.12**: 교수님 개발환경 가이드 기준은 3.11이고, Windows에서는 3.12로 검증했습니다(테스트 통과). 그 밖의 버전은 쓰지 않습니다. 가상환경은 프로젝트 루트 `.venv/`에 둡니다.
   - Windows: `py -3.11 -m venv .venv` → `.venv\Scripts\Activate`
   - macOS: `python3.11 -m venv .venv` → `source .venv/bin/activate`
 - **[필수] 파일은 항상 UTF-8로 읽고 씀**: `open()`, `read_text()`, `write_text()`에 `encoding="utf-8"`을 꼭 붙입니다. Windows 기본 인코딩(cp949) 때문에 한글이 깨집니다.
@@ -147,4 +147,5 @@
 - **[필수] CRITICAL·HIGH가 남아 있으면 머지하지 않습니다.**
 - **[필수] 교훈 기록**: 버그나 삽질을 해결하면 [docs/lessons.md](docs/lessons.md)에 `증상 / 원인 / 방지 규칙`을 남깁니다. 같은 원인이 이미 있으면 새로 쓰지 말고 재발 날짜만 추가합니다.
 - **[권장] 리뷰 관점 세 가지**: 정확성(결과가 맞나), 단순함(더 짧은 방법은 없나), 영향 범위(다른 기능을 깨지 않나).
-- **[권장] AI 코딩 도구를 쓸 때**는 [CLAUDE.md](CLAUDE.md)의 규칙을 따릅니다.
+- **[필수] 작업 기록**: 작업을 끝낼 때마다 [docs/worklog/](docs/worklog/README.md)의 자기 파일 맨 위에 한 일·바뀐 것·확인한 것·확인하지 못한 것·다음 할 일을 적고, 그 작업의 PR에 함께 넣습니다. AI 도구로 작업했으면 AI가 씁니다.
+- **[필수] AI 코딩 도구를 쓸 때**는 도구가 [AGENTS.md](AGENTS.md)를 읽고 시작하게 합니다. Claude Code(`CLAUDE.md`)·Gemini CLI(`GEMINI.md`)·Copilot(`.github/copilot-instructions.md`)은 자동으로 읽는 파일이 `AGENTS.md`를 가리키고, 그 밖의 도구는 "AGENTS.md를 읽고 시작해줘"라고 한 번 말해 줍니다.

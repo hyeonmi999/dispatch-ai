@@ -12,12 +12,14 @@
 import datetime as dt
 import subprocess
 import sys
+from functools import cached_property
 
 import pandas as pd
 from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import ValidationError
 from fastapi.concurrency import run_in_threadpool
 
+from app.config import GUIDE_DATE_FALLBACK_WEEKS, GUIDE_SEARCH_LIMIT_MAX, ROUTE_INFO_KEY_STOPS
 from app.core.domain import DomainAdapter
 from app.domains.bus.advisor import BusAdvisor, _num, congestion_level
 from app.domains.bus.data import BusDataset
@@ -25,12 +27,13 @@ from app.core.documents import (
     BusDocuments, DocumentFields, DocumentInfo, DocumentList, DocumentUpdate, MAX_DOCUMENT_BYTES,
 )
 from app.domains.bus.forecaster import BusForecaster
+from app.domains.bus.guide import BusGuide, GuideError
 from app.db import repository as repo
 from app.domains.bus.calibration import load_ratios
 from app.domains.bus.optimizer import optimize
 from app.domains.bus.schemas import (
-    BusAdviseAllRequest, BusAdviseRequest, BusOptimizeRequest, BusOptimizeResponse, BusPredictRequest,
-    BusSimulateRequest, BusSimulateResponse,
+    BusAdviseAllRequest, BusAdviseRequest, BusGuideRequest, BusGuideResponse, BusOptimizeRequest, BusOptimizeResponse,
+    BusPredictRequest, BusRouteInfoRequest, BusRouteInfoResponse, BusSimulateRequest, BusSimulateResponse, BusStopSearchItem,
 )
 from app.domains.bus.simulator import simulate
 
@@ -74,6 +77,124 @@ class BusAdapter(DomainAdapter):
         out["data_mode"] = self.dataset.mode
         out["model_ready"] = self.forecaster.ready()
         return out
+
+    def targets(self) -> list[str]:
+        return list(self.dataset.routes)
+
+    def route_names(self) -> list[str]:
+        guide = self.guide_engine
+        guide._build()
+        return list(guide.by_route)
+
+    # ------------------------------------------------
+    # 시뮬레이션 (F-12) · 전 노선 최적화 (F-13): API와 챗봇이 같은 메서드를 부름
+    # ------------------------------------------------
+
+    def simulate(self, payload: dict) -> dict:
+        req = BusSimulateRequest(**payload)
+        self._require_model()
+        self._check_route(req.route)
+        try:
+            return simulate(self.advisor, req.route, req.date, req.hour, req.interval)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+
+    def optimize(self, payload: dict) -> dict:
+        req = BusOptimizeRequest(**payload)
+        self._require_model()
+        table = self._require_p90()
+        try:
+            return optimize(self.advisor, table, self.dataset.routes, req.date, req.hours, req.weights.model_dump())
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+
+    # ------------------------------------------------
+    # 길안내 (F-28): 현재 위치·정류장 이름 → 직행·1회 환승 경로
+    # ------------------------------------------------
+
+    @cached_property
+    def guide_engine(self) -> BusGuide:
+        return BusGuide(self.advisor, self.dataset.routes)
+
+    def guide(self, payload: dict) -> dict:
+        req = BusGuideRequest(**payload)
+        self._require_model()
+        # 길은 날짜와 상관없이 같으므로, 요청한 날이 예측 범위 밖이면 범위 안의 가장 가까운 같은 요일로 계산
+        latest = dt.date.fromisoformat(self.forecaster.date_range()["max_forecast_date"])
+        date = req.date
+        for _ in range(GUIDE_DATE_FALLBACK_WEEKS):
+            if date <= latest:
+                break
+            date -= dt.timedelta(days=7)
+        try:
+            result = self.guide_engine.find(date, req.hour, req.destination, req.origin, req.lat, req.lng)
+        except ValueError as e:      # GuideError 포함 (없는 정류장 등)
+            raise HTTPException(422, str(e))
+        if date != req.date:
+            result["requested_date"] = req.date.isoformat()
+        return result
+
+    # ------------------------------------------------
+    # 노선 기본 정보 (지도 화면의 meta와 챗봇이 같이 씀)
+    # ------------------------------------------------
+
+    def _route_row(self, route: str) -> dict:
+        info = self.dataset.route_info_for(route, "weekday")
+        return {
+            "route": route,
+            "route_type": info.get("route_type"),
+            "start": info.get("start"),
+            "end": info.get("end"),
+            "company": info.get("company"),
+            "authorized_buses": _num(info.get("buses"), 0),
+            "interval_weekday": _num(info.get("interval")),
+            "min_interval": _num(info.get("min_interval")),
+            "max_interval": _num(info.get("max_interval")),
+            "run_minutes": _num(info.get("run_minutes"), 0),
+            "first_bus": info.get("first_bus"),
+            "last_bus": info.get("last_bus"),
+        }
+
+    def route_info(self, payload: dict) -> dict:
+        req = BusRouteInfoRequest(**payload)
+        if req.route not in self.dataset.routes:
+            return self._other_route_info(req.route)
+        info = self.dataset.route_info_for(req.route, "weekday")
+        stops = (self.dataset.geo(req.route) or {}).get("stops", [])
+        # 기점에서 회차 지점까지(한 방향)에서 고르게 뽑음
+        turn = next((s["seq"] for s in stops if s.get("is_turn")), len(stops))
+        outbound = [s["name"] for s in stops if s["seq"] <= turn]
+        step = max(1, (len(outbound) - 1) // max(ROUTE_INFO_KEY_STOPS - 1, 1))
+        key_stops = outbound[::step][:ROUTE_INFO_KEY_STOPS - 1] + outbound[-1:] if outbound else []
+        return {
+            **self._route_row(req.route),
+            "authorized_estimated": bool(info.get("buses_estimated")),
+            "distance_km": _num(info.get("distance_km")),
+            "stops_count": len(stops),
+            "key_stops": list(dict.fromkeys(key_stops)),
+            "predicted": True,
+        }
+
+    def _other_route_info(self, route: str) -> dict:
+        """승객을 예측하지 않는 노선: 전체 노선 정류장 파일과 노선 기본정보에 있는 값만"""
+        guide = self.guide_engine
+        guide._build()
+        line, meta = guide.by_route.get(route, []), guide.route_meta.get(route, {})
+        if not line and not meta:
+            raise HTTPException(404, f"{route}번 노선 정보가 없습니다. 서울 버스 노선번호를 확인해 주세요.")
+        # 노선 기본정보에 비어 있는 칸(NaN)이 있음 (심야 노선의 유형 등) → None으로
+        text = lambda key: None if meta.get(key) is None or pd.isna(meta.get(key)) or not str(meta.get(key)).strip() else str(meta.get(key))
+        outbound = [s["name"] for s in line[: max(len(line) // 2, 1)]]      # 앞쪽 절반 = 한 방향
+        step = max(1, (len(outbound) - 1) // max(ROUTE_INFO_KEY_STOPS - 1, 1))
+        key_stops = outbound[::step][:ROUTE_INFO_KEY_STOPS - 1] + outbound[-1:] if outbound else []
+        return {
+            "route": route, "route_type": text("route_type"), "company": text("company"),
+            "start": text("start"), "end": text("end"),
+            "first_bus": text("first_bus"), "last_bus": text("last_bus"),
+            "interval_weekday": _num(meta.get("interval")), "min_interval": None, "max_interval": None,
+            "run_minutes": _num(meta.get("run_minutes"), 0), "authorized_buses": None, "authorized_estimated": False,
+            "distance_km": None, "stops_count": len(line), "key_stops": list(dict.fromkeys(key_stops)), "predicted": False,
+        }
 
     def _require_model(self):
         if not self.forecaster.ready():
@@ -130,6 +251,11 @@ class BusAdapter(DomainAdapter):
             fh = frame[frame["hour"] == req.hour].sort_values("stop_seq")
             names = self.advisor.stop_names(req.route)
             out["hour"] = req.hour
+            # 이 시간대 가장 붐비는 구간의 혼잡도 (챗봇·화면이 승차 예측과 함께 보여 줌)
+            hrow = day["hourly"][day["hourly"]["hour"] == req.hour]
+            c = hrow["max_congestion"].iloc[0] if not hrow.empty else None
+            has_c = c is not None and pd.notna(c)
+            out["congestion"] = {"ratio": _num(c, 3) if has_c else None, "level": congestion_level(c) if has_c else None}
             out["stops"] = [
                 {"seq": int(r.stop_seq), "stop_id": r.stop_id,
                  "name": names.get((r.stop_id, int(r.stop_seq)), {}).get("name", r.stop_id),
@@ -186,23 +312,7 @@ class BusAdapter(DomainAdapter):
         @r.get("/meta", summary="데이터 기간·노선·평가 지표")
         def meta():
             self._require_model()
-            routes = []
-            for route in self.dataset.routes:
-                info = self.dataset.route_info_for(route, "weekday")
-                routes.append({
-                    "route": route,
-                    "route_type": info.get("route_type"),
-                    "start": info.get("start"),
-                    "end": info.get("end"),
-                    "company": info.get("company"),
-                    "authorized_buses": _num(info.get("buses"), 0),
-                    "interval_weekday": _num(info.get("interval")),
-                    "min_interval": _num(info.get("min_interval")),
-                    "max_interval": _num(info.get("max_interval")),
-                    "run_minutes": _num(info.get("run_minutes"), 0),
-                    "first_bus": info.get("first_bus"),
-                    "last_bus": info.get("last_bus"),
-                })
+            routes = [self._route_row(route) for route in self.dataset.routes]
             return {
                 "data_mode": self.dataset.mode,
                 "model_version": self.forecaster.model_version,
@@ -286,21 +396,11 @@ class BusAdapter(DomainAdapter):
 
         @r.post("/simulate", response_model=BusSimulateResponse, summary="배차간격 변경 시뮬레이션 (needs_review)")
         def simulate_interval(req: BusSimulateRequest):
-            self._require_model()
-            self._check_route(req.route)
-            try:
-                return simulate(self.advisor, req.route, req.date, req.hour, req.interval)
-            except ValueError as e:
-                raise HTTPException(422, str(e))
+            return self.simulate(req.model_dump())
 
         @r.post("/optimize", response_model=BusOptimizeResponse, summary="전 노선 배차 최적화 (needs_review)")
         def optimize_dispatch(req: BusOptimizeRequest):
-            self._require_model()
-            table = self._require_p90()
-            try:
-                return optimize(self.advisor, table, self.dataset.routes, req.date, req.hours, req.weights.model_dump())
-            except ValueError as e:
-                raise HTTPException(422, str(e))
+            return self.optimize(req.model_dump())
 
         @r.get("/overview", summary="전체 노선 구간별 혼잡도 (지도)")
         def overview(date: dt.date = Query(...), hour: int = Query(..., ge=0, le=23)):
@@ -309,5 +409,17 @@ class BusAdapter(DomainAdapter):
                 return {"date": f"{date:%Y-%m-%d}", **self.advisor.overview(self.dataset.routes, date, hour)}
             except ValueError as e:
                 raise HTTPException(422, str(e))
+
+        @r.get("/stops/search", response_model=list[BusStopSearchItem], summary="정류장 이름 검색 (길안내 입력용)")
+        def stop_search(q: str = Query(..., min_length=1, max_length=50), limit: int = Query(10, ge=1, le=GUIDE_SEARCH_LIMIT_MAX)):
+            return self.guide_engine.search(q, limit)
+
+        @r.get("/routes/{route}/info", response_model=BusRouteInfoResponse, summary="노선 기본 정보 (기점·종점·첫차·막차·배차간격·주요 정류장)")
+        def route_info_api(route: str):
+            return self.route_info({"route": route})
+
+        @r.post("/guide", response_model=BusGuideResponse, summary="버스 길안내 (직행·1회 환승, 혼잡도 반영)")
+        def guide_route(req: BusGuideRequest):
+            return self.guide(req.model_dump())
 
         return r

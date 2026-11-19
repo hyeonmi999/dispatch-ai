@@ -186,7 +186,7 @@ def main():
     comp.groupby(["date", "route", "hour"], observed=True)[["boarding", "trips", "trips14", "trips_fix", "lag14", "lag21", "lag364"] + columns[1:]] \
         .sum().reset_index().to_parquet(out_dir / "preds_routehour.parquet", index=False)
     summary["seconds"] = round(time.time() - t0)
-    (out_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2))
+    (out_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"저장: {out_dir} | 총 {summary['seconds']}s", flush=True)
 
 

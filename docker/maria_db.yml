@@ -14,7 +14,7 @@ services:
     image: mariadb:10.5.18
     container_name: dispatch_ai_sqldb
     ports:
-      - "3379:3306"
+      - "127.0.0.1:3379:3306"   # 내 PC에서만 접속 (같은 와이파이의 다른 사람 차단)
 
     env_file:
       - ./.env

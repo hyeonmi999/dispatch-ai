@@ -7,8 +7,9 @@ import datetime as dt
 
 from sqlalchemy import select
 
+from app.config import LIST_LIMIT_MAX
 from app.db import database as db
-from app.db.database import AdvisoryBatch, AdvisoryLog, PredictionLog, QALog
+from app.db.database import AdvisoryBatch, AdvisoryLog, ChatLog, OptimizationRun, PredictionLog, QALog
 
 
 async def _add(row):
@@ -132,6 +133,70 @@ async def save_qa(domain: str, result: dict) -> int | None:
         embedding=result.get("embedding", ""),
         elapsed_sec=result.get("elapsed_sec"),
     ))
+
+
+LOCATION_KEYS = ("lat", "lng")
+
+
+def without_location(result: dict) -> tuple[dict, list]:
+    """대화 기록에 남길 slots·tools에서 현재 위치 좌표를 뺌 (썼다는 사실만 남김). 응답 자체는 바꾸지 않음"""
+    slots = {k: v for k, v in (result.get("slots") or {}).items() if k not in LOCATION_KEYS}
+    if any(k in (result.get("slots") or {}) for k in LOCATION_KEYS):
+        slots["location_used"] = True
+    tools = [{**t, "args": {k: v for k, v in (t.get("args") or {}).items() if k not in LOCATION_KEYS}}
+             for t in result.get("tools") or []]
+    return slots, tools
+
+
+async def save_chat(domain: str, question: str, result: dict) -> int | None:
+    slots, tools = without_location(result)
+    return await _add(ChatLog(
+        domain=domain,
+        question=question,
+        answer=result["answer"],
+        intent=result["intent"],
+        slots=slots,
+        tools=tools,
+        sources=result.get("sources"),
+        numbers_verified=result.get("numbers_verified"),
+        llm=result.get("llm"),
+        llm_rejected=bool(result.get("llm_rejected")),
+        elapsed_sec=result.get("elapsed_sec"),
+    ))
+
+
+async def save_optimization_run(domain: str, result: dict) -> int | None:
+    """result: POST /api/bus/optimize 응답 (docs/contracts.md 2번)"""
+    kpi = result.get("kpi") or {}
+    return await _add(OptimizationRun(
+        domain=domain,
+        target_date=dt.date.fromisoformat(result["date"]),
+        hours=sorted({item["hour"] for item in result.get("plan") or []}),
+        weights=result.get("weights"),
+        method=result.get("method", ""),
+        status=result.get("status", ""),
+        solve_seconds=result.get("solve_seconds"),
+        overcrowded_before=kpi.get("overcrowded_before"),
+        overcrowded_after=kpi.get("overcrowded_after"),
+        extra_trips=kpi.get("extra_trips"),
+        kpi=kpi,
+        plan=result.get("plan"),
+        binding=result.get("binding"),
+    ))
+
+
+async def list_optimization_runs(domain: str | None, limit: int = 20) -> list[dict]:
+    if not db.state["available"]:
+        return []
+    async with db.SessionLocal() as session:
+        query = select(OptimizationRun).order_by(OptimizationRun.id.desc()).limit(min(max(limit, 1), LIST_LIMIT_MAX))
+        if domain:
+            query = query.where(OptimizationRun.domain == domain)
+        rows = (await session.execute(query)).scalars().all()
+    return [{"id": r.id, "date": f"{r.target_date}", "hours": r.hours or [], "weights": r.weights or {},
+             "status": r.status, "solve_seconds": r.solve_seconds, "overcrowded_before": r.overcrowded_before,
+             "overcrowded_after": r.overcrowded_after, "extra_trips": r.extra_trips,
+             "created_at": f"{r.created_at}"} for r in rows]
 
 
 async def list_advisories(domain: str | None, limit: int = 20) -> list[dict]:

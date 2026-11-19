@@ -33,6 +33,7 @@ export const api = {
   predict: (domain, body) => http.post(`/${domain}/predict`, body).then((r) => r.data),
   ask: (domain, body) => http.post(`/${domain}/ask`, body).then((r) => r.data),
   advise: (domain, body) => http.post(`/${domain}/advise`, body).then((r) => r.data),
+  chat: (domain, body) => http.post(`/${domain}/chat`, body).then((r) => r.data),
   adviseAll: (body) => http.post('/bus/advise/all', body).then((r) => r.data),
   simulate: (body) => http.post('/bus/simulate', body).then((r) => r.data),
   optimize: (body) => http.post('/bus/optimize', body).then((r) => r.data),

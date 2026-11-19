@@ -71,6 +71,30 @@ class DomainAdapter(ABC):
     def advise(self, payload: dict, llm: str, embedding: str, use_llm: bool) -> dict:
         """예측 + 규정 근거를 결합한 배차 권고"""
 
+    def guide(self, payload: dict) -> dict:
+        """길안내 (출발·도착 → 경로). 지원하지 않는 도메인은 501"""
+        raise DomainNotImplemented(self.name, "guide")
+
+    def simulate(self, payload: dict) -> dict:
+        """조건을 바꿨을 때의 결과 (버스: 배차간격 변경 시뮬레이션). 지원하지 않으면 501"""
+        raise DomainNotImplemented(self.name, "simulate")
+
+    def optimize(self, payload: dict) -> dict:
+        """전체 대상의 배차를 한꺼번에 권고 (버스: 전 노선 배차 최적화). 지원하지 않으면 501"""
+        raise DomainNotImplemented(self.name, "optimize")
+
+    def route_info(self, payload: dict) -> dict:
+        """대상 하나의 기본 정보 (버스: 노선의 기점·종점·첫차·막차·배차간격·주요 정류장). 지원하지 않으면 501"""
+        raise DomainNotImplemented(self.name, "route_info")
+
+    def targets(self) -> list[str]:
+        """챗봇이 질문에서 찾을 대상 이름 (버스: 노선번호). 없으면 빈 목록"""
+        return []
+
+    def route_names(self) -> list[str]:
+        """기본 정보를 알려 줄 수 있는 전체 대상 이름 (버스: 길안내가 아는 전체 노선. N13·01A 같은 이름 포함)"""
+        return self.targets()
+
     def router(self) -> APIRouter | None:
         """도메인 전용 부가 API (예: 버스 지도용 노선 좌표). 없으면 None"""
         return None

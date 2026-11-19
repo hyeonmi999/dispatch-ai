@@ -55,7 +55,7 @@ const emit = defineEmits(['update:layout', 'commit', 'close'])
 
 // 숨겨도 입력한 질문·생성한 권고가 사라지지 않게 유지
 const KEEP_MOUNTED = new Set(['advice', 'qa', 'history'])
-const BODY_CLASS = { map: 'fill flush', forecast: 'fill', stops: 'fill' }
+const BODY_CLASS = { map: 'fill flush', forecast: 'fill', stops: 'fill', chat: 'fill' }
 
 const gridEl = ref(null)
 const drag = ref(null) // 화면 표시용: { id, mode, dx, dy, x0, y0 }

@@ -159,6 +159,10 @@
           <AskPanel :key="documentRole" domain="bus" :llm="llm" :embedding="embedding" :role="documentRole" />
         </template>
 
+        <template #chat>
+          <ChatPanel domain="bus" :llm="llm" :embedding="embedding" :geometries="geometries" :role="documentRole" @goto="goto" @select-route="(r) => (selected = r)" />
+        </template>
+
         <template #metrics>
           <MetricsCard :metrics="meta.metrics" />
         </template>
@@ -196,6 +200,7 @@ import DocumentAdminPanel from './DocumentAdminPanel.vue'
 import AdvicePanel from './AdvicePanel.vue'
 import AppLogo from './AppLogo.vue'
 import AskPanel from './AskPanel.vue'
+import ChatPanel from './ChatPanel.vue'
 import ComingSoon from './ComingSoon.vue'
 import ForecastChart from './ForecastChart.vue'
 import HistoryPanel from './HistoryPanel.vue'

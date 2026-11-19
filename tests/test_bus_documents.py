@@ -120,3 +120,50 @@ def test_admin_can_receive_internal_and_restricted_sources(tmp_path, monkeypatch
         assert {source["document"] for source in response.json()["sources"]} == expected
         assert all(title in contexts[-1] for title in expected)
         assert ("b-restricted" in contexts[-1]) == (role == "admin")
+
+
+# ==================================================
+# 역할별 검색 보완 (오정훈, 이슈 #7 · #8)
+# ==================================================
+
+class GradedEmbeddings(Embeddings):
+    """질문과 제한 문서는 같은 방향, 공개 문서('공개본')는 유사도 0.9 → 제한 문서가 항상 앞 순위"""
+    __test__ = False
+
+    def embed_documents(self, texts):
+        return [self.embed_query(text) for text in texts]
+
+    def embed_query(self, text):
+        return [0.9, 0.4359] if "공개본" in text else [1.0, 0.0]
+
+
+def test_citizen_finds_public_document_behind_many_restricted_ones(tmp_path, monkeypatch):
+    # 재현(#8): 후보를 k*3개만 보고 거르면, 제한 문서 조각이 12개 이상 앞에 있을 때 공개 문서를 놓쳤음
+    client, root, knowledge = document_client(tmp_path, monkeypatch)
+    monkeypatch.setattr(rag, "get_embedder", lambda _: GradedEmbeddings())
+    endpoint = "/api/bus/documents"
+    assert client.post(endpoint, data={"title": "공개 절차", "type": "법령", "grade": "공개"},
+                       files={"file": ("pub.txt", "증차 절차 공개본", "text/plain")}).status_code == 201
+    for i in range(20):
+        assert client.post(endpoint, data={"title": f"제한 {i}", "type": "내부자료", "grade": "제한"},
+                           files={"file": (f"sec{i:02d}.txt", f"증차 절차 내부 검토 {i}", "text/plain")}).status_code == 201
+
+    result = knowledge.ask("증차 절차", use_llm=False, role="citizen")
+    assert result["found"] and [s["document"] for s in result["sources"]] == ["공개 절차"]
+    # 관리자는 앞 순위의 제한 문서를 그대로 받음
+    assert all(s["document"].startswith("제한") for s in knowledge.ask("증차 절차", use_llm=False, role="admin")["sources"])
+    # 볼 수 있는 문서가 하나도 없는 역할은 색인 끝까지 봐도 빈 결과 (끝없이 돌지 않음)
+    client.delete(f"{endpoint}/pub.txt")
+    assert knowledge.search("증차 절차", "bge", 4, role="citizen") == []
+
+
+def test_markdown_files_are_not_indexed_as_documents(tmp_path, monkeypatch):
+    # 재현(#7): docs/bus/SOURCES.md(출처 목록)가 규정 문서로 색인돼 답변 근거로 뽑혔음
+    _, root, knowledge = document_client(tmp_path, monkeypatch)
+    (root / "law.txt").write_text("문서검증표지 본문", encoding="utf-8")
+    (root / "SOURCES.md").write_text("문서검증표지 출처 목록", encoding="utf-8")
+    before = rag.docs_fingerprint(root)
+    assert {c["metadata"]["file"] for c in rag.load_documents(root)} == {"law.txt"}
+    assert [h["document"] for h in knowledge.search("문서검증표지", "bge", 5)] == ["law"]
+    (root / "NOTES.md").write_text("메모", encoding="utf-8")
+    assert rag.docs_fingerprint(root) == before               # .md를 바꿔도 색인을 다시 만들지 않음

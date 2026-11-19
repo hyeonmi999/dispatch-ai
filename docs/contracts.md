@@ -1,0 +1,202 @@
+# 기능 규격 (F-21)
+
+기능끼리 주고받는 데이터 형식입니다. 형식을 바꾸려면 이 문서와 쓰는 쪽 코드를 **같은 PR**에서 고칩니다.
+실제 필드 전체는 서버를 띄운 뒤 `http://127.0.0.1:8000/docs`에서 볼 수 있고, 이 문서는 다른 사람이 기대도 되는 부분만 적습니다.
+
+| 규격 | 만드는 사람 | 쓰는 사람 | 상태 |
+|---|---|---|---|
+| `POST /api/bus/simulate` | 박성훈 | 챗봇 | 구현됨 (PR #1). 챗봇 연결됨 |
+| `POST /api/bus/optimize` | 박성훈 | 챗봇, 발표 | 구현됨 (PR #1). 챗봇 연결됨 |
+| `POST /api/bus/chat` | 오정훈 | 채팅 화면 | 구현됨 (예측·권고·규정·길안내·노선 정보·시뮬레이션·최적화) |
+| `POST /api/bus/guide` · `GET /api/bus/stops/search` | 오정훈 | 챗봇, 길안내 팝업 | 구현됨 |
+| `GET /api/bus/routes/{route}/info` | 오정훈 | 챗봇 | 구현됨 |
+| `eval/agent_eval.json` 형식 | 김주혜 | 챗봇 채점 | 초안. 김주혜 확인 필요 |
+| `/api/bus/documents` | 김주혜 | 문서 관리 화면 | 구현됨 (PR #6). 아래 5번은 구현에 맞춰 고침 |
+| `role` 값 (열람 역할) | 김주혜 | 챗봇, 법규 질의응답 | 구현됨 (PR #6). `/ask`와 `/chat` 모두 적용 |
+
+공통
+- 에러는 `{"status": "<코드>", "detail": "<설명>"}` 형식입니다.
+- 권고·최적화·시뮬레이션·챗봇 응답에는 항상 `needs_review: true`가 있습니다.
+- 날짜는 `YYYY-MM-DD`, 시간대는 0~23 정수입니다.
+
+## 1. `POST /api/bus/simulate` — 배차간격 변경 시뮬레이션 (F-12)
+
+```
+요청: {"route": "143", "date": "2026-10-28", "hour": 8, "interval": 5}
+응답: {"route": "143", "date": "2026-10-28", "hour": 8, "daytype": "weekday", "is_forecast": true,
+       "current":   {"interval": 8.6, "trips_per_hour": 7.0, "max_congestion": 0.85, "level": "혼잡"},
+       "simulated": {"interval": 5.0, "trips_per_hour": 12.0, "max_congestion": 0.49, "level": "보통"},
+       "bounds": {"min_interval": 4, "max_interval": 12},
+       "fleet": {"buses_needed_before": 38, "buses_needed": 44, "authorized_buses": 50,
+                 "authorized_estimated": false, "over": false},
+       "peak_segment": {"seq": 31, "from_name": "..."},
+       "segments": [{"seq": 1, "from_name": "...", "congestion_before": 0.21, "level_before": "여유",
+                     "congestion": 0.12, "level": "여유"}],
+       "assumption": "...", "needs_review": true}
+```
+
+- `interval`이 `bounds` 밖이면 400입니다.
+- 챗봇이 쓰는 필드: `current`, `simulated`, `fleet.buses_needed_before`·`buses_needed`·`authorized_buses`·`over`, `peak_segment.from_name`.
+- 챗봇과 API는 같은 메서드(`BusAdapter.simulate`)를 부릅니다. 범위 밖의 간격은 챗봇에서 오류가 아니라 이유를 담은 답변으로 나옵니다.
+- 위 숫자는 형식을 보여 주는 예시입니다.
+
+## 2. `POST /api/bus/optimize` — 전 노선 배차 최적화 (F-13)
+
+```
+요청: {"date": "2026-10-28", "hours": [6, 7, 8, 9],
+       "weights": {"overload": 10, "trips": 1, "change": 0}}     ← weights는 생략 가능
+응답: {"date": "2026-10-28", "daytype": "weekday", "is_forecast": true,
+       "method": "cpsat", "status": "optimal", "solve_seconds": 0.4, "weights": {...},
+       "plan": [{"route": "143", "hour": 8, "current_trips": 7, "recommended_trips": 9, "change": 2,
+                 "action": "increase", "interval": 6.7, "buses_needed": 41, "fleet": 50,
+                 "fleet_estimated": false, "max_congestion_before": 0.85, "max_congestion_after": 0.66,
+                 "upper_congestion_before": 0.93, "upper_congestion_after": 0.72,
+                 "level_after": "보통", "limited_by": null}],
+       "kpi": {"overcrowded_before": 6, "overcrowded_after": 1, "extra_trips": 9, "changed": 8,
+               "increased": 6, "decreased": 2, "total_trips_before": 120, "total_trips_after": 129},
+       "binding": [], "skipped": [{"route": "160", "hour": 6, "reason": "..."}],
+       "assumption": "...", "cut_notice": null, "needs_review": true}
+```
+
+- `action`: `increase` · `decrease` · `keep`.
+- 승객 수 상한 비율표가 없으면 503입니다 (`python scripts/calibrate_p90.py` 먼저 실행).
+- 챗봇이 쓰는 필드: `kpi` 전체, `plan[].route·hour·current_trips·recommended_trips·change·action`, `binding`, `cut_notice`.
+- 챗봇과 API는 같은 메서드(`BusAdapter.optimize`)를 부릅니다. 챗봇은 "7시부터 9시", "출근 시간"(7~9시), "퇴근 시간"(17~19시)을 `hours`로 바꿉니다.
+- 이력 테이블 `optimization_run`에는 요청(`date`, `hours`, `weights`)과 `plan`, `kpi`, `binding`, `solve_seconds`를 저장합니다.
+
+## 3. `POST /api/bus/chat` — 배차 상담 챗봇 (F-25)
+
+```
+요청: {"message": "160번 10월 28일 오후 3시에 혼잡해?",
+       "history": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}],
+       "llm": "qwen", "embedding": "bge", "use_llm": false, "role": "citizen",
+       "location": {"lat": 37.5665, "lng": 126.978}}                    ← 선택. 길안내의 출발지
+응답: {"domain": "bus",
+       "answer": "160번 2026-10-28 15시 예상 승차는 1,509명입니다. ...",
+       "intent": "predict",
+       "slots": {"route": "160", "date": "2026-10-28", "hour": 15},
+       "tools": [{"name": "predict", "args": {"route": "160", "date": "2026-10-28", "hour": 15}, "ok": true}],
+       "sources": [{"id": 1, "document": "...", "article": "...", "page": 3, "url": null, "score": 0.61, "snippet": "..."}],
+       "numbers_verified": true, "llm": null, "llm_rejected": false, "data": null, "elapsed_sec": 0.16,
+       "needs_review": true, "chat_id": 12, "db_saved": true}
+```
+
+| 필드 | 값 |
+|---|---|
+| `message` | 2~500자 |
+| `history` | 최대 10건, 오래된 것부터. 이어 묻기("그럼 4시는?")에 사용. 생략 가능 |
+| `use_llm` | `false`(기본)면 정해진 문장 틀로 답함. `true`면 규정 답변은 LLM이 요약하고, 예측·권고 답변은 LLM이 문장을 다듬음 |
+| `location` | 현재 위치. 길안내 질문에서 출발 정류장을 말하지 않았을 때만 씀. 응답의 `slots`·`tools`에는 좌표가 들어 있지만, 대화 기록(`chat_log`)에는 좌표를 빼고 `slots.location_used: true`만 남김 |
+| `role` | 문서 열람 역할 `citizen`(기본) · `staff` · `admin`. 규정 검색에 전달 (6번) |
+| `intent` | `predict` · `advise` · `ask` · `guide` · `route_info` · `simulate` · `optimize` · `clarify`(빠진 값 되묻기) · `out_of_scope` |
+| `tools[].name` | 실제로 부른 기능: `predict`(F-02) · `advise`(F-04) · `ask`(F-05) · `guide`(F-28) · `route_info`(F-29) · `simulate`(F-12) · `optimize`(F-13). 되묻기·범위 밖은 빈 목록 |
+| `slots.from_here` | `true`면 "여기서 ○○ 어떻게 가?"처럼 현재 위치에서 출발하는 질문인데 `location`이 없었다는 뜻. 화면은 위치를 얻어 같은 질문을 다시 보냄 |
+| `llm_rejected` | `true`면 LLM이 쓴 문장을 버리고 문장 틀로 답함. 버리는 경우: 숫자가 기능 결과와 다름 / 권고 방향이 바뀜(유지 → 감차 등) / 혼잡 단계가 다름 |
+| `data` | 길안내 답변일 때만 `/api/bus/guide` 응답 전체. 화면이 '지도로 보기' 팝업에 씀 |
+| `tools[].ok` | `false`면 기능이 오류를 돌려줌 (없는 노선, 예측 범위 밖 날짜). `answer`에 이유가 들어감 |
+| `numbers_verified` | 답변 속 숫자가 모두 기능 결과에 있으면 `true`. 숫자를 대조하지 않는 답(규정·되묻기·범위 밖)은 `null` |
+| `sources` | 규정 질의응답(`/ask`)의 `sources`와 같은 형식 |
+
+- 응답은 항상 200입니다. 기능 오류도 `answer`로 설명합니다. 422는 `message` 길이처럼 요청 형식이 틀렸을 때만 납니다.
+- `predict` 응답에 `congestion: {"ratio", "level"}`(그 시간대 가장 붐비는 구간)을 추가했습니다. `hour`를 준 경우에만 들어갑니다.
+
+## 3-1. `POST /api/bus/guide` — 버스 길안내 (F-28)
+
+```
+요청: {"origin": "정릉우체국앞", "destination": "종로3가역", "date": "2026-10-25", "hour": 8}
+      또는 {"lat": 37.5665, "lng": 126.978, "destination": "종로3가역", "date": "...", "hour": 8}   ← 현재 위치
+응답: {"date": "2026-10-25", "hour": 8, "is_forecast": false,
+       "origin": {"label": "정릉우체국앞", "stop": "정릉우체국앞", "lat": 37.6, "lng": 127.0, "walk_m": 0, "far": false},
+       "destination": {"stop": "종로3가역.탑골공원", "lat": 37.57, "lng": 126.99},
+       "options": [{"kind": "direct", "routes": ["143"], "total_min": 27,
+                    "max_congestion": 0.321, "level": "여유",
+                    "fastest": true, "least_crowded": true, "recommended": true,
+                    "legs": [{"route": "143", "board": {"name": "...", "seq": 6, "lat": 0, "lng": 0},
+                              "alight": {"name": "...", "seq": 17, "lat": 0, "lng": 0}, "direction": "개포동",
+                              "stops": 11, "walk_m": 0, "walk_min": 0, "interval_min": 8.6, "wait_min": 4.3,
+                              "ride_min": 23, "congestion": 0.321, "level": "여유"}]}],
+       "recommendation": {"index": 0, "reason": "fastest", "slower_by_min": 0},
+       "assumption": "..."}
+```
+
+- 직행 또는 환승 한 번 경로만 찾습니다(버스만, 지하철 제외). 경로가 없으면 `options`는 빈 목록입니다.
+- **아는 노선**: `data/interim/network/`(전체 노선 정류장, `python scripts/fetch_network_stops.py`)가 있으면 서울 버스 723개 노선, 없으면 이 서비스가 예측하는 노선만.
+- **혼잡도는 예측하는 노선(143·150·160·271·272)에만 있습니다.** 그 밖의 노선은 `legs[].predicted: false`, `congestion: null`이고 배차간격은 노선 기본정보의 평일 값입니다.
+- 이름으로 찾은 정류장 주변 300m의 정류장도 타고 내릴 곳으로 봅니다(길 건너·다른 출구). 그래서 `legs[].walk_m`(타러 가는 거리)과 `legs[].exit_walk_m`(내려서 도착지까지)이 붙습니다.
+- `legs[].path`: 타고 가는 정류장들의 `[위도, 경도]`. 화면이 팝업 지도에 그립니다.
+- `legs[].ride_min`(탑승 시간)은 **정류장별 공식 시간표**(첫차·막차 시각)의 구간 차이로 계산합니다. 새벽 5시까지는 첫차 시간표, 그 뒤는 막차 시간표를 쓰고, 출퇴근 시간(7~9시, 17~19시)에는 1.15를 곱합니다(가정값). 시간표가 없거나 이상한 노선은 도로 거리 ÷ 평균 속도로 계산합니다. `legs[].distance_km`은 도로 거리입니다. 실시간 교통 상황은 반영하지 않습니다.
+- 정류장 이름은 일부만 적어도 됩니다 ("종로3가역" → "종로3가역.탑골공원"). 없는 이름이면 422.
+- `origin.far`가 `true`면 걸어갈 거리(500m) 안에 정류장이 없어 가장 가까운 정류장에서 타는 경로입니다. 이때 걷는 시간은 `total_min`에 넣지 않습니다.
+- 요청한 날짜가 예측 범위 밖이면 범위 안의 가장 가까운 같은 요일로 계산하고, 응답의 `date`에 계산한 날짜를, `requested_date`에 원래 요청한 날짜를 넣습니다. 길은 날짜와 상관없이 같고 혼잡도·배차간격만 그날 기준입니다.
+- `kind`: `direct` · `transfer`. `recommendation.reason`: `fastest` · `less_crowded`(조금 더 걸리지만 덜 붐빔).
+- 소요 시간은 운행시간에서 어림한 값이고, 혼잡도는 F-03의 예측값입니다.
+- `GET /api/bus/stops/search?q=종로&limit=10` → `[{"name", "lat", "lng", "routes": ["143", "271"]}]`. `limit` 최대 20.
+
+## 3-2. `GET /api/bus/routes/{route}/info` — 노선 기본 정보 (F-29)
+
+```
+응답: {"route": "160", "route_type": "간선", "company": "서울교통네트웍",
+       "start": "도봉산역광역환승센터", "end": "온수동종점", "first_bus": "03:57", "last_bus": "22:10",
+       "interval_weekday": 8.0, "min_interval": 6.0, "max_interval": 13.0, "run_minutes": 261.0,
+       "authorized_buses": 33.0, "authorized_estimated": true, "distance_km": 70.0,
+       "stops_count": 120, "key_stops": ["도봉산역광역환승센터", "...", "온수동종점"]}
+```
+
+- 없는 노선은 404. `key_stops`는 기점에서 회차 지점까지 고르게 뽑은 정류장입니다.
+- 예측하지 않는 노선(전체 노선 파일에만 있는 노선)은 `predicted: false`이고 `min_interval`·`max_interval`·`authorized_buses`·`distance_km`이 `null`입니다.
+- 챗봇은 "160번 버스 노선 알려줘", "143번 첫차 몇 시야?", "143번 어디서 어디까지 가?" 같은 질문에 이 기능을 부릅니다.
+- `GET /api/bus/meta`의 `routes[]`와 같은 값을 씁니다 (`adapter._route_row`).
+
+## 4. `eval/agent_eval.json` — 챗봇 채점 문제집 (F-33) · 초안
+
+```
+[{"id": "G1", "q": "160번 10월 28일 오후 3시에 혼잡해?", "tools": ["predict"],
+  "slots": {"route": "160", "date": "2026-10-28", "hour": 15}},
+ {"id": "G2", "q": "버스 늘리려면 뭐 해야 돼?", "tools": ["ask"]},
+ {"id": "G3", "q": "271번 몇 명 타?", "tools": [], "intent": "clarify"},
+ {"id": "G4", "q": "오늘 점심 메뉴 추천해줘", "tools": [], "intent": "out_of_scope"}]
+```
+
+- `tools`: 불러야 하는 기능 이름 목록(위 3번의 `tools[].name`과 같은 값). 아무것도 부르면 안 되는 문항은 빈 목록.
+- 이어 묻기 문항은 `history`(이전 대화)를, 현재 위치를 쓰는 길안내 문항은 `location`을 함께 적습니다.
+- 형식 예시와 채점 방법은 `eval/agent_eval.sample.json`(오정훈이 만든 15문항)과 `scripts/eval_agent.py`를 보면 됩니다. 채점: `python scripts/eval_agent.py --name agent_1`
+- `slots`·`intent`는 선택. 적으면 그 값도 채점합니다.
+- 날짜는 "내일" 같은 말 대신 `10월 28일`처럼 적습니다 (채점하는 날에 따라 답이 달라지지 않게).
+- 채점: 응답의 `tools[].name` 목록이 `tools`와 같으면 정답. 합격 기준 90%.
+
+## 5. `/api/bus/documents` — 법규 문서 관리 (F-36)
+
+김주혜가 구현했습니다(`app/core/documents.py`, PR #6). 아래는 구현을 옮겨 적은 것입니다.
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| GET | `/api/bus/documents` | 문서 목록 `{"items": [...]}`. `docs/bus/`의 PDF·TXT 파일 전부 |
+| POST | `/api/bus/documents` | 파일 올리기 (multipart: `file`, `title`, `type`, `grade`). 201 |
+| PUT | `/api/bus/documents/{file}` | `title`, `type`, `grade`, `active` 수정 |
+| DELETE | `/api/bus/documents/{file}` | 파일과 목록 항목 삭제. 204 |
+
+```
+문서 1건: {"file": "sample.txt", "title": "등록한 문서", "type": "법령", "grade": "공개",
+           "active": true, "created_at": "2026-11-18T00:00:00Z"}
+```
+
+- `type`: `법령` · `조례` · `보도자료` · `내부자료`. `grade`: `공개` · `내부` · `제한`.
+- 파일은 PDF·TXT만, 최대 20MB. 이름에 경로 문자가 있으면 400, 같은 이름이 있으면 409, 없는 문서는 404.
+- 등록 정보는 `docs/bus/documents.json`에 저장합니다. 여기에 없는 기존 파일은 `공개`·사용 중으로 봅니다.
+- `active: false`인 문서는 검색에서 빠집니다.
+- 규정 문서로 읽는 파일은 `.pdf`·`.txt`뿐입니다. `SOURCES.md` 같은 `.md`는 읽지 않습니다.
+- 알려진 문제: 등급·사용 여부만 바꿔도 색인을 다시 만듦(#9), 올린 파일이 git 추적 폴더에 저장됨(#10), 역할 확인 없음(#11).
+
+## 6. `role` 값 — 문서 열람 역할 (F-37)
+
+| `role` (요청) | 화면 표시 | 검색에 쓰는 문서 등급 |
+|---|---|---|
+| `citizen` (기본) | 시민 | `공개` |
+| `staff` | 배차 담당자 | `공개`, `내부` |
+| `admin` | 관리자 | `공개`, `내부`, `제한` |
+
+- `/api/bus/ask`와 `/api/bus/chat` 요청에 `role`을 넣습니다. 생략하면 `citizen`, 모르는 값이면 422.
+- 볼 수 없는 등급의 문서는 검색 단계에서 빠지고, 남은 근거가 없으면 "찾을 수 없음"으로 답합니다.
+- 볼 수 없는 문서가 앞 순위를 차지해도, 허용된 문서가 `k`개 찰 때까지 후보를 늘려 찾습니다(#8에서 고침).
+- 배차 권고(`/advise`)에 붙는 근거 조항은 항상 `citizen` 기준(공개 문서)입니다.
+- 로그인이 없는 시연용 기능입니다. `role`은 화면에서 고르는 값입니다.

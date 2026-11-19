@@ -5,12 +5,19 @@
 # 값은 .env로 덮어쓸 수 있습니다.
 
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 # Tokenizer 병렬 처리 관련 경고 방지
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+# Windows에서 출력을 파일·파이프로 보내면 기본 인코딩(cp949)이 로그의 이모지를 못 써서
+# 서버·스크립트가 UnicodeEncodeError로 멈춤 → 못 쓰는 글자만 '?'로 바꿔 계속 실행
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(errors="replace")
 
 ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / ".env")
@@ -69,6 +76,18 @@ REPETITION_PENALTY = 1.1
 RAG_TOP_K = 4
 RAG_SCORE_THRESHOLD = {"bge": 0.55, "openai": 0.35}
 NOT_FOUND_ANSWER = "제공된 규정 문서에서 근거를 찾을 수 없음"
+# 역할별 검색: 볼 수 없는 등급의 조각을 거르면 결과가 모자랄 수 있어 처음에 k의 몇 배를 가져올지.
+# 그래도 모자라면 허용된 조각이 k개 찰 때까지 두 배씩 늘려 다시 가져옴 (색인 전체까지)
+RAG_ROLE_OVERFETCH = 3
+RAG_DOCUMENT_SUFFIXES = (".pdf", ".txt")     # 규정 문서로 읽는 파일 (출처 목록 같은 .md는 읽지 않음)
+
+# 목록 API가 한 번에 돌려주는 최대 개수
+LIST_LIMIT_MAX = 100
+
+# 배차 상담 챗봇 (app/core/agent.py)
+CHAT_MESSAGE_MAX = 500      # 질문 한 건의 최대 글자 수
+CHAT_HISTORY_MAX = 10       # 이어 묻기에 쓰는 이전 대화 개수 상한
+CHAT_HISTORY_ITEM_MAX = 2000  # 이전 대화 한 건의 최대 글자 수
 
 
 # ==================================================
@@ -149,6 +168,29 @@ BUS_P90_FIXED_RATIO = 1.10           # 비교용 후보: 전 노선 고정 배�
 BUS_OPT_WEIGHTS = {"overload": 10, "trips": 1, "change": 0}
 BUS_OPT_TIME_LIMIT_SEC = 10          # 풀이 시간 제한
 BUS_OPT_SEED = 42
+
+# 길안내 (app/domains/bus/guide.py)
+GUIDE_WALK_M = 500             # 이 거리 안의 정류장을 출발 후보로 봄 (걸어서 약 7분)
+GUIDE_TRANSFER_M = 150         # 갈아탈 때 걸어서 옮길 수 있는 정류장 사이 거리
+GUIDE_PLACE_M = 300            # 이름으로 찾은 정류장 주변 이 거리 안의 정류장도 타고 내릴 곳으로 봄 (길 건너·다른 출구)
+GUIDE_WALK_M_PER_MIN = 70      # 걷는 속도 (분당 m)
+GUIDE_MAX_OPTIONS = 3          # 보여 줄 경로 수
+GUIDE_CANDIDATES = 12          # 시간·혼잡도를 계산해 볼 경로 후보 수 (정류장 수가 적은 순)
+GUIDE_SCAN_FACTOR = 10         # 운행하지 않는 노선을 건너뛰며 후보를 최대 몇 배까지 더 볼지
+GUIDE_DEFAULT_MIN_PER_STOP = 2.5   # 운행시간 정보가 없는 노선의 정류장 하나당 시간(분)
+# 탑승 시간 계산 (정류장별 공식 시간표 기준)
+GUIDE_EARLY_HOUR = 5           # 이 시각 이하는 첫차 시간표(도로가 빈 시간), 그 뒤는 막차 시간표(저녁)를 기준으로 봄
+GUIDE_PEAK_HOURS = (7, 8, 9, 17, 18, 19)
+GUIDE_PEAK_FACTOR = 1.15       # 출퇴근 시간에 시간표보다 더 걸린다고 보는 비율 (가정값. 실측으로 정한 값이 아님)
+GUIDE_SPEED_RANGE_KMH = (6, 60)    # 시간표로 계산한 속도가 이 범위를 벗어나면 시간표 값이 잘못된 것으로 보고 쓰지 않음
+GUIDE_DEFAULT_KMH = 17         # 시간표를 쓸 수 없는 노선의 평균 속도. 시간표가 있는 451개 노선의 중앙값 17.1km/h (정차 포함)
+GUIDE_SHORT_LEG_MIN = 3        # 시간표는 분 단위라, 이보다 짧은 구간은 거리 ÷ 노선 평균 속도로 계산
+GUIDE_NEAR_STOPS = 5           # 주변에 정류장이 없을 때 살펴볼 가까운 정류장 수
+GUIDE_CROWD_TRADEOFF_MIN = 10  # 덜 붐비는 경로가 이 시간(분) 이하로 더 걸리면 그쪽을 추천
+GUIDE_CROWD_MIN_GAP = 0.1      # 혼잡도 차이가 이보다 작으면 '덜 붐빔'으로 보지 않음 (0.355와 0.35는 같은 수준)
+GUIDE_SEARCH_LIMIT_MAX = 20    # 정류장 검색 결과 최대 개수
+GUIDE_DATE_FALLBACK_WEEKS = 8  # 요청한 날이 예측 범위 밖이면 같은 요일로 몇 주까지 거슬러 찾을지
+ROUTE_INFO_KEY_STOPS = 8       # 노선 정보에 보여 줄 주요 정류장 수
 
 # 학기 중/방학 구분 (서울 초중고 대략 기준, 계절성 피처)
 SCHOOL_VACATIONS = [

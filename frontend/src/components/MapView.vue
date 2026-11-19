@@ -14,6 +14,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import L from 'leaflet'
 import { fmtCongestion, levelColor } from '../api'
+import { busSvg } from '../busIcon'
 import { routeShape } from '../routeShape'
 import { isNight, palette } from '../theme'
 
@@ -21,6 +22,8 @@ const props = defineProps({
   geometries: { type: Object, default: () => ({}) },
   overview: { type: Object, default: null },
   selected: { type: String, default: null },
+  // 길안내 팝업(GuideModal)에서 고른 경로: { options, index, user: {lat, lng} | null }
+  guide: { type: Object, default: null },
 })
 const emit = defineEmits(['select'])
 
@@ -29,6 +32,7 @@ let map = null
 let routeLayer = null
 let hotspotLayer = null
 let tagLayer = null
+let guideLayer = null
 let fitted = false
 
 // 노선별 상·하행 구조는 좌표가 바뀔 때만 다시 계산
@@ -147,7 +151,7 @@ function fitRoutes() {
 // 노선 번호표: 처음 맞춘 화면에서 다른 노선·번호표와 가장 떨어진 지점을 노선별 기본 자리로 정함
 // 확대·축소·이동해도 기본 자리에 고정. 화면 밖으로 나가거나 다른 번호표와 겹칠 때만 그 번호표를 옮기고,
 // 다시 들어갈 수 있게 되면 기본 자리로 돌아옴
-const TAG_W = 44
+const TAG_W = 60
 const TAG_H = 24
 const tagHomes = new Map()
 const tagSpots = new Map()
@@ -206,7 +210,7 @@ function placeTags() {
     L.marker(spot.ll, {
       icon: L.divIcon({
         className: '',
-        html: `<div class="rno route-tag r${route} ${active ? 'on' : ''}">${route}</div>`,
+        html: `<div class="rno route-tag r${route} ${active ? 'on' : ''}">${busSvg(14)}${route}</div>`,
         iconSize: [TAG_W, TAG_H],
         iconAnchor: [TAG_W / 2, TAG_H / 2],
       }),
@@ -214,6 +218,53 @@ function placeTags() {
     })
       .on('click', () => emit('select', route))
       .addTo(tagLayer)
+  }
+}
+
+// 툴팁은 HTML 문자열로 들어가므로, 서버에서 온 이름은 글자 그대로 보이게 바꿔서 넣음
+const escapeHtml = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+
+// 길안내 경로: 타는 구간을 점선으로, 승차·환승·도착 지점과 현재 위치를 표시
+function drawGuide() {
+  if (!map || !guideLayer) return
+  guideLayer.clearLayers()
+  const option = props.guide?.options?.[props.guide?.index ?? 0]
+  if (!option) return
+  const points = []
+  const pin = (lat, lng, kind, html, tip) =>
+    L.marker([lat, lng], {
+      icon: L.divIcon({ className: '', html: `<div class="gpin ${kind}">${html}</div>`, iconSize: [28, 28], iconAnchor: [14, 14] }),
+      zIndexOffset: 1200,
+    })
+      .bindTooltip(tip)
+      .addTo(guideLayer)
+
+  const user = props.guide.user
+  if (user) {
+    pin(user.lat, user.lng, 'me', '', '현재 위치')
+    points.push([user.lat, user.lng])
+  }
+  const legs = option.legs ?? []
+  legs.forEach((leg, i) => {
+    // 서버가 준 정류장 좌표를 쓰고(전체 노선), 없으면 화면이 가진 노선 좌표에서 뽑음
+    const stops = props.geometries[leg.route]?.stops ?? []
+    const line = leg.path?.length
+      ? leg.path
+      : stops.filter((s) => s.seq >= leg.board.seq && s.seq <= leg.alight.seq).map((s) => [s.lat, s.lng])
+    if (line.length > 1) {
+      L.polyline(line, { color: palette.value.panel, weight: 9, opacity: 0.95, smoothFactor: 0 }).addTo(guideLayer)
+      L.polyline(line, { color: palette.value.accent, weight: 5, opacity: 1, dashArray: '1 9', lineCap: 'round', smoothFactor: 0 }).addTo(guideLayer)
+    }
+    const last = i === legs.length - 1
+    pin(leg.board.lat, leg.board.lng, 'board', busSvg(18), `<b>${escapeHtml(leg.route)}번 승차</b><br/>${escapeHtml(leg.board.name)}`)
+    pin(leg.alight.lat, leg.alight.lng, last ? 'end' : 'xfer', last ? '도착' : '환승', `<b>${last ? '도착' : `${escapeHtml(leg.route)}번 하차 · 환승`}</b><br/>${escapeHtml(leg.alight.name)}`)
+    points.push(...line, [leg.board.lat, leg.board.lng], [leg.alight.lat, leg.alight.lng])
+  })
+  if (points.length) {
+    fitting = true
+    map.fitBounds(points, { padding: [44, 44], animate: false, maxZoom: 15 })
+    fitting = false
+    userMoved = true // 길안내 화면을 유지 (패널 크기를 바꿔도 전체 노선으로 되돌리지 않음)
   }
 }
 
@@ -249,8 +300,10 @@ onMounted(() => {
   routeLayer = L.layerGroup().addTo(map)
   hotspotLayer = L.layerGroup().addTo(map)
   tagLayer = L.layerGroup().addTo(map)
+  guideLayer = L.layerGroup().addTo(map)
   map.on('zoomend moveend resize', placeTags)
   draw()
+  drawGuide()
   // 패널 크기를 바꾸면 지도도 다시 맞춤
   resizeObserver = new ResizeObserver(() => {
     if (!map) return
@@ -261,9 +314,11 @@ onMounted(() => {
 })
 
 watch(() => [props.geometries, props.overview, props.selected], draw)
+watch(() => props.guide, drawGuide)
 watch(isNight, () => {
   setTiles()
   draw()
+  drawGuide()
 })
 
 onBeforeUnmount(() => {
@@ -277,7 +332,13 @@ onBeforeUnmount(() => {
 
 <style>
 .map { width: 100%; flex: 1; min-height: 0; }
-.route-tag { width: 44px; height: 24px; font-size: 13px; line-height: 20px; text-align: center; padding: 0; cursor: pointer; }
+.route-tag { width: 60px; height: 24px; font-size: 13px; line-height: 20px; padding: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 3px; color: var(--rc, var(--ink)); }
+.route-tag.on { color: var(--on); }
+/* 길안내 지점 표시 */
+.gpin { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 700; border: 2px solid var(--panel); background: var(--ink); color: var(--panel); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
+.gpin.board { background: var(--accent); color: var(--on); }
+.gpin.xfer { background: var(--panel); color: var(--ink); border-color: var(--ink); }
+.gpin.me { width: 16px; height: 16px; margin: 6px; background: var(--baseline, #1668a8); border: 3px solid var(--panel); }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 10px; border-top: 1px solid var(--line); font-size: 11px; color: var(--ink2); align-items: center; flex: none; }
 .legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .lg-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--c3); }

@@ -29,12 +29,15 @@ from app.config import (
     NOT_FOUND_ANSWER,
     OPENAI_API_KEY,
     OPENAI_EMBEDDING_MODEL_NAME,
+    RAG_DOCUMENT_SUFFIXES,
+    RAG_ROLE_OVERFETCH,
     RAG_SCORE_THRESHOLD,
     RAG_TOP_K,
     VECTORSTORE_DIR,
 )
 from app.core import llm as llm_module
 from app.core.llm import LLMConfigError
+from app.core.prompts import RAG_SYSTEM_MESSAGE as SYSTEM_MESSAGE   # 프롬프트는 prompts.py 한 곳에
 from app.core.schemas import DocumentRole
 from app.core.documents import MANIFEST_NAME, read_document_manifest
 
@@ -45,18 +48,10 @@ ROLE_GRADES = {
     "admin": {"공개", "내부", "제한"},
 }
 
-SYSTEM_MESSAGE = (
-    "당신은 시내버스 배차 담당자에게 운수 규정을 안내하는 한국어 어시스턴트입니다. 다음 규칙을 반드시 지키세요.\n"
-    "1. [근거]에 적힌 내용만 사용하세요. 근거에 없는 숫자·기준·금액·기관·날짜는 절대 만들지 마세요.\n"
-    "2. 질문의 대상(시내버스·시외버스·마을버스·택시, 서울·다른 지역 등)과 근거의 대상이 다르면 그 근거는 쓰지 마세요.\n"
-    "3. 답변에 사용한 근거 번호를 문장 끝에 [1]처럼 표시하세요.\n"
-    f"4. 질문에 직접 답하는 내용이 [근거]에 없으면 다른 설명 없이 정확히 '{NOT_FOUND_ANSWER}'라고만 쓰세요.\n"
-    "5. 추론 과정은 쓰지 말고 최종 답변만 3~5문장으로 쓰세요."
-)
-
 # LLM이 형식을 어기고 "명시되지 않았습니다"처럼 돌려 말해도 근거 없음으로 처리
 NOT_FOUND_HINTS = ("찾을 수 없", "명시되지 않", "언급되지 않", "나와 있지 않", "포함되어 있지 않",
-                   "정보가 없", "확인할 수 없", "규정되어 있지 않", "제공되지 않")
+                   "정보가 없", "확인할 수 없", "규정되어 있지 않", "제공되지 않",
+                   "발표되지 않", "답변할 수 없", "답할 수 없")
 
 
 # ==================================================
@@ -264,7 +259,8 @@ def load_documents(docs_dir: Path) -> list[dict]:
                         for part, text in enumerate(split_long(page.get_text().strip(), size=700, overlap=100))
                         if text
                     ]
-        elif path.suffix.lower() in {".txt", ".md"} and path.name.lower() != "readme.md":
+        elif path.suffix.lower() == ".txt":
+            # .md(출처 목록·README)는 규정 문서가 아니므로 읽지 않음 (SOURCES.md가 답변 근거로 뽑힌 적이 있음)
             parts = load_txt(path)
         else:
             continue
@@ -282,7 +278,7 @@ def load_documents(docs_dir: Path) -> list[dict]:
 def docs_fingerprint(docs_dir: Path) -> str:
     h = hashlib.md5(f"chunk-v{CHUNK_VERSION}".encode())
     for path in sorted(docs_dir.glob("*")):
-        if not path.is_symlink() and path.is_file() and path.suffix.lower() in {".pdf", ".txt", ".md"}:
+        if not path.is_symlink() and path.is_file() and path.suffix.lower() in RAG_DOCUMENT_SUFFIXES:
             h.update(f"{path.name}:{path.stat().st_size}:{int(path.stat().st_mtime)}".encode())
     manifest = docs_dir / MANIFEST_NAME
     try:
@@ -391,18 +387,24 @@ class KnowledgeBase:
         store = self.get_store(embedding)
         if store is None:
             return []
-        candidates = store.similarity_search_with_score(query, k=k * 3)
         records = read_document_manifest(self.docs_dir)
         allowed = ROLE_GRADES[role]
-        hits = []
-        for doc, score in candidates:
-            # 기존 인덱스에도 파일명이 있으므로 최신 목록의 등급을 우선 적용합니다.
-            record = records.get(doc.metadata.get("file"), {})
-            grade = record.get("grade", doc.metadata.get("grade", "공개"))
-            if record.get("active") is not False and grade in allowed:
-                hits.append((doc, score))
-                if len(hits) == k:
-                    break
+        total = store.index.ntotal
+        fetch = min(k * RAG_ROLE_OVERFETCH, total)
+        while True:
+            hits = []
+            for doc, score in store.similarity_search_with_score(query, k=fetch):
+                # 기존 인덱스에도 파일명이 있으므로 최신 목록의 등급을 우선 적용합니다.
+                record = records.get(doc.metadata.get("file"), {})
+                grade = record.get("grade", doc.metadata.get("grade", "공개"))
+                if record.get("active") is not False and grade in allowed:
+                    hits.append((doc, score))
+                    if len(hits) == k:
+                        break
+            # 볼 수 없는 등급의 조각이 앞을 차지하면 허용된 조각이 모자람 → 더 가져와서 다시 거름
+            if len(hits) == k or fetch >= total:
+                break
+            fetch = min(fetch * 2, total)
         return [
             {
                 "document": doc.metadata.get("document"),
