@@ -58,6 +58,8 @@ GET  /api/bus/optimize/runs?limit=20  →  {"db": {...}, "items": [{"id", "date"
 
 ### Task P-1: 시뮬레이션·최적화를 어댑터 메서드로 빼기 (챗봇 연결의 선행 작업) ★☆☆☆☆
 
+> **2026-11-19 완료 (오정훈이 PR #4에서 진행).** `BusAdapter.simulate()`·`optimize()`로 옮겼고 라우터는 그 메서드를 부릅니다. 응답 형식은 그대로이고 기존 시뮬레이션·최적화 테스트가 모두 통과합니다. 옮긴 부분을 한 번 확인해 주세요. 아래 항목은 기록으로 남깁니다.
+
 **왜:** 챗봇이 "150번 내일 8시 간격을 5분으로 바꾸면?", "내일 출근 시간 전체 노선 최적화해줘"를 알아보는 데까지는 됐지만, 부를 메서드가 없어 "아직 연결되지 않았습니다"라고 답합니다. 이 Task가 끝나면 오정훈이 챗봇 쪽(`agent.py`의 `_simulate`·`_optimize`)을 붙입니다.
 
 **읽을 파일:** `app/domains/bus/adapter.py`(라우터의 `simulate_interval`, `optimize_dispatch`와 `predict()`·`advise()` 메서드), `app/core/domain.py`, `tests/test_simulate.py`, `tests/test_optimize.py`

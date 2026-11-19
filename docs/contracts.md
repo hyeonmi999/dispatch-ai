@@ -5,14 +5,14 @@
 
 | 규격 | 만드는 사람 | 쓰는 사람 | 상태 |
 |---|---|---|---|
-| `POST /api/bus/simulate` | 박성훈 | 챗봇 | PR #1 기준으로 옮겨 적음. 박성훈 확인 필요 |
-| `POST /api/bus/optimize` | 박성훈 | 챗봇, 발표 | PR #1 기준으로 옮겨 적음. 박성훈 확인 필요 |
-| `POST /api/bus/chat` | 오정훈 | 채팅 화면 | 구현됨 (예측·권고·규정·길안내). 시뮬레이션·최적화는 연결 전 |
+| `POST /api/bus/simulate` | 박성훈 | 챗봇 | 구현됨 (PR #1). 챗봇 연결됨 |
+| `POST /api/bus/optimize` | 박성훈 | 챗봇, 발표 | 구현됨 (PR #1). 챗봇 연결됨 |
+| `POST /api/bus/chat` | 오정훈 | 채팅 화면 | 구현됨 (예측·권고·규정·길안내·노선 정보·시뮬레이션·최적화) |
 | `POST /api/bus/guide` · `GET /api/bus/stops/search` | 오정훈 | 챗봇, 길안내 팝업 | 구현됨 |
 | `GET /api/bus/routes/{route}/info` | 오정훈 | 챗봇 | 구현됨 |
 | `eval/agent_eval.json` 형식 | 김주혜 | 챗봇 채점 | 초안. 김주혜 확인 필요 |
-| `/api/bus/documents` | 김주혜 | 문서 관리 화면 | 초안. 김주혜 확인 필요 |
-| `role` 값 (열람 등급) | 김주혜 | 챗봇, 법규 질의응답 | 초안. 김주혜 확인 필요 |
+| `/api/bus/documents` | 김주혜 | 문서 관리 화면 | 구현됨 (PR #6). 아래 5번은 구현에 맞춰 고침 |
+| `role` 값 (열람 역할) | 김주혜 | 챗봇, 법규 질의응답 | 구현됨 (PR #6). `/ask`와 `/chat` 모두 적용 |
 
 공통
 - 에러는 `{"status": "<코드>", "detail": "<설명>"}` 형식입니다.
@@ -36,7 +36,8 @@
 ```
 
 - `interval`이 `bounds` 밖이면 400입니다.
-- 챗봇이 쓰는 필드: `current`, `simulated`, `bounds`, `fleet.buses_needed`, `fleet.authorized_buses`, `fleet.over`.
+- 챗봇이 쓰는 필드: `current`, `simulated`, `fleet.buses_needed_before`·`buses_needed`·`authorized_buses`·`over`, `peak_segment.from_name`.
+- 챗봇과 API는 같은 메서드(`BusAdapter.simulate`)를 부릅니다. 범위 밖의 간격은 챗봇에서 오류가 아니라 이유를 담은 답변으로 나옵니다.
 - 위 숫자는 형식을 보여 주는 예시입니다.
 
 ## 2. `POST /api/bus/optimize` — 전 노선 배차 최적화 (F-13)
@@ -59,7 +60,8 @@
 
 - `action`: `increase` · `decrease` · `keep`.
 - 승객 수 상한 비율표가 없으면 503입니다 (`python scripts/calibrate_p90.py` 먼저 실행).
-- 챗봇이 쓰는 필드: `kpi` 전체, `plan[].route·hour·current_trips·recommended_trips·action`, `binding`, `cut_notice`.
+- 챗봇이 쓰는 필드: `kpi` 전체, `plan[].route·hour·current_trips·recommended_trips·change·action`, `binding`, `cut_notice`.
+- 챗봇과 API는 같은 메서드(`BusAdapter.optimize`)를 부릅니다. 챗봇은 "7시부터 9시", "출근 시간"(7~9시), "퇴근 시간"(17~19시)을 `hours`로 바꿉니다.
 - 이력 테이블 `optimization_run`에는 요청(`date`, `hours`, `weights`)과 `plan`, `kpi`, `binding`, `solve_seconds`를 저장합니다.
 
 ## 3. `POST /api/bus/chat` — 배차 상담 챗봇 (F-25)
@@ -67,7 +69,7 @@
 ```
 요청: {"message": "160번 10월 28일 오후 3시에 혼잡해?",
        "history": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}],
-       "llm": "qwen", "embedding": "bge", "use_llm": false, "role": "public",
+       "llm": "qwen", "embedding": "bge", "use_llm": false, "role": "citizen",
        "location": {"lat": 37.5665, "lng": 126.978}}                    ← 선택. 길안내의 출발지
 응답: {"domain": "bus",
        "answer": "160번 2026-10-28 15시 예상 승차는 1,509명입니다. ...",
@@ -85,6 +87,7 @@
 | `history` | 최대 10건, 오래된 것부터. 이어 묻기("그럼 4시는?")에 사용. 생략 가능 |
 | `use_llm` | `false`(기본)면 정해진 문장 틀로 답함. `true`면 규정 답변은 LLM이 요약하고, 예측·권고 답변은 LLM이 문장을 다듬음 |
 | `location` | 현재 위치. 길안내 질문에서 출발 정류장을 말하지 않았을 때만 씀. 서버에 저장하지 않음 |
+| `role` | 문서 열람 역할 `citizen`(기본) · `staff` · `admin`. 규정 검색에 전달 (6번) |
 | `intent` | `predict` · `advise` · `ask` · `guide` · `route_info` · `simulate` · `optimize` · `clarify`(빠진 값 되묻기) · `out_of_scope` |
 | `tools[].name` | 실제로 부른 기능: `predict`(F-02) · `advise`(F-04) · `ask`(F-05) · `guide`(F-28) · `route_info`(F-29) · `simulate`(F-12) · `optimize`(F-13). 되묻기·범위 밖은 빈 목록 |
 | `slots.from_here` | `true`면 "여기서 ○○ 어떻게 가?"처럼 현재 위치에서 출발하는 질문인데 `location`이 없었다는 뜻. 화면은 위치를 얻어 같은 질문을 다시 보냄 |
@@ -161,31 +164,39 @@
 - 날짜는 "내일" 같은 말 대신 `10월 28일`처럼 적습니다 (채점하는 날에 따라 답이 달라지지 않게).
 - 채점: 응답의 `tools[].name` 목록이 `tools`와 같으면 정답. 합격 기준 90%.
 
-## 5. `/api/bus/documents` — 법규 문서 관리 (F-36) · 초안
+## 5. `/api/bus/documents` — 법규 문서 관리 (F-36)
+
+김주혜가 구현했습니다(`app/core/documents.py`, PR #6). 아래는 구현을 옮겨 적은 것입니다.
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
-| GET | `/api/bus/documents?limit=50` | 문서 목록. 없으면 빈 목록 |
-| POST | `/api/bus/documents` | 파일(PDF·TXT) + `title`, `kind`, `access` 추가 |
-| PUT | `/api/bus/documents/{id}` | `title`, `kind`, `access` 수정 |
-| DELETE | `/api/bus/documents/{id}` | 삭제. 없으면 404 |
+| GET | `/api/bus/documents` | 문서 목록 `{"items": [...]}`. `docs/bus/`의 PDF·TXT 파일 전부 |
+| POST | `/api/bus/documents` | 파일 올리기 (multipart: `file`, `title`, `type`, `grade`). 201 |
+| PUT | `/api/bus/documents/{file}` | `title`, `type`, `grade`, `active` 수정 |
+| DELETE | `/api/bus/documents/{file}` | 파일과 목록 항목 삭제. 204 |
 
 ```
-문서 1건: {"id": "...", "title": "여객자동차 운수사업법 시행규칙", "file": "....pdf",
-           "kind": "법령", "access": "public", "created_at": "2026-11-16T10:00:00"}
+문서 1건: {"file": "sample.txt", "title": "등록한 문서", "type": "법령", "grade": "공개",
+           "active": true, "created_at": "2026-11-18T00:00:00Z"}
 ```
 
-- 문서를 추가·수정·삭제하면 검색 인덱스를 다시 만들어야 합니다. 인덱스가 최신인지는 `GET /api/health`가 아니라 문서 목록 응답에 넣는 것으로 제안합니다.
+- `type`: `법령` · `조례` · `보도자료` · `내부자료`. `grade`: `공개` · `내부` · `제한`.
+- 파일은 PDF·TXT만, 최대 20MB. 이름에 경로 문자가 있으면 400, 같은 이름이 있으면 409, 없는 문서는 404.
+- 등록 정보는 `docs/bus/documents.json`에 저장합니다. 여기에 없는 기존 파일은 `공개`·사용 중으로 봅니다.
+- `active: false`인 문서는 검색에서 빠집니다.
+- 규정 문서로 읽는 파일은 `.pdf`·`.txt`뿐입니다. `SOURCES.md` 같은 `.md`는 읽지 않습니다.
+- 알려진 문제: 등급·사용 여부만 바꿔도 색인을 다시 만듦(#9), 올린 파일이 git 추적 폴더에 저장됨(#10), 역할 확인 없음(#11).
 
-## 6. `role` 값 — 열람 등급 (F-37) · 초안
+## 6. `role` 값 — 문서 열람 역할 (F-37)
 
-| `role` (요청) | 볼 수 있는 문서 `access` |
-|---|---|
-| `public` (기본) | `public` |
-| `staff` | `public`, `internal` |
-| `admin` | `public`, `internal`, `restricted` |
+| `role` (요청) | 화면 표시 | 검색에 쓰는 문서 등급 |
+|---|---|---|
+| `citizen` (기본) | 시민 | `공개` |
+| `staff` | 배차 담당자 | `공개`, `내부` |
+| `admin` | 관리자 | `공개`, `내부`, `제한` |
 
-- `/api/bus/ask`와 `/api/bus/chat` 요청에 `role`을 넣습니다. 생략하면 `public`.
-- 볼 수 없는 문서는 검색 단계에서 빼고, 남은 근거가 없으면 "찾을 수 없음"으로 답합니다.
-- 지금 `/chat`은 `role`을 받기만 하고 쓰지 않습니다. F-37이 들어오면 검색에 넘깁니다.
-- 로컬 전용이라 로그인은 없습니다. `role`은 화면에서 고르는 값입니다.
+- `/api/bus/ask`와 `/api/bus/chat` 요청에 `role`을 넣습니다. 생략하면 `citizen`, 모르는 값이면 422.
+- 볼 수 없는 등급의 문서는 검색 단계에서 빠지고, 남은 근거가 없으면 "찾을 수 없음"으로 답합니다.
+- 볼 수 없는 문서가 앞 순위를 차지해도, 허용된 문서가 `k`개 찰 때까지 후보를 늘려 찾습니다(#8에서 고침).
+- 배차 권고(`/advise`)에 붙는 근거 조항은 항상 `citizen` 기준(공개 문서)입니다.
+- 로그인이 없는 시연용 기능입니다. `role`은 화면에서 고르는 값입니다.
