@@ -35,6 +35,7 @@ const props = defineProps({
   domain: { type: String, default: 'bus' },
   llm: { type: String, default: 'qwen' },
   embedding: { type: String, default: 'bge' },
+  role: { type: String, default: 'citizen' },
 })
 const message = useMessage()
 const question = ref('')
@@ -50,7 +51,7 @@ async function send() {
   if (question.value.trim().length < 2) return
   loading.value = true
   try {
-    result.value = await api.ask(props.domain, { question: question.value, llm: props.llm, embedding: props.embedding })
+    result.value = await api.ask(props.domain, { question: question.value, llm: props.llm, embedding: props.embedding, role: props.role })
   } catch (e) {
     message.error(errorMessage(e))
   } finally {

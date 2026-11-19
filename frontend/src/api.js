@@ -7,7 +7,11 @@ const http = axios.create({ baseURL: '/api', timeout: 180000 })
 // 오류 응답의 detail을 사람이 읽을 수 있는 문장으로
 export function errorMessage(err) {
   const d = err?.response?.data
-  if (!d) return err?.message || '서버에 연결할 수 없습니다.'
+  if (!d) {
+    // 백엔드가 꺼져 있으면 개발 서버 프록시가 내용 없는 502를 돌려줌
+    if ([502, 503, 504].includes(err?.response?.status)) return '서버에 연결할 수 없습니다. 백엔드(포트 8000)가 실행 중인지 확인하세요.'
+    return err?.message || '서버에 연결할 수 없습니다.'
+  }
   if (typeof d.detail === 'string') return d.detail
   if (Array.isArray(d.detail)) return d.detail.map((x) => x.msg).join(', ')
   return JSON.stringify(d)
@@ -17,6 +21,10 @@ export const api = {
   domains: () => http.get('/domains').then((r) => r.data),
   health: () => http.get('/health').then((r) => r.data),
   schema: (domain) => http.get(`/${domain}/schema`).then((r) => r.data),
+  busDocuments: () => http.get('/bus/documents').then((r) => r.data),
+  createBusDocument: (body) => http.post('/bus/documents', body).then((r) => r.data),
+  updateBusDocument: (file, body) => http.put(`/bus/documents/${encodeURIComponent(file)}`, body).then((r) => r.data),
+  deleteBusDocument: (file) => http.delete(`/bus/documents/${encodeURIComponent(file)}`).then((r) => r.data),
   busMeta: () => http.get('/bus/meta').then((r) => r.data),
   geometry: (route) => http.get(`/bus/routes/${route}/geometry`).then((r) => r.data),
   timeseries: (route, date) => http.get(`/bus/routes/${route}/timeseries`, { params: { date } }).then((r) => r.data),
@@ -27,6 +35,8 @@ export const api = {
   advise: (domain, body) => http.post(`/${domain}/advise`, body).then((r) => r.data),
   chat: (domain, body) => http.post(`/${domain}/chat`, body).then((r) => r.data),
   adviseAll: (body) => http.post('/bus/advise/all', body).then((r) => r.data),
+  simulate: (body) => http.post('/bus/simulate', body).then((r) => r.data),
+  optimize: (body) => http.post('/bus/optimize', body).then((r) => r.data),
   advisoryBatches: (domain) => http.get('/advisories/batches', { params: { domain, limit: 30 } }).then((r) => r.data),
   advisoryBatch: (id) => http.get(`/advisories/batches/${id}`).then((r) => r.data),
   advisory: (id) => http.get(`/advisories/${id}`).then((r) => r.data),

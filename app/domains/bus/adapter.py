@@ -6,6 +6,8 @@
 #   GET /api/bus/routes/{route}/geometry      노선 경로·정류소·구간 좌표
 #   GET /api/bus/routes/{route}/timeseries    24시간 실제/예측/베이스라인 + 시간대별 최대 혼잡도
 #   GET /api/bus/overview?date=&hour=         전체 노선 구간별 혼잡도 (지도 색칠)
+#   POST /api/bus/simulate                    배차간격을 바꿨을 때의 구간별 혼잡도
+#   POST /api/bus/optimize                    전 노선 운행횟수를 인가대수 안에서 한꺼번에 권고
 
 import datetime as dt
 import subprocess
@@ -13,20 +15,27 @@ import sys
 from functools import cached_property
 
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
+from pydantic import ValidationError
 from fastapi.concurrency import run_in_threadpool
 
 from app.config import GUIDE_DATE_FALLBACK_WEEKS, GUIDE_SEARCH_LIMIT_MAX, ROUTE_INFO_KEY_STOPS
 from app.core.domain import DomainAdapter
 from app.domains.bus.advisor import BusAdvisor, _num, congestion_level
 from app.domains.bus.data import BusDataset
+from app.core.documents import (
+    BusDocuments, DocumentFields, DocumentInfo, DocumentList, DocumentUpdate, MAX_DOCUMENT_BYTES,
+)
 from app.domains.bus.forecaster import BusForecaster
 from app.domains.bus.guide import BusGuide, GuideError
 from app.db import repository as repo
+from app.domains.bus.calibration import load_ratios
+from app.domains.bus.optimizer import optimize
 from app.domains.bus.schemas import (
-    BusAdviseAllRequest, BusAdviseRequest, BusGuideRequest, BusGuideResponse, BusPredictRequest,
-    BusRouteInfoRequest, BusRouteInfoResponse, BusStopSearchItem,
+    BusAdviseAllRequest, BusAdviseRequest, BusGuideRequest, BusGuideResponse, BusOptimizeRequest, BusOptimizeResponse,
+    BusPredictRequest, BusRouteInfoRequest, BusRouteInfoResponse, BusSimulateRequest, BusSimulateResponse, BusStopSearchItem,
 )
+from app.domains.bus.simulator import simulate
 
 
 class BusAdapter(DomainAdapter):
@@ -41,6 +50,8 @@ class BusAdapter(DomainAdapter):
         self.dataset = BusDataset()
         self.forecaster = BusForecaster(self.dataset)
         self.advisor = BusAdvisor(self.knowledge_base, self.forecaster, self.dataset)
+        self.p90_path = self.forecaster.model_dir / "p90.json"
+        self.p90: dict | None = None      # 승객 수 상한 비율표 (scripts/calibrate_p90.py 결과)
 
     # ------------------------------------------------
     # 시작: 모델 로드 (합성 데이터 모드에서 모델이 없으면 바로 학습 - 수 초)
@@ -48,6 +59,9 @@ class BusAdapter(DomainAdapter):
 
     def startup(self) -> None:
         print(f"🚌 버스 도메인 데이터 모드: {self.dataset.mode} ({self.dataset.dir})")
+        self.p90 = load_ratios(self.p90_path)
+        if self.p90 is None:
+            print("ℹ️ 승객 수 상한 비율표가 없습니다. 배차 최적화를 쓰려면 python scripts/calibrate_p90.py 를 실행하세요.")
         if self.forecaster.load():
             return
         if self.dataset.mode == "sample" and self.dataset.exists():
@@ -157,6 +171,13 @@ class BusAdapter(DomainAdapter):
         if not self.forecaster.ready():
             raise HTTPException(503, "버스 예측 모델이 준비되지 않았습니다. python scripts/train_bus.py 를 먼저 실행하세요.")
 
+    def _require_p90(self) -> dict:
+        if self.p90 is None:
+            self.p90 = load_ratios(self.p90_path)     # 서버를 띄운 뒤에 만들었을 수 있음
+        if self.p90 is None:
+            raise HTTPException(503, "승객 수 상한 비율표가 없습니다. python scripts/calibrate_p90.py 를 먼저 실행하세요.")
+        return self.p90
+
     def _check_route(self, route: str):
         if route not in self.dataset.routes:
             raise HTTPException(404, f"지원하지 않는 노선입니다: {route} (가능: {', '.join(self.dataset.routes)})")
@@ -235,6 +256,29 @@ class BusAdapter(DomainAdapter):
 
     def router(self) -> APIRouter:
         r = APIRouter(prefix="/api/bus", tags=["버스 지도·차트"])
+
+        documents = BusDocuments(self.knowledge_base.docs_dir)
+
+        @r.get("/documents", response_model=DocumentList, summary="법규 문서 목록")
+        def list_documents():
+            return documents.list()
+
+        @r.post("/documents", response_model=DocumentInfo, status_code=201, summary="법규 문서 추가")
+        def create_document(file: UploadFile = File(...), title: str = Form(...),
+                            type: str = Form(...), grade: str = Form(...)):
+            try:
+                fields = DocumentFields(title=title, type=type, grade=grade)
+            except ValidationError as exc:
+                raise HTTPException(400, "제목, 종류, 등급을 확인해 주세요.") from exc
+            return documents.create(file.filename or "", fields, file.file.read(MAX_DOCUMENT_BYTES + 1))
+
+        @r.put("/documents/{file}", response_model=DocumentInfo, summary="법규 문서 수정")
+        def update_document(file: str, fields: DocumentUpdate):
+            return documents.update(file, fields)
+
+        @r.delete("/documents/{file}", status_code=204, response_class=Response, summary="법규 문서 삭제")
+        def delete_document(file: str):
+            documents.delete(file)
 
         @r.get("/meta", summary="데이터 기간·노선·평가 지표")
         def meta():
@@ -320,6 +364,24 @@ class BusAdapter(DomainAdapter):
             ids = [i["advisory_id"] for i in ok if i.get("advisory_id")]
             batch_id = await repo.save_batch("bus", f"{req.date:%Y-%m-%d}", req.hour, req.llm, summary, ids) if ids else None
             return {"batch_id": batch_id, "date": f"{req.date:%Y-%m-%d}", "hour": req.hour, "summary": summary, "items": items}
+
+        @r.post("/simulate", response_model=BusSimulateResponse, summary="배차간격 변경 시뮬레이션 (needs_review)")
+        def simulate_interval(req: BusSimulateRequest):
+            self._require_model()
+            self._check_route(req.route)
+            try:
+                return simulate(self.advisor, req.route, req.date, req.hour, req.interval)
+            except ValueError as e:
+                raise HTTPException(422, str(e))
+
+        @r.post("/optimize", response_model=BusOptimizeResponse, summary="전 노선 배차 최적화 (needs_review)")
+        def optimize_dispatch(req: BusOptimizeRequest):
+            self._require_model()
+            table = self._require_p90()
+            try:
+                return optimize(self.advisor, table, self.dataset.routes, req.date, req.hours, req.weights.model_dump())
+            except ValueError as e:
+                raise HTTPException(422, str(e))
 
         @r.get("/overview", summary="전체 노선 구간별 혼잡도 (지도)")
         def overview(date: dt.date = Query(...), hour: int = Query(..., ge=0, le=23)):

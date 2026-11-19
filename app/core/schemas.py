@@ -17,6 +17,7 @@ from app.config import (
 
 LLMChoice = Literal["qwen", "openai"]
 EmbeddingChoice = Literal["bge", "openai"]
+DocumentRole = Literal["citizen", "staff", "admin"]
 
 
 class LLMOptions(BaseModel):
@@ -26,6 +27,7 @@ class LLMOptions(BaseModel):
 
 
 class AskRequest(LLMOptions):
+    role: DocumentRole = "citizen"
     question: str = Field(..., min_length=2, examples=["혼잡 시간대에 버스 운행횟수를 늘리려면 어떤 절차가 필요한가요?"])
     top_k: int = Field(RAG_TOP_K, ge=1, le=10)
 

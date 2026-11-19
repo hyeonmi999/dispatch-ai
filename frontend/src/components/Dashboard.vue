@@ -16,6 +16,14 @@
       </nav>
 
       <div class="bar-right">
+        <label v-if="domain === 'bus'" class="document-role">
+          문서 열람 역할 (시연)
+          <select v-model="documentRole">
+            <option value="citizen">시민</option>
+            <option value="staff">배차 담당자</option>
+            <option value="admin">관리자</option>
+          </select>
+        </label>
         <span v-if="meta" class="bstat">{{ meta.data_mode === 'real' ? '실데이터' : '합성 데이터' }}</span>
         <span class="bstat">DB {{ health?.db?.available ? '연결' : '미연결' }}</span>
         <n-popover trigger="click" placement="bottom-end">
@@ -139,8 +147,16 @@
           />
         </template>
 
+        <template #optimize>
+          <OptimizePanel :date="date" :hour="hour" :selected-route="selected" :routes="meta.routes.map((r) => r.route)" @goto="goto" />
+        </template>
+
+        <template #whatif>
+          <WhatIfPanel :route="selectedMeta" :date="date" :hour="hour" />
+        </template>
+
         <template #qa>
-          <AskPanel domain="bus" :llm="llm" :embedding="embedding" />
+          <AskPanel :key="documentRole" domain="bus" :llm="llm" :embedding="embedding" :role="documentRole" />
         </template>
 
         <template #chat>
@@ -149,6 +165,10 @@
 
         <template #metrics>
           <MetricsCard :metrics="meta.metrics" />
+        </template>
+
+        <template #documents>
+          <DocumentAdminPanel />
         </template>
 
         <template #history>
@@ -176,6 +196,7 @@ import { NDatePicker, NPopover, NSelect, NSlider, NSpin, useMessage } from 'naiv
 import { api, errorMessage, fmtCongestion, levelClass } from '../api'
 import { PRESETS, TITLES, loadSaved, makeLayout, resolve, saveLayout } from '../layout'
 import { isNight, toggleTheme } from '../theme'
+import DocumentAdminPanel from './DocumentAdminPanel.vue'
 import AdvicePanel from './AdvicePanel.vue'
 import AppLogo from './AppLogo.vue'
 import AskPanel from './AskPanel.vue'
@@ -185,9 +206,11 @@ import ForecastChart from './ForecastChart.vue'
 import HistoryPanel from './HistoryPanel.vue'
 import MapView from './MapView.vue'
 import MetricsCard from './MetricsCard.vue'
+import OptimizePanel from './OptimizePanel.vue'
 import PanelGrid from './PanelGrid.vue'
 import StatusPanel from './StatusPanel.vue'
 import StopChart from './StopChart.vue'
+import WhatIfPanel from './WhatIfPanel.vue'
 
 const message = useMessage()
 
@@ -198,6 +221,7 @@ const domains = ref([
   { name: 'field_service', title: '서비스 출동 배차', description: '권역별 출동 요청 예측과 기사 배치 권고 (준비 중)', status: 'not_implemented' },
 ])
 const domain = ref('bus')
+const documentRole = ref('citizen')
 const llm = ref('qwen')
 const embedding = ref('bge')
 // 로컬 모델 이름은 서버 설정(.env LOCAL_MODEL_NAME)을 따름
@@ -330,12 +354,14 @@ const hotspotCount = computed(() =>
   (overview.value?.routes || []).reduce((n, r) => n + r.segments.filter((s) => s.congestion >= 0.8).length, 0),
 )
 const metas = computed(() => ({
-  routes: `${hour.value}시 최대 혼잡도`,
-  map: `${hour.value}시 혼잡 구간 ${hotspotCount.value}곳`,
+  routes: `${hour.value}시 출발 버스 · 최대 혼잡도`,
+  map: `${hour.value}시 출발 버스 · 혼잡 구간 ${hotspotCount.value}곳`,
   forecast: `${selected.value}번 노선 전체`,
-  stops: `${selected.value}번 ${hour.value}시`,
+  stops: `${selected.value}번 ${hour.value}시 출발 버스`,
   status: `${date.value} ${hour.value}시`,
   advice: `${date.value} ${hour.value}시`,
+  optimize: `${date.value} 전 노선`,
+  whatif: `${selected.value}번 ${hour.value}시`,
   metrics: '검증 구간',
 }))
 
@@ -407,6 +433,8 @@ onBeforeUnmount(() => clearInterval(timer))
 </script>
 
 <style scoped>
+.document-role { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.document-role select { color: inherit; background: var(--paper); border: 1px solid var(--line); }
 .app { min-height: 100vh; display: flex; flex-direction: column; background: var(--ground); }
 .bar { background: #15181a; color: #f1f1ec; display: flex; flex-wrap: wrap; align-items: stretch; gap: 0 28px; padding: 0 16px; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 9px 0; }

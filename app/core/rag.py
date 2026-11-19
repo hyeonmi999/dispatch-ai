@@ -36,8 +36,15 @@ from app.config import (
 from app.core import llm as llm_module
 from app.core.llm import LLMConfigError
 from app.core.prompts import RAG_SYSTEM_MESSAGE as SYSTEM_MESSAGE   # 프롬프트는 prompts.py 한 곳에
+from app.core.schemas import DocumentRole
+from app.core.documents import MANIFEST_NAME, read_document_manifest
 
 EMBEDDING_CHOICES = ("bge", "openai")
+ROLE_GRADES = {
+    "citizen": {"공개"},
+    "staff": {"공개", "내부"},
+    "admin": {"공개", "내부", "제한"},
+}
 
 # LLM이 형식을 어기고 "명시되지 않았습니다"처럼 돌려 말해도 근거 없음으로 처리
 NOT_FOUND_HINTS = ("찾을 수 없", "명시되지 않", "언급되지 않", "나와 있지 않", "포함되어 있지 않",
@@ -227,20 +234,54 @@ def load_txt(path: Path) -> list[dict]:
 
 
 def load_documents(docs_dir: Path) -> list[dict]:
+    records = read_document_manifest(docs_dir)
     chunks = []
     for path in sorted(docs_dir.glob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        record = records.get(path.name, {})
+        if record.get("active") is False:
+            continue
         if path.suffix.lower() == ".pdf":
-            chunks += load_pdf_articles(path)
+            parts = load_pdf_articles(path)
+            if not parts and record:
+                # 관리 화면에서 등록한 일반 PDF도 본문을 검색할 수 있게 합니다.
+                import pymupdf
+                with pymupdf.open(path) as document:
+                    parts = [
+                        {"text": f"[{path.stem}]\n{text}", "metadata": {
+                            "document": path.stem, "article": f"본문 {page_no}-{part + 1}",
+                            "page": page_no, "part": part, "file": path.name, "url": "",
+                        }}
+                        for page_no, page in enumerate(document, start=1)
+                        for part, text in enumerate(split_long(page.get_text().strip(), size=700, overlap=100))
+                        if text
+                    ]
         elif path.suffix.lower() in {".txt", ".md"} and path.name.lower() != "readme.md":
-            chunks += load_txt(path)
+            parts = load_txt(path)
+        else:
+            continue
+        if record.get("title"):
+            for part in parts:
+                part["metadata"]["document"] = record["title"]
+                _, _, body = part["text"].partition("\n")
+                part["text"] = f"[{record['title']}]\n{body}"
+        for part in parts:
+            part["metadata"]["grade"] = record.get("grade", "공개")
+        chunks.extend(parts)
     return chunks
 
 
 def docs_fingerprint(docs_dir: Path) -> str:
     h = hashlib.md5(f"chunk-v{CHUNK_VERSION}".encode())
     for path in sorted(docs_dir.glob("*")):
-        if path.suffix.lower() in {".pdf", ".txt", ".md"}:
+        if not path.is_symlink() and path.is_file() and path.suffix.lower() in {".pdf", ".txt", ".md"}:
             h.update(f"{path.name}:{path.stat().st_size}:{int(path.stat().st_mtime)}".encode())
+    manifest = docs_dir / MANIFEST_NAME
+    try:
+        h.update(manifest.read_text(encoding="utf-8").encode("utf-8"))
+    except FileNotFoundError:
+        pass
     return h.hexdigest()
 
 
@@ -281,6 +322,7 @@ class KnowledgeBase:
         from langchain_community.vectorstores.utils import DistanceStrategy
         from langchain_core.documents import Document
 
+        fingerprint = docs_fingerprint(self.docs_dir)
         chunks = load_documents(self.docs_dir)
         if not chunks:
             raise FileNotFoundError(f"인덱싱할 문서가 없습니다: {self.docs_dir}")
@@ -297,7 +339,7 @@ class KnowledgeBase:
             "embedding": embedding,
             "chunks": len(documents),
             "files": sorted({c["metadata"]["file"] for c in chunks}),
-            "fingerprint": docs_fingerprint(self.docs_dir),
+            "fingerprint": fingerprint,
             "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         }
         (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -310,12 +352,14 @@ class KnowledgeBase:
         from langchain_community.vectorstores.utils import DistanceStrategy
 
         with self._lock:
-            if embedding in self._stores:
-                return self._stores[embedding]
+            fingerprint = docs_fingerprint(self.docs_dir)
+            cached = self._stores.get(embedding)
+            if cached is not None and cached[0] == fingerprint:
+                return cached[1]
 
             out = self.index_dir(embedding)
             manifest = out / "manifest.json"
-            fresh = manifest.exists() and json.loads(manifest.read_text(encoding="utf-8")).get("fingerprint") == docs_fingerprint(self.docs_dir)
+            fresh = manifest.exists() and json.loads(manifest.read_text(encoding="utf-8")).get("fingerprint") == fingerprint
 
             if fresh:
                 # index.pkl은 이 프로젝트에서 직접 생성한 파일만 로드합니다 (pickle 역직렬화)
@@ -324,17 +368,34 @@ class KnowledgeBase:
                     distance_strategy=DistanceStrategy.MAX_INNER_PRODUCT,
                 )
             else:
-                store = self.build(embedding)
-            self._stores[embedding] = store
+                try:
+                    store = self.build(embedding)
+                except FileNotFoundError:
+                    store = None
+            self._stores[embedding] = (fingerprint, store)
             return store
 
     # ------------------------------------------------
     # 검색 / 질의응답
     # ------------------------------------------------
 
-    def search(self, query: str, embedding: str, k: int = RAG_TOP_K) -> list[dict]:
+    def search(self, query: str, embedding: str, k: int = RAG_TOP_K,
+               role: DocumentRole = "citizen") -> list[dict]:
         store = self.get_store(embedding)
-        hits = store.similarity_search_with_score(query, k=k)
+        if store is None:
+            return []
+        candidates = store.similarity_search_with_score(query, k=k * 3)
+        records = read_document_manifest(self.docs_dir)
+        allowed = ROLE_GRADES[role]
+        hits = []
+        for doc, score in candidates:
+            # 기존 인덱스에도 파일명이 있으므로 최신 목록의 등급을 우선 적용합니다.
+            record = records.get(doc.metadata.get("file"), {})
+            grade = record.get("grade", doc.metadata.get("grade", "공개"))
+            if record.get("active") is not False and grade in allowed:
+                hits.append((doc, score))
+                if len(hits) == k:
+                    break
         return [
             {
                 "document": doc.metadata.get("document"),
@@ -348,13 +409,14 @@ class KnowledgeBase:
         ]
 
     def ask(self, question: str, llm: str = "qwen", embedding: str = "bge",
-            k: int = RAG_TOP_K, use_llm: bool = True) -> dict:
+            k: int = RAG_TOP_K, use_llm: bool = True,
+            role: DocumentRole = "citizen") -> dict:
         t0 = time.time()
         if not self.has_docs():
             return self._result(question, NOT_FOUND_ANSWER, False, [], llm, embedding, t0,
                                 note=f"docs/{self.domain}/ 에 규정 문서가 없습니다.")
 
-        hits = self.search(question, embedding, k)
+        hits = self.search(question, embedding, k, role=role)
         threshold = RAG_SCORE_THRESHOLD[embedding]
         relevant = [h for h in hits if h["score"] >= threshold]
 
