@@ -81,6 +81,11 @@ class BusAdapter(DomainAdapter):
     def targets(self) -> list[str]:
         return list(self.dataset.routes)
 
+    def route_names(self) -> list[str]:
+        guide = self.guide_engine
+        guide._build()
+        return list(guide.by_route)
+
     # ------------------------------------------------
     # 시뮬레이션 (F-12) · 전 노선 최적화 (F-13): API와 챗봇이 같은 메서드를 부름
     # ------------------------------------------------
@@ -177,13 +182,15 @@ class BusAdapter(DomainAdapter):
         line, meta = guide.by_route.get(route, []), guide.route_meta.get(route, {})
         if not line and not meta:
             raise HTTPException(404, f"{route}번 노선 정보가 없습니다. 서울 버스 노선번호를 확인해 주세요.")
+        # 노선 기본정보에 비어 있는 칸(NaN)이 있음 (심야 노선의 유형 등) → None으로
+        text = lambda key: None if meta.get(key) is None or pd.isna(meta.get(key)) or not str(meta.get(key)).strip() else str(meta.get(key))
         outbound = [s["name"] for s in line[: max(len(line) // 2, 1)]]      # 앞쪽 절반 = 한 방향
         step = max(1, (len(outbound) - 1) // max(ROUTE_INFO_KEY_STOPS - 1, 1))
         key_stops = outbound[::step][:ROUTE_INFO_KEY_STOPS - 1] + outbound[-1:] if outbound else []
         return {
-            "route": route, "route_type": meta.get("route_type"), "company": meta.get("company") or None,
-            "start": meta.get("start"), "end": meta.get("end"),
-            "first_bus": meta.get("first_bus"), "last_bus": meta.get("last_bus"),
+            "route": route, "route_type": text("route_type"), "company": text("company"),
+            "start": text("start"), "end": text("end"),
+            "first_bus": text("first_bus"), "last_bus": text("last_bus"),
             "interval_weekday": _num(meta.get("interval")), "min_interval": None, "max_interval": None,
             "run_minutes": _num(meta.get("run_minutes"), 0), "authorized_buses": None, "authorized_estimated": False,
             "distance_km": None, "stops_count": len(line), "key_stops": list(dict.fromkeys(key_stops)), "predicted": False,

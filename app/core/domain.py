@@ -91,6 +91,10 @@ class DomainAdapter(ABC):
         """챗봇이 질문에서 찾을 대상 이름 (버스: 노선번호). 없으면 빈 목록"""
         return []
 
+    def route_names(self) -> list[str]:
+        """기본 정보를 알려 줄 수 있는 전체 대상 이름 (버스: 길안내가 아는 전체 노선. N13·01A 같은 이름 포함)"""
+        return self.targets()
+
     def router(self) -> APIRouter | None:
         """도메인 전용 부가 API (예: 버스 지도용 노선 좌표). 없으면 None"""
         return None

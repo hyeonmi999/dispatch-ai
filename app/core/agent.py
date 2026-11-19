@@ -26,6 +26,7 @@ import re
 import time
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from app.config import NOT_FOUND_ANSWER, RAG_TOP_K
 from app.core import llm as llm_module
@@ -41,8 +42,17 @@ logger = logging.getLogger(__name__)
 # 위에서부터 차례로 확인합니다. 놓친 표현은 여기에 키워드를 추가합니다.
 
 # 규정 질문이 분명한 단어: 노선이 함께 나와도 규정 질의응답으로 보냄
-ASK_STRONG = ("법", "규정", "조례", "규칙", "절차", "신고", "인가", "허가", "과징금", "과태료",
-              "사업계획", "준공영", "려면")
+ASK_STRONG = ("규정", "조례", "규칙", "절차", "신고", "허가", "과징금", "과태료",
+              "사업계획", "준공영", "려면", "시행령")
+# 한 글자·두 글자 키워드는 다른 말에 섞여 들어가므로 앞뒤를 보고 판단
+#   법: "법령·법에·운수사업법은"은 규정, "법원·방법"은 아님
+#   인가: "인가를 받아야·인가 대상"은 규정, "몇 시인가요·인가대수"는 아님
+_LAW_RE = re.compile(r"(?<!방)법(?:령|률|규|적|상|에|은|이|을|의|으로|\s|[?.!,]|$)")
+_PERMIT_RE = re.compile(r"인가(?!요|대수|[?.!]|\s*$)")
+
+
+def _is_regulation(text: str) -> bool:
+    return _has(text, ASK_STRONG) or bool(_LAW_RE.search(text)) or bool(_PERMIT_RE.search(text))
 # 노선이 없을 때만 규정 질문으로 보는 단어
 # ("해야"는 넣지 않음: "증차해야 해?"는 규정이 아니라 배차 권고 질문)
 ASK_WEAK = ("기준", "가능한가", "의무", "역할", "어떻게 구분")
@@ -52,7 +62,7 @@ ADVISE_WORDS = ("권고", "추천", "증차", "감차", "늘려야", "줄여야"
 # 길안내: "A에서 B 어떻게 가?" (요금·규정을 묻는 말이 섞이면 규정 질문으로 봄)
 GUIDE_WORDS = ("어떻게 가", "어떻게가", "가는 법", "가는법", "가는 방법", "가는 길", "가려면", "가고 싶", "갈 수 있",
                "갈래", "길안내", "길 안내", "길 알려", "환승", "몇 번 타", "뭐 타", "무슨 버스")
-GUIDE_BLOCK = ("규정", "법", "조례", "요금", "할인", "절차")
+GUIDE_BLOCK = ("규정", "조례", "요금", "할인", "절차")
 # 노선 기본 정보: "160번 노선 알려줘", "143번 첫차 몇 시야?" (노선을 말했을 때만)
 ROUTE_INFO_WORDS = ("노선 알려", "노선알려", "노선 정보", "노선정보", "노선도", "노선 좀", "어디서 어디", "어디 가", "어디가",
                     "어디로 가", "어디까지", "어디를", "경유", "지나", "정류장", "첫차", "막차", "기점", "종점",
@@ -88,9 +98,9 @@ def classify(message: str, has_route: bool) -> str | None:
         rest = message
         for word in GUIDE_WORDS:          # "가는 법"의 '법'을 규정 단어로 보지 않게 길안내 표현을 먼저 지움
             rest = rest.replace(word, " ")
-        if not _has(rest, GUIDE_BLOCK):
+        if not _has(rest, GUIDE_BLOCK) and not _LAW_RE.search(rest):
             return "guide"
-    if _has(message, ASK_STRONG):
+    if _is_regulation(message):
         return "ask"
     if _has(message, OPTIMIZE_WORDS):
         return "optimize"
@@ -111,8 +121,10 @@ def classify(message: str, has_route: bool) -> str | None:
 # 2. 값 뽑기 (노선 · 날짜 · 시간 · 배차간격)
 # ==================================================
 
-RELATIVE_DAYS = {"그저께": -2, "어제": -1, "오늘": 0, "내일": 1, "모레": 2}
+# 위에서부터 확인: "내일모레"를 "내일"보다 먼저 봐야 모레로 읽음
+RELATIVE_DAYS = {"그저께": -2, "어제": -1, "내일모레": 2, "낼모레": 2, "모레": 2, "오늘": 0, "내일": 1}
 PM_WORDS = ("오후", "저녁", "밤", "낮")
+NIGHT_PM_FROM = 6          # "밤 10시"는 22시, "밤 1시"는 1시 (밤은 6시부터만 오후로 봄)
 COMMUTE_HOURS = {"출근": 8, "퇴근": 18}     # "출근 시간"처럼 시각 없이 물을 때의 대표 시간대
 COMMUTE_RANGES = {"출근": [7, 8, 9], "퇴근": [17, 18, 19]}   # 여러 시간대를 받는 기능(전 노선 최적화)에 쓰는 범위
 _HOUR_RANGE_RE = re.compile(r"(오전|오후|아침|낮|저녁|밤|새벽)?\s*(\d{1,2})\s*시?\s*(?:~|-|부터|에서)\s*(오전|오후|아침|낮|저녁|밤|새벽)?\s*(\d{1,2})\s*시")
@@ -123,8 +135,30 @@ _KOR_DATE_RE = re.compile(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일")
 _SLASH_DATE_RE = re.compile(r"(?<![\d/])(\d{1,2})/(\d{1,2})(?![\d/])")
 _HOUR_RE = re.compile(r"(오전|오후|아침|낮|저녁|밤|새벽)?\s*(\d{1,2})\s*시(?!간)")
 _CLOCK_RE = re.compile(r"(?<!\d)(\d{1,2}):\d{2}(?!\d)")
-_MINUTE_AFTER_HOUR_RE = re.compile(r"(\d{1,2}\s*시)\s*\d{1,2}\s*분")
+# "3시 30분"의 분은 시각. 단 "8시 10분 간격으로"처럼 뒤에 간격을 뜻하는 말이 오면 배차간격
+_MINUTE_AFTER_HOUR_RE = re.compile(r"(\d{1,2}\s*시)\s*\d{1,2}\s*분(?!\s*(?:간격|마다|으로))")
 _INTERVAL_RE = re.compile(r"(\d+(?:\.\d+)?)\s*분")
+_WORD_RE = re.compile(r"[0-9A-Za-z가-힣\-]+")
+ROUTE_PARTICLES = ("번은", "번이", "번의", "번도", "번을", "번", "은", "는", "이", "가", "을", "를", "의", "도")
+
+
+def _is_pm(word: str | None, hour: int) -> bool:
+    if word == "밤":
+        return NIGHT_PM_FROM <= hour < 12
+    return word in PM_WORDS and hour < 12
+
+
+def _named_route(message: str, names: list[str]) -> str | None:
+    """숫자만으로 되지 않은 노선 이름 찾기: "N13번", "새벽A160번은", "01A" (160번으로 잘못 읽지 않게 먼저 확인)"""
+    special = {n for n in names if not n.isdigit()}
+    if not special:
+        return None
+    for token in _WORD_RE.findall(message):
+        candidates = [token] + [token[: -len(p)] for p in ROUTE_PARTICLES if token.endswith(p) and len(token) > len(p)]
+        hit = next((c for c in candidates if c in special), None)
+        if hit:
+            return hit
+    return None
 
 
 def _safe_date(year: int, month: int, day: int) -> dt.date | None:
@@ -134,13 +168,19 @@ def _safe_date(year: int, month: int, day: int) -> dt.date | None:
         return None
 
 
-def extract(message: str, routes: list[str], today: dt.date) -> dict:
-    """질문에서 찾은 값만 담아 돌려줍니다 (없는 값은 키 자체가 없음)"""
+def extract(message: str, routes: list[str], today: dt.date, all_routes: list[str] | None = None) -> dict:
+    """질문에서 찾은 값만 담아 돌려줍니다 (없는 값은 키 자체가 없음)
+
+    routes: 예측하는 노선. all_routes: 길안내가 아는 전체 노선 이름 (N13·01A처럼 숫자가 아닌 이름을 찾는 데 씀)
+    """
     slots: dict = {}
 
-    # 노선: "160번"이 먼저, 없으면 아는 노선번호가 단독으로 나온 경우
+    # 노선: 숫자가 아닌 이름(N13) → "160번" → 아는 노선번호가 단독으로 나온 경우
+    named = _named_route(message, all_routes or [])
     m = _ROUTE_RE.search(message)
-    if m:
+    if named:
+        slots["route"] = named
+    elif m:
         slots["route"] = m.group(1)
     else:
         for route in sorted(routes, key=len, reverse=True):
@@ -168,7 +208,7 @@ def extract(message: str, routes: list[str], today: dt.date) -> dict:
     hour = None
     if m := _HOUR_RE.search(message):
         hour = int(m.group(2))
-        if m.group(1) in PM_WORDS and hour < 12:
+        if _is_pm(m.group(1), hour):
             hour += 12
         elif m.group(1) in ("오전", "밤", "새벽") and hour == 12:
             hour = 0
@@ -185,9 +225,7 @@ def extract(message: str, routes: list[str], today: dt.date) -> dict:
     # 시간 범위: "6시부터 9시", "7~9시", "출근 시간" → 여러 시간대 (전 노선 최적화용)
     def clock(word, value):
         value = int(value)
-        if word in PM_WORDS and value < 12:
-            value += 12
-        return value
+        return value + 12 if _is_pm(word, value) else value
     if m := _HOUR_RANGE_RE.search(message):
         start, end = clock(m.group(1), m.group(2)), clock(m.group(3) or m.group(1), m.group(4))
         if 0 <= start <= end <= 23:
@@ -206,9 +244,17 @@ def extract(message: str, routes: list[str], today: dt.date) -> dict:
 
 
 # 길안내의 출발·도착: "정릉우체국앞에서 종로3가역 어떻게 가?" / "여기서 신동중학교 가는 법"
-FROM_SUFFIXES = ("에서", "부터", "서")
+FROM_SUFFIXES = ("에서", "부터")
 HERE_WORDS = ("여기", "위치", "이곳", "지금", "내가 있는", "근처")
-_NOT_A_PLACE_RE = re.compile(r"^(?:[0-9]+(?:시|월|일|분|번)?|오전|오후|아침|저녁|밤|새벽|오늘|내일|모레|버스로?|지금)$")
+HERE_FROM = ("여기서", "거기서", "이곳서")      # '서'만 붙는 출발 표현 ("강남경찰서"의 '서'는 출발 조사가 아님)
+# 장소가 아닌 말: 시간·날짜(조사가 붙은 것 포함)와 기능어
+_NOT_A_PLACE_RE = re.compile(
+    r"^(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}/\d{1,2}|[0-9]+(?:시|월|일|분|번)?|오전|오후|아침|낮|저녁|밤|새벽|그저께|어제|오늘|내일|내일모레|낼모레|모레|지금)"
+    r"(?:에|엔|에는|은|는|쯤|쯤에|까지|부터)?$")
+NOT_PLACE_WORDS = {"가는", "가려는", "가는데", "가려고", "갈", "가", "타고", "타는", "버스", "버스로", "버스는", "노선", "어떤", "무슨",
+                   "몇", "번", "좀", "빨리", "제일", "가장", "그럼", "그러면", "아니", "혹시"}
+# 문장에서 길안내 표현이 시작되는 곳을 찾을 때는 '환승'을 빼고 봄 ("서울역버스환승센터"에서 자르지 않게)
+GUIDE_CUT_WORDS = tuple(w for w in GUIDE_WORDS if w != "환승")
 
 
 def extract_places(message: str) -> dict:
@@ -216,19 +262,22 @@ def extract_places(message: str) -> dict:
 
     돌려주는 값: origin(출발 이름) · from_here(현재 위치에서 출발) · destination(도착 이름) 중 찾은 것만
     """
-    positions = [message.find(w) for w in GUIDE_WORDS if w in message]
+    positions = [message.find(w) for w in GUIDE_CUT_WORDS if w in message]
     head = message[:min(positions)] if positions else message
     out: dict = {}
     rest = []
     for token in head.split():
         suffix = next((s for s in FROM_SUFFIXES if token.endswith(s) and len(token) > len(s)), None)
-        if suffix and "origin" not in out and "from_here" not in out:
+        taken = "origin" in out or "from_here" in out
+        if token in HERE_FROM and not taken:
+            out["from_here"] = True
+        elif suffix and not taken:
             name = token[: -len(suffix)]
             if _has(name, HERE_WORDS):
                 out["from_here"] = True
             else:
                 out["origin"] = name
-        elif not _NOT_A_PLACE_RE.match(token) and not _has(token, HERE_WORDS):
+        elif not _NOT_A_PLACE_RE.match(token) and token not in NOT_PLACE_WORDS and not _has(token, HERE_WORDS):
             rest.append(token)
     if rest:
         out["destination"] = rest[-1]
@@ -580,7 +629,8 @@ def _rewrite(llm: str, message: str, template: str, facts: dict) -> str | None:
 def _clarify(intent: str, slots: dict, routes: list[str]) -> str | None:
     """꼭 있어야 하는 값이 빠졌으면 되묻는 문장, 다 있으면 None"""
     ask_for = {
-        "route": f"노선(가능: {', '.join(routes)})" if routes else "노선",
+        # 노선 정보는 전체 노선을 알고, 예측·권고·시뮬레이션은 예측하는 노선만 가능
+        "route": "노선 번호(예: 143번, N13번)" if intent == "route_info" or not routes else f"노선(가능: {', '.join(routes)})",
         "date": "날짜(예: 내일, 11월 20일)",
         "hour": "시간(예: 오후 3시)",
         "interval": "바꿔 볼 배차간격(예: 5분)",
@@ -599,45 +649,55 @@ def run(adapter: DomainAdapter, message: str, history: list[dict] | None = None,
     now = now or dt.datetime.now()
     today = now.date()
     routes = adapter.targets()
+    names = adapter.route_names()
     message = message.strip()
 
     # 이전 질문의 값과 의도를 이어 씀: "그럼 4시는?" → 앞에서 말한 노선·날짜 유지
     slots: dict = {}
     places: dict = {}
+    guide_time: dict = {}        # 길안내 질문에서 말한 날짜·시간 (다른 기능의 날짜·시간과 섞지 않음)
     previous_intent = None
     for turn in history or []:
         if turn.get("role") != "user":
             continue
-        past = extract(turn["content"], routes, today)
+        past = extract(turn["content"], routes, today, names)
         past_intent = classify(turn["content"], "route" in past)
         if past_intent == "guide":
-            past.pop("route", None)                   # "143번 정류장"처럼 길안내 문장 속 숫자는 노선으로 이어 쓰지 않음
             places.update(extract_places(turn["content"]))
-        elif previous_intent == "guide" and past_intent is None and not past:
+            guide_time.update({k: past[k] for k in ("date", "hour") if k in past})
+            past = {}                                 # 길안내 문장 속 숫자·시간은 다른 기능으로 이어 쓰지 않음
+        elif previous_intent == "guide" and past_intent is None and not past and _guide_pending(places, location):
             _fill_place(places, turn["content"])      # 되묻기에 정류장 이름만 답한 경우
+        elif past_intent is None and not (past and _is_followup(turn["content"])):
+            continue                                  # 버스와 무관한 말은 이어 쓰지 않음
         slots.update(past)
         previous_intent = past_intent or previous_intent
-    current = extract(message, routes, today)
+    current = extract(message, routes, today, names)
     slots.update(current)
 
     intent = classify(message, "route" in current)
+    followup = _is_followup(message)
     said: dict = {}          # 이번 질문에서 직접 말한 출발·도착
     if intent == "guide":
         said = extract_places(message)
         places.update(said)
-    elif intent is None and previous_intent == "guide" and not _has(message, DOMAIN_WORDS):
-        intent = "guide"                              # 길안내 되묻기에 대한 답
-        if not current:
-            _fill_place(places, message)
-    if intent is None and current and previous_intent:
-        intent = previous_intent                      # 값만 말한 경우 (되묻기에 대한 답 포함)
+    elif intent is None and previous_intent == "guide" and not current and _guide_pending(places, location) \
+            and _looks_like_place(message):
+        intent = "guide"                              # 길안내 되묻기에 정류장 이름으로 답한 경우 ("고속버스터미널")
+        _fill_place(places, message)
+    elif intent is None and current and previous_intent and followup:
+        intent = previous_intent                      # 값만 말한 경우: "그럼 4시는?", "160번은?"
     if intent is None:
         intent = "ask" if _has(message, DOMAIN_WORDS) else "out_of_scope"
-    elif intent in ("predict", "advise") and "route" not in slots:
-        if not _has(message, DOMAIN_WORDS):
-            intent = "out_of_scope"                   # "점심 메뉴 추천해줘" 같은 질문
-        elif "date" not in current and "hour" not in current:
-            intent = "ask"                            # 노선·날짜·시간이 없는 일반 질문은 규정에서 찾음
+    elif intent in ("predict", "advise"):
+        related = _has(message, DOMAIN_WORDS) or "hour" in current or followup
+        if "route" not in current and not related:
+            intent = "out_of_scope"                   # "점심 메뉴 추천해줘": 앞에서 말한 노선을 붙여 답하지 않음
+        elif "route" not in slots:
+            if not _has(message, DOMAIN_WORDS):
+                intent = "out_of_scope"
+            elif "date" not in current and "hour" not in current:
+                intent = "ask"                        # 노선·날짜·시간이 없는 일반 질문은 규정에서 찾음
 
     def done(intent, answer, tools=(), sources=(), verified=None, used_llm=None, rejected=False, data=None):
         return {
@@ -652,8 +712,10 @@ def run(adapter: DomainAdapter, message: str, history: list[dict] | None = None,
         slots["hours"] = [slots["hour"]]              # 시간대 하나만 말한 경우
 
     if intent == "guide":
-        # 길안내는 '지금'이 기본: 날짜·시간을 말하지 않으면 오늘 이 시각
-        slots = {"date": slots.get("date", today.isoformat()), "hour": slots.get("hour", now.hour)}
+        # 길안내는 '지금'이 기본: 길안내 질문에서 날짜·시간을 말하지 않았으면 오늘 이 시각
+        # (앞에서 다른 기능에 물은 "내일 8시"를 가져오지 않음)
+        guide_time.update({k: current[k] for k in ("date", "hour") if k in current})
+        slots = {"date": guide_time.get("date", today.isoformat()), "hour": guide_time.get("hour", now.hour)}
         if places.get("destination"):
             slots["destination"] = places["destination"]
         # 출발지 우선순위: ① 이번 질문에서 말한 정류장 ② 이번 질문의 "여기서·내 위치에서" ③ 켜 둔 현재 위치
@@ -682,11 +744,17 @@ def run(adapter: DomainAdapter, message: str, history: list[dict] | None = None,
     try:
         args, answer, sources, facts = HANDLERS[intent](
             adapter, slots=slots, message=message, llm=llm, embedding=embedding, use_llm=use_llm, role=role)
-    except (HTTPException, InvalidRequest) as error:
+    except (HTTPException, InvalidRequest, ValidationError) as error:
         # 없는 노선·범위를 벗어난 날짜 등: 기능이 알려 준 이유를 그대로 답함
         keys = REQUIRED.get(intent) or ("origin", "destination", "lat", "lng", "date", "hour")
         args = {k: slots[k] for k in keys if k in slots} or {"question": message}
-        reason = error.detail if isinstance(error, HTTPException) else str(error)      # 범위 밖의 배차간격 등
+        if isinstance(error, HTTPException):
+            reason = error.detail
+        elif isinstance(error, ValidationError):          # 받을 수 없는 값 (예: 배차간격 0분)
+            first = error.errors(include_url=False)[0]
+            reason = f"입력값을 확인해 주세요 ({'.'.join(str(x) for x in first['loc'])}: {first['msg']})"
+        else:
+            reason = str(error)                           # 범위 밖의 배차간격 등
         return done(intent, f"⚠️ {reason}", tools=[{"name": intent, "args": args, "ok": False}])
 
     tools = [{"name": intent, "args": args, "ok": True}]
@@ -704,6 +772,37 @@ def run(adapter: DomainAdapter, message: str, history: list[dict] | None = None,
             return done(intent, rewritten, tools, sources, verified=True, used_llm=llm, data=data)
         return done(intent, answer, tools, sources, verified=verify_numbers(answer, evidence, slots), rejected=True, data=data)
     return done(intent, answer, tools, sources, verified=verify_numbers(answer, evidence, slots), data=data)
+
+
+_FOLLOWUP_SLOT_RES = (_ISO_DATE_RE, _KOR_DATE_RE, _SLASH_DATE_RE, _HOUR_RANGE_RE, _HOUR_RE, _CLOCK_RE, _INTERVAL_RE,
+                      re.compile(r"[0-9A-Za-z가-힣\-]*\d[0-9A-Za-z\-]*\s*번"))
+FOLLOWUP_FILLERS = ("그럼", "그러면", "그리고", "그때", "그날", "어때", "어떄", "어떤가", "출근", "퇴근", "시간", "오전", "오후",
+                    "아침", "저녁", "새벽", "밤", "낮") + tuple(RELATIVE_DAYS)
+FOLLOWUP_MAX_LEFT = 6      # 값과 군말을 지운 뒤 남은 말이 이보다 길면 새 주제의 문장으로 봄
+
+
+def _is_followup(message: str) -> bool:
+    """값만 바꿔 다시 묻는 짧은 말인지: "그럼 4시는?", "160번은?", "내일은 어때?" (새 주제의 문장은 False)"""
+    text = message
+    for pattern in _FOLLOWUP_SLOT_RES:
+        text = pattern.sub(" ", text)
+    for word in sorted(FOLLOWUP_FILLERS, key=len, reverse=True):
+        text = text.replace(word, " ")
+    left = re.sub(r"[\s?!.,~은는이가을를도요에엔면]", "", text)
+    # 아무것도 안 남거나("그럼 4시는?"), 남은 말이 예측·권고를 묻는 짧은 말일 때만 ("그럼 4시는 붐벼?").
+    # "오늘 날씨 어때?"처럼 다른 주제의 말이 남으면 이어 묻기가 아님
+    return not left or (len(left) <= FOLLOWUP_MAX_LEFT and _has(left, PREDICT_WORDS + ADVISE_WORDS))
+
+
+def _guide_pending(places: dict, location: dict | None) -> bool:
+    """길안내가 출발이나 도착을 되물은 상태인지 (둘 다 정해졌으면 False)"""
+    has_origin = bool(places.get("origin") or places.get("from_here") or location)
+    return "destination" not in places or not has_origin
+
+
+def _looks_like_place(text: str) -> bool:
+    """되묻기에 대한 답으로 볼 만한 짧은 말 (정류장 이름)"""
+    return len(text) <= 30 and len(text.split()) <= 3
 
 
 def _fill_place(places: dict, text: str) -> None:
