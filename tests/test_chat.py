@@ -126,7 +126,11 @@ def test_extract_route_date_hour_interval():
     # "3시 30분"의 분은 배차간격이 아님
     assert extract("2026-11-20 272번 3시 30분 승객", ROUTES, TODAY) == {"route": "272", "date": "2026-11-20", "hour": 3}
     assert extract("150번 간격을 5분으로 바꾸면?", ROUTES, TODAY) == {"route": "150", "interval": 5.0}
-    assert extract("퇴근 시간에 붐벼?", ROUTES, TODAY) == {"hour": 18}
+    assert extract("퇴근 시간에 붐벼?", ROUTES, TODAY) == {"hour": 18, "hours": [17, 18, 19]}
+    # 시간 범위 (전 노선 최적화용)
+    assert extract("내일 7시부터 9시 전체 노선 최적화", ROUTES, TODAY)["hours"] == [7, 8, 9]
+    assert extract("내일 오후 5~7시 전체 노선 최적화", ROUTES, TODAY)["hours"] == [17, 18, 19]
+    assert "hours" not in extract("160번 내일 15시 붐벼?", ROUTES, TODAY)
     # 날짜·시간의 숫자를 노선으로 잘못 읽지 않음
     assert "route" not in extract("11월 20일 15시 기준", ROUTES + ["15", "20"], TODAY)
 
@@ -149,3 +153,65 @@ def test_llm_rewrite_must_keep_recommendation_and_level():
     assert keeps_meaning("배차간격을 단축해 증차하는 것을 권고합니다. 지금은 혼잡입니다.", increase)
     assert not keeps_meaning("증차하지 않아도 됩니다.", increase)
     assert keeps_meaning("160번 15시에는 2,194명이 탈 것으로 보이며 매우혼잡입니다.", {"level": "매우혼잡"})
+
+
+# ==================================================
+# 4. 시뮬레이션 · 전 노선 최적화 연결 (F-12 · F-13)
+# ==================================================
+
+def test_chat_simulate_uses_numbers_from_simulate(client):
+    m = client.get("/api/bus/meta").json()
+    info = m["routes"][0]
+    route, date = info["route"], m["dates"]["max_date"]
+    interval = info["min_interval"]
+    body = chat(client, f"{route}번 {date} 8시 간격을 {interval:g}분으로 바꾸면?")
+    assert body["intent"] == "simulate", body
+    assert body["tools"] == [{"name": "simulate", "args": {"route": route, "date": date, "hour": 8, "interval": interval}, "ok": True}]
+    assert body["numbers_verified"] is True and body["needs_review"] is True
+    direct = client.post("/api/bus/simulate", json={"route": route, "date": date, "hour": 8, "interval": interval}).json()
+    assert f"{direct['fleet']['buses_needed']}대" in body["answer"] and direct["simulated"]["level"] in body["answer"]
+
+
+def test_chat_simulate_interval_out_of_range_answers_with_reason(client):
+    m = client.get("/api/bus/meta").json()
+    info = m["routes"][0]
+    body = chat(client, f"{info['route']}번 {m['dates']['max_date']} 8시 간격을 {info['max_interval'] + 30:g}분으로 바꾸면?")
+    assert body["intent"] == "simulate" and body["tools"][0]["ok"] is False
+    assert body["answer"].startswith("⚠️")
+
+
+def test_chat_optimize_all_routes(client):
+    date = client.get("/api/bus/meta").json()["dates"]["max_date"]
+    body = chat(client, f"{date} 7시부터 9시 전체 노선 최적화 해줘")
+    assert body["intent"] == "optimize", body
+    assert body["tools"] == [{"name": "optimize", "args": {"date": date, "hours": [7, 8, 9]}, "ok": True}]
+    assert body["numbers_verified"] is True
+    direct = client.post("/api/bus/optimize", json={"date": date, "hours": [7, 8, 9]}).json()
+    assert f"{direct['kpi']['total_trips_after']}회" in body["answer"]
+
+
+def test_chat_optimize_asks_for_hours(client):
+    body = chat(client, "전체 노선 최적화 해줘")
+    assert body["intent"] == "clarify" and "시간대" in body["answer"]
+
+
+# ==================================================
+# 5. 문서 열람 역할 전달 (F-37)
+# ==================================================
+
+def test_chat_passes_role_to_regulation_search(client, monkeypatch):
+    from app.core.registry import registry
+    seen = {}
+    knowledge = registry.get("bus").knowledge_base
+    original = knowledge.ask
+
+    def spy(*args, **kwargs):
+        seen["role"] = kwargs.get("role")
+        return original(*args, **kwargs)
+    monkeypatch.setattr(knowledge, "ask", spy)
+
+    chat(client, "노선버스 운행횟수를 늘리는 사업계획 변경 절차는?", role="staff")
+    assert seen["role"] == "staff"
+    chat(client, "노선버스 운행횟수를 늘리는 사업계획 변경 절차는?")
+    assert seen["role"] == "citizen"                          # 생략하면 시민
+    assert client.post("/api/bus/chat", json={"message": "절차 알려줘", "role": "root"}).status_code == 422

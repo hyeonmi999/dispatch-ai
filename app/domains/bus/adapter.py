@@ -82,6 +82,28 @@ class BusAdapter(DomainAdapter):
         return list(self.dataset.routes)
 
     # ------------------------------------------------
+    # 시뮬레이션 (F-12) · 전 노선 최적화 (F-13): API와 챗봇이 같은 메서드를 부름
+    # ------------------------------------------------
+
+    def simulate(self, payload: dict) -> dict:
+        req = BusSimulateRequest(**payload)
+        self._require_model()
+        self._check_route(req.route)
+        try:
+            return simulate(self.advisor, req.route, req.date, req.hour, req.interval)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+
+    def optimize(self, payload: dict) -> dict:
+        req = BusOptimizeRequest(**payload)
+        self._require_model()
+        table = self._require_p90()
+        try:
+            return optimize(self.advisor, table, self.dataset.routes, req.date, req.hours, req.weights.model_dump())
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+
+    # ------------------------------------------------
     # 길안내 (F-28): 현재 위치·정류장 이름 → 직행·1회 환승 경로
     # ------------------------------------------------
 
@@ -367,21 +389,11 @@ class BusAdapter(DomainAdapter):
 
         @r.post("/simulate", response_model=BusSimulateResponse, summary="배차간격 변경 시뮬레이션 (needs_review)")
         def simulate_interval(req: BusSimulateRequest):
-            self._require_model()
-            self._check_route(req.route)
-            try:
-                return simulate(self.advisor, req.route, req.date, req.hour, req.interval)
-            except ValueError as e:
-                raise HTTPException(422, str(e))
+            return self.simulate(req.model_dump())
 
         @r.post("/optimize", response_model=BusOptimizeResponse, summary="전 노선 배차 최적화 (needs_review)")
         def optimize_dispatch(req: BusOptimizeRequest):
-            self._require_model()
-            table = self._require_p90()
-            try:
-                return optimize(self.advisor, table, self.dataset.routes, req.date, req.hours, req.weights.model_dump())
-            except ValueError as e:
-                raise HTTPException(422, str(e))
+            return self.optimize(req.model_dump())
 
         @r.get("/overview", summary="전체 노선 구간별 혼잡도 (지도)")
         def overview(date: dt.date = Query(...), hour: int = Query(..., ge=0, le=23)):

@@ -57,7 +57,7 @@ class ChatRequest(LLMOptions):
     history: list[ChatTurn] = Field(default_factory=list, max_length=CHAT_HISTORY_MAX,
                                     description="이전 대화 (오래된 것부터). 이어 묻기에 사용")
     use_llm: bool = Field(False, description="False면 정해진 문장 틀로만 답함 (빠름, 숫자 오류 없음)")
-    role: str = Field("public", max_length=20, description="열람 등급 (F-37). 값 목록은 docs/contracts.md")
+    role: DocumentRole = Field("citizen", description="문서 열람 역할 (F-37): citizen 시민 / staff 배차 담당자 / admin 관리자. 규정 검색에 전달")
     location: ChatLocation | None = Field(None, description="현재 위치 (길안내에서 출발지로 사용). 서버에 저장하지 않음")
 
 

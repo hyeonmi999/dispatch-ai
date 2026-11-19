@@ -123,7 +123,8 @@ async def chat(domain: str, req: ChatRequest):
         raise DomainNotImplemented(domain, "chat")
     history = [turn.model_dump() for turn in req.history]
     location = req.location.model_dump() if req.location else None
-    result = await run_in_threadpool(agent.run, adapter, req.message, history, req.llm, req.embedding, req.use_llm, location)
+    result = await run_in_threadpool(
+        agent.run, adapter, req.message, history, req.llm, req.embedding, req.use_llm, location, role=req.role)
     chat_id = await repo.save_chat(domain, req.message, result)
     return {**result, "domain": domain, "chat_id": chat_id, "db_saved": chat_id is not None}
 

@@ -29,7 +29,7 @@ from fastapi import HTTPException
 
 from app.config import NOT_FOUND_ANSWER, RAG_TOP_K
 from app.core import llm as llm_module
-from app.core.domain import DomainAdapter
+from app.core.domain import DomainAdapter, InvalidRequest
 from app.core.llm import LLMConfigError
 from app.core.prompts import CHAT_SYSTEM_MESSAGE
 
@@ -67,16 +67,15 @@ REQUIRED = {
     "predict": ("route", "date"),
     "advise": ("route", "date", "hour"),
     "simulate": ("route", "date", "hour", "interval"),
-    "optimize": ("date", "hour"),
+    "optimize": ("date", "hours"),
     "route_info": ("route",),
 }
-NOT_CONNECTED = {"simulate": "배차간격 시뮬레이션", "optimize": "전 노선 배차 최적화"}   # 엔진 연결 전
-
 OUT_OF_SCOPE_ANSWER = "🙏 버스 승객 예측, 배차 권고, 노선 정보, 길안내, 운수 규정에 대한 질문에만 답할 수 있어요."
 
 # 답변을 읽기 쉽게 하는 표시 (숫자가 아니므로 숫자 검증과 무관)
 LEVEL_MARK = {"여유": "🟢", "보통": "🟡", "혼잡": "🟠", "매우혼잡": "🔴"}
 ACTION_MARK = {"increase": "⬆️", "increase_limited": "⚠️", "decrease": "⬇️", "keep": "✅"}
+OPTIMIZE_TOP_CHANGES = 6      # 최적화 답변에 보여 줄 변경 건수 (변경 폭이 큰 순)
 
 
 def _has(text: str, words: tuple) -> bool:
@@ -115,6 +114,8 @@ def classify(message: str, has_route: bool) -> str | None:
 RELATIVE_DAYS = {"그저께": -2, "어제": -1, "오늘": 0, "내일": 1, "모레": 2}
 PM_WORDS = ("오후", "저녁", "밤", "낮")
 COMMUTE_HOURS = {"출근": 8, "퇴근": 18}     # "출근 시간"처럼 시각 없이 물을 때의 대표 시간대
+COMMUTE_RANGES = {"출근": [7, 8, 9], "퇴근": [17, 18, 19]}   # 여러 시간대를 받는 기능(전 노선 최적화)에 쓰는 범위
+_HOUR_RANGE_RE = re.compile(r"(오전|오후|아침|낮|저녁|밤|새벽)?\s*(\d{1,2})\s*시?\s*(?:~|-|부터|에서)\s*(오전|오후|아침|낮|저녁|밤|새벽)?\s*(\d{1,2})\s*시")
 
 _ROUTE_RE = re.compile(r"(\d{1,4}(?:-\d)?)\s*번")
 _ISO_DATE_RE = re.compile(r"(\d{4})-(\d{1,2})-(\d{1,2})")
@@ -180,6 +181,21 @@ def extract(message: str, routes: list[str], today: dt.date) -> dict:
                 break
     if hour is not None and 0 <= hour <= 23:
         slots["hour"] = hour
+
+    # 시간 범위: "6시부터 9시", "7~9시", "출근 시간" → 여러 시간대 (전 노선 최적화용)
+    def clock(word, value):
+        value = int(value)
+        if word in PM_WORDS and value < 12:
+            value += 12
+        return value
+    if m := _HOUR_RANGE_RE.search(message):
+        start, end = clock(m.group(1), m.group(2)), clock(m.group(3) or m.group(1), m.group(4))
+        if 0 <= start <= end <= 23:
+            slots["hours"] = list(range(start, end + 1))
+    elif "hour" in slots and not _HOUR_RE.search(message) and not _CLOCK_RE.search(message):
+        word = next((w for w in COMMUTE_RANGES if w in message), None)
+        if word:
+            slots["hours"] = COMMUTE_RANGES[word]
 
     # 배차간격(분): "3시 30분"의 분은 간격이 아니므로 먼저 지움
     m = _INTERVAL_RE.search(_MINUTE_AFTER_HOUR_RE.sub(r"\1", message))
@@ -392,8 +408,9 @@ def _advise(adapter: DomainAdapter, slots: dict, llm: str, embedding: str, **_) 
     return args, answer, _sources(result["evidence"].get("sources")), facts
 
 
-def _ask(adapter: DomainAdapter, message: str, llm: str, embedding: str, use_llm: bool, **_) -> tuple[dict, str, list[dict], dict]:
-    result = adapter.knowledge_base.ask(message, llm, embedding, RAG_TOP_K, use_llm)
+def _ask(adapter: DomainAdapter, message: str, llm: str, embedding: str, use_llm: bool, role: str = "citizen", **_) -> tuple[dict, str, list[dict], dict]:
+    # role(문서 열람 역할)에 따라 볼 수 없는 등급의 문서는 검색에서 빠짐 (F-37)
+    result = adapter.knowledge_base.ask(message, llm, embedding, RAG_TOP_K, use_llm, role=role)
     sources = _sources(result.get("sources"))
     if not result["found"]:
         return {"question": message}, NOT_FOUND_ANSWER, [], {}
@@ -465,6 +482,49 @@ def _guide(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, list[di
     return args, "\n".join(lines), [], {**facts, "data": result}
 
 
+def _simulate(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, list[dict], dict]:
+    args = {k: slots[k] for k in ("route", "date", "hour", "interval")}
+    r = adapter.simulate(dict(args))
+    cur, sim, fleet, peak = r["current"], r["simulated"], r["fleet"], r["peak_segment"]
+    facts = {"route": r["route"], "date": r["date"], "hour": r["hour"], "current": cur, "simulated": sim,
+             "fleet": fleet, "peak_from": peak["from_name"], "level": sim["level"]}
+    lines = [
+        f"🔧 {r['route']}번 {r['date']} {r['hour']}시에 배차간격을 약 {_short(cur['interval'])}분에서 {_short(sim['interval'])}분으로 바꾸면",
+        f"{LEVEL_MARK.get(sim['level'], '')} 가장 붐비는 구간({peak['from_name']} 부근)의 혼잡도가 "
+        f"{_floor2(cur['max_congestion'])} → {_floor2(sim['max_congestion'])}({sim['level']})로 바뀝니다.",
+        f"🚌 시간당 운행은 {_short(cur['trips_per_hour'])}회 → {_short(sim['trips_per_hour'])}회, "
+        f"필요한 버스는 {fleet['buses_needed_before']}대 → {fleet['buses_needed']}대입니다."
+        + (f" (인가 {fleet['authorized_buses']}대)" if fleet.get("authorized_buses") is not None else ""),
+    ]
+    if fleet.get("over"):
+        lines.append("⚠️ 필요한 버스가 인가대수를 넘습니다.")
+    lines.append("📝 승객 수는 그대로라고 가정한 계산입니다. 최종 결정은 담당자 검토가 필요합니다.")
+    return args, "\n".join(lines), [], facts
+
+
+def _optimize(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, list[dict], dict]:
+    args = {"date": slots["date"], "hours": slots["hours"]}
+    r = adapter.optimize(dict(args))
+    kpi, plan = r["kpi"], r["plan"]
+    changed = sorted((p for p in plan if p["change"] != 0), key=lambda p: -abs(p["change"]))[:OPTIMIZE_TOP_CHANGES]
+    facts = {"date": r["date"], "hours": args["hours"], "kpi": kpi, "top": changed, "binding": r["binding"]}
+    span = f"{args['hours'][0]}시" if len(args["hours"]) == 1 else f"{args['hours'][0]}~{args['hours'][-1]}시"
+    lines = [
+        f"🧮 {r['date']} {span} 전 노선 배차 최적화 결과입니다.",
+        f"🔴 붐비는 노선·시간대는 {kpi['overcrowded_before']}곳 → {kpi['overcrowded_after']}곳으로 줄어듭니다.",
+        f"🚌 운행횟수는 모두 {kpi['total_trips_before']}회 → {kpi['total_trips_after']}회 "
+        f"(늘리는 곳 {kpi['increased']}곳, 줄이는 곳 {kpi['decreased']}곳)입니다.",
+    ]
+    for p in changed:
+        lines.append(f"   {ACTION_MARK.get(p['action'], '')} {p['route']}번 {p['hour']}시: {p['current_trips']}회 → {p['recommended_trips']}회")
+    if r["binding"]:
+        lines.append("⚠️ 버스가 모자라 더 늘리지 못한 곳: " + ", ".join(r["binding"][:OPTIMIZE_TOP_CHANGES]))
+    if r.get("cut_notice"):
+        lines.append(f"ℹ️ {r['cut_notice']}")
+    lines.append("📝 자세한 표는 '배차 계획' 화면에서 볼 수 있습니다. 최종 결정은 담당자 검토가 필요합니다.")
+    return args, "\n".join(lines), [], facts
+
+
 def _route_info(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, list[dict], dict]:
     args = {"route": slots["route"]}
     r = adapter.route_info(dict(args))
@@ -494,7 +554,8 @@ def _route_info(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, li
     return args, "\n".join(lines), [], dict(r)
 
 
-HANDLERS = {"predict": _predict, "advise": _advise, "ask": _ask, "guide": _guide, "route_info": _route_info}
+HANDLERS = {"predict": _predict, "advise": _advise, "ask": _ask, "guide": _guide, "route_info": _route_info,
+            "simulate": _simulate, "optimize": _optimize}
 
 
 def _rewrite(llm: str, message: str, template: str, facts: dict) -> str | None:
@@ -523,6 +584,7 @@ def _clarify(intent: str, slots: dict, routes: list[str]) -> str | None:
         "date": "날짜(예: 내일, 11월 20일)",
         "hour": "시간(예: 오후 3시)",
         "interval": "바꿔 볼 배차간격(예: 5분)",
+        "hours": "시간대(예: 8시, 7시부터 9시)",
     }
     missing = [ask_for[k] for k in REQUIRED.get(intent, ()) if k not in slots]
     return f"🙋 다음 값을 알려 주세요: {' · '.join(missing)}" if missing else None
@@ -530,8 +592,9 @@ def _clarify(intent: str, slots: dict, routes: list[str]) -> str | None:
 
 def run(adapter: DomainAdapter, message: str, history: list[dict] | None = None,
         llm: str = "qwen", embedding: str = "bge", use_llm: bool = False,
-        location: dict | None = None, now: dt.datetime | None = None) -> dict:
-    """location: 화면에서 보낸 현재 위치 {"lat", "lng"} (길안내에 사용). now: 테스트에서 '지금'을 고정할 때"""
+        location: dict | None = None, now: dt.datetime | None = None, role: str = "citizen") -> dict:
+    """location: 화면에서 보낸 현재 위치 {"lat", "lng"} (길안내에 사용). now: 테스트에서 '지금'을 고정할 때.
+    role: 문서 열람 역할 (규정 검색에 전달)"""
     t0 = time.time()
     now = now or dt.datetime.now()
     today = now.date()
@@ -585,6 +648,8 @@ def run(adapter: DomainAdapter, message: str, history: list[dict] | None = None,
 
     if intent == "out_of_scope":
         return done(intent, OUT_OF_SCOPE_ANSWER)
+    if intent == "optimize" and "hours" not in slots and "hour" in slots:
+        slots["hours"] = [slots["hour"]]              # 시간대 하나만 말한 경우
 
     if intent == "guide":
         # 길안내는 '지금'이 기본: 날짜·시간을 말하지 않으면 오늘 이 시각
@@ -614,17 +679,15 @@ def run(adapter: DomainAdapter, message: str, history: list[dict] | None = None,
             return done("clarify", "🙋 어디에서 출발하시나요? 출발 정류장 이름을 알려 주시거나 '현재 위치 사용'을 켜 주세요.")
     elif question := _clarify(intent, slots, routes):
         return done("clarify", question)
-    if intent in NOT_CONNECTED:
-        return done(intent, f"🛠️ {NOT_CONNECTED[intent]} 기능은 아직 챗봇에 연결되지 않았습니다. 대시보드의 해당 패널을 이용해 주세요.")
-
     try:
         args, answer, sources, facts = HANDLERS[intent](
-            adapter, slots=slots, message=message, llm=llm, embedding=embedding, use_llm=use_llm)
-    except HTTPException as error:
+            adapter, slots=slots, message=message, llm=llm, embedding=embedding, use_llm=use_llm, role=role)
+    except (HTTPException, InvalidRequest) as error:
         # 없는 노선·범위를 벗어난 날짜 등: 기능이 알려 준 이유를 그대로 답함
         keys = REQUIRED.get(intent) or ("origin", "destination", "lat", "lng", "date", "hour")
         args = {k: slots[k] for k in keys if k in slots} or {"question": message}
-        return done(intent, f"⚠️ {error.detail}", tools=[{"name": intent, "args": args, "ok": False}])
+        reason = error.detail if isinstance(error, HTTPException) else str(error)      # 범위 밖의 배차간격 등
+        return done(intent, f"⚠️ {reason}", tools=[{"name": intent, "args": args, "ok": False}])
 
     tools = [{"name": intent, "args": args, "ok": True}]
     if intent == "ask":
