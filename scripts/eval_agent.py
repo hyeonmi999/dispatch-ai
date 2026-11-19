@@ -54,7 +54,8 @@ def main():
     if not path.exists():
         sys.exit(f"문제집이 없습니다: {path}")
     items = json.loads(path.read_text(encoding="utf-8"))
-    now = dt.datetime.fromisoformat(args.today) if args.today else dt.datetime.now()
+    # 날짜만 주면 정오 기준 (0시로 두면 길안내 문항이 심야 기준으로 계산됨)
+    now = dt.datetime.combine(dt.date.fromisoformat(args.today), dt.time(12)) if args.today else dt.datetime.now()
 
     adapter = BusAdapter()
     adapter.startup()

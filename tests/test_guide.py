@@ -137,6 +137,9 @@ class FakeAdapter:
     def targets(self):
         return ["160"]
 
+    def route_names(self):
+        return ["160"]
+
     def predict(self, payload):
         return {"route": "160", "date": "2026-11-17", "is_forecast": True, "hour": 15,
                 "summary": {"pred_total": 20000.0, "baseline_total": 19000.0, "actual_total": None},
