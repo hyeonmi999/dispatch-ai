@@ -187,6 +187,7 @@ GUIDE_DEFAULT_KMH = 17         # 시간표를 쓸 수 없는 노선의 평균 �
 GUIDE_SHORT_LEG_MIN = 3        # 시간표는 분 단위라, 이보다 짧은 구간은 거리 ÷ 노선 평균 속도로 계산
 GUIDE_NEAR_STOPS = 5           # 주변에 정류장이 없을 때 살펴볼 가까운 정류장 수
 GUIDE_CROWD_TRADEOFF_MIN = 10  # 덜 붐비는 경로가 이 시간(분) 이하로 더 걸리면 그쪽을 추천
+GUIDE_CROWD_MIN_GAP = 0.1      # 혼잡도 차이가 이보다 작으면 '덜 붐빔'으로 보지 않음 (0.355와 0.35는 같은 수준)
 GUIDE_SEARCH_LIMIT_MAX = 20    # 정류장 검색 결과 최대 개수
 GUIDE_DATE_FALLBACK_WEEKS = 8  # 요청한 날이 예측 범위 밖이면 같은 요일로 몇 주까지 거슬러 찾을지
 ROUTE_INFO_KEY_STOPS = 8       # 노선 정보에 보여 줄 주요 정류장 수

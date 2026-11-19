@@ -25,6 +25,7 @@
 # - 환승 뒤 구간도 같은 시간대 혼잡도로 봅니다.
 
 import math
+import threading
 from collections import Counter, defaultdict
 
 import numpy as np
@@ -32,6 +33,7 @@ import pandas as pd
 
 from app.config import (
     GUIDE_CANDIDATES,
+    GUIDE_CROWD_MIN_GAP,
     GUIDE_CROWD_TRADEOFF_MIN,
     GUIDE_DEFAULT_KMH,
     GUIDE_DEFAULT_MIN_PER_STOP,
@@ -94,6 +96,7 @@ class BusGuide:
         self.routes = routes
         self._network = network
         self._built = False
+        self._build_lock = threading.Lock()     # 요청이 겹쳐도 색인은 한 번만, 다 만든 뒤에 보이게
 
     # ==================================================
     # 1. 정류장·노선 색인 (처음 쓸 때 한 번 만듦)
@@ -110,6 +113,11 @@ class BusGuide:
     def _build(self) -> None:
         if self._built:
             return
+        with self._build_lock:
+            if not self._built:
+                self._build_index()
+
+    def _build_index(self) -> None:
         stops: list[dict] = []
         self.route_meta: dict[str, dict] = {}
         network = self._load_network()
@@ -348,9 +356,9 @@ class BusGuide:
                                 if y["seq"] < d["seq"]:
                                     cost = (x["seq"] - o["seq"]) + (d["seq"] - y["seq"]) + walk_cost(o) + walk_cost(d) + walk / 400 + 3
                                     keep((route, other), cost, [{"board": o, "alight": x}, {"board": {**y, "walk_m": walk}, "alight": d}])
-        # 한 번에 가는 노선이 있으면 그 노선에서 시작하는 환승 경로는 뺌
+        # 한 번에 가는 노선이 있으면 그 노선을 타는 환승 경로는 뺌 (그 노선으로 시작하든, 중간에 갈아타든)
         direct = {key[0] for key in best if len(key) == 1}
-        kept = [v for key, v in best.items() if len(key) == 1 or key[0] not in direct]
+        kept = [v for key, v in best.items() if len(key) == 1 or not (set(key) & direct)]
         return [legs for _, legs in sorted(kept, key=lambda v: v[0])]
 
     def _leg(self, leg: dict, date, hour: int) -> dict:
@@ -480,14 +488,22 @@ class BusGuide:
 
         fastest = options[0]
         fastest["fastest"] = True
-        rated = [o for o in options if o["max_congestion"] is not None]
-        calm = min(rated, key=lambda o: (o["max_congestion"], o["total_min"])) if rated else fastest
-        calm["least_crowded"] = bool(rated)
+        # 혼잡도를 비교할 수 있는 경로: 모든 구간에 예측이 있는 것만 (예측 없는 구간을 낀 경로는 얼마나 붐빌지 모름)
+        rated = [o for o in options if o["max_congestion"] is not None and all(leg["predicted"] for leg in o["legs"])]
+        calm = min(rated, key=lambda o: (o["max_congestion"], o["total_min"])) if rated else None
+        # 가장 빠른 경로보다 뚜렷하게 덜 붐빌 때만 '덜 붐빔' (가장 빠른 경로의 혼잡도를 모르면 비교하지 않음)
+        clearly_calmer = (
+            calm is not None and calm is not fastest and fastest in rated
+            and fastest["max_congestion"] - calm["max_congestion"] >= GUIDE_CROWD_MIN_GAP
+        )
+        if clearly_calmer:
+            calm["least_crowded"] = True
+        elif calm is fastest:
+            fastest["least_crowded"] = True      # 가장 빠른 경로가 가장 덜 붐비기도 함
 
         # 덜 붐비는 경로가 조금만 더 걸리면 그쪽을 추천, 아니면 가장 빠른 경로
-        slower_by = calm["total_min"] - fastest["total_min"]
-        pick = calm if calm is not fastest and slower_by <= GUIDE_CROWD_TRADEOFF_MIN and \
-            fastest["max_congestion"] is not None and fastest["max_congestion"] > calm["max_congestion"] else fastest
+        slower_by = (calm["total_min"] - fastest["total_min"]) if clearly_calmer else 0
+        pick = calm if clearly_calmer and slower_by <= GUIDE_CROWD_TRADEOFF_MIN else fastest
         pick["recommended"] = True
         reason = "less_crowded" if pick is not fastest else "fastest"
         result["recommendation"] = {"index": options.index(pick), "reason": reason, "slower_by_min": max(slower_by, 0) if pick is not fastest else 0}
