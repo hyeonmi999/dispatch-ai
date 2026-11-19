@@ -199,3 +199,14 @@ SCHOOL_VACATIONS = [
     ("2026-07-20", "2026-08-16"),
     ("2026-12-30", "2027-03-01"),
 ]
+
+# 문서 관리 (로컬 시연)
+UPLOADED_DOCS_DIR = DATA_DIR / "docs"
+MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
+DOCUMENT_LIST_LIMIT = 100
+DOCUMENT_LIST_MAX_LIMIT = 1000
+ROLE_GRADES = {
+    "citizen": {"공개"},
+    "staff": {"공개", "내부"},
+    "admin": {"공개", "내부", "제한"},
+}

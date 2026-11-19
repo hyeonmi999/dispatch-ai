@@ -21,7 +21,7 @@ from app.core import agent
 from app.core.domain import DomainAdapter, DomainNotImplemented
 from app.core.llm import llm_status
 from app.core.registry import registry
-from app.core.schemas import AskRequest, ChatRequest, ChatResponse, LLMOptions, ReviewRequest
+from app.core.schemas import AskRequest, ChatRequest, ChatResponse, EmbeddingChoice, LLMOptions, ReviewRequest
 from app.db import database as db
 from app.db import repository as repo
 
@@ -83,6 +83,13 @@ async def predict(domain: str, payload: dict = Body(..., examples=[{"route": "14
 # ==================================================
 # 3. 규정 질의응답 (RAG)
 # ==================================================
+
+@router.get("/{domain}/knowledge-status", response_model=dict[str, bool], tags=["상태"],
+            summary="문서 검색 색인 갱신 필요 여부")
+def knowledge_status(domain: str, embedding: EmbeddingChoice = "bge"):
+    knowledge = get_domain(domain).knowledge_base
+    return {"rebuild_required": knowledge.has_docs() and knowledge.index_needs_rebuild(embedding)}
+
 
 @router.post("/{domain}/ask", tags=["공통"], summary="규정 질의응답 (근거 문서·조항 포함)")
 async def ask(domain: str, req: AskRequest):
