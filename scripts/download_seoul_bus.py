@@ -16,7 +16,7 @@ zip 하나씩 받아서 대상 노선만 걸러 parquet 조각으로 저장하�
         --seqs 2408 2409 2410 2411 2412 2501 2502 2503 2504 2505 2506 2507 2508 2509 \
         --min-date 20240826 --max-date 20250928 --suffix _history
     # 새로 공개된 주만 기존 parquet에 추가 (주간 파일은 매주 월요일 공개)
-    python scripts/download_seoul_bus.py --seqs 261102 --append
+    python scripts/download_seoul_bus.py --seqs 261109 --append
 """
 
 import argparse
@@ -48,7 +48,7 @@ DEFAULT_ROUTES = ["143", "272", "160", "150", "271"]
 MONTHLY_SEQS = ["2509", "2510", "2511", "2512", "2601", "2602", "2603",
                 "2604", "2605", "2606", "2607", "2608"]
 WEEKLY_SEQS = ["260907", "260914", "260921", "260928",
-               "261005", "261012", "261019", "261026", "261102"]
+               "261005", "261012", "261019", "261026", "261102", "261109"]
 
 DATASETS = {
     "OA-21219": {"name": "boarding", "seqs": MONTHLY_SEQS + WEEKLY_SEQS,

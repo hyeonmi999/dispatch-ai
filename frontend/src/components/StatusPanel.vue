@@ -53,7 +53,7 @@ const n = (v) => (v == null ? '-' : Math.round(v).toLocaleString())
 // 혼잡도 기준 간단 판정 (상세 수치는 배차 권고에서)
 const need = computed(() => {
   const c = props.hourRow?.max_congestion
-  if (c == null) return { label: '정보 없음', text: '이 시간대 운행 데이터가 없습니다.' }
+  if (c == null) return { label: '정보 없음', text: '이 시간대에 기점에서 출발하는 버스가 없습니다.' }
   if (c >= 0.8) return { high: true, label: '높음', text: `최대 혼잡도 ${fmtCongestion(c)}, 배차간격 단축(증차) 검토 대상입니다.` }
   if (c < 0.25) return { label: '낮음 (감차 검토)', text: `최대 혼잡도 ${fmtCongestion(c)}, 수요 대비 운행이 많습니다.` }
   return { label: '보통', text: `최대 혼잡도 ${fmtCongestion(c)}, 현행 배차로 수용 가능합니다.` }

@@ -18,6 +18,8 @@ def sample_model():
         subprocess.run([sys.executable, "scripts/make_sample_data.py"], cwd=ROOT, check=True)
     if not (ROOT / "data/processed/bus_sample_store.parquet").exists():
         subprocess.run([sys.executable, "scripts/train_bus.py", "--mode", "sample"], cwd=ROOT, check=True)
+    if not (ROOT / "models/bus/sample/p90.json").exists():
+        subprocess.run([sys.executable, "scripts/calibrate_p90.py", "--mode", "sample"], cwd=ROOT, check=True)
 
 
 @pytest.fixture(scope="session")
