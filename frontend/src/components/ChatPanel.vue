@@ -77,6 +77,7 @@ const props = defineProps({
   llm: { type: String, default: 'qwen' },
   embedding: { type: String, default: 'bge' },
   geometries: { type: Object, default: () => ({}) },     // 길안내 팝업 지도용 노선 좌표
+  role: { type: String, default: 'citizen' },            // 문서 열람 역할 (규정 답변에 쓸 수 있는 문서 등급)
 })
 // goto: 답변의 노선·날짜·시간으로 대시보드 이동 / select-route: 그 노선을 대시보드에서 선택
 const emit = defineEmits(['goto', 'select-route'])
@@ -175,7 +176,7 @@ async function send(text) {
   scrollDown()
   try {
     let user = here.value
-    const body = { message, history, llm: props.llm, embedding: props.embedding, use_llm: useLlm.value }
+    const body = { message, history, llm: props.llm, embedding: props.embedding, use_llm: useLlm.value, role: props.role }
     if (user) body.location = user
     let r = await api.chat(props.domain, body)
     // "여기서 ○○ 어떻게 가?"인데 현재 위치가 꺼져 있으면, 되묻지 않고 위치를 얻어 한 번 더 물음

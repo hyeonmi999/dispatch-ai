@@ -160,7 +160,7 @@
         </template>
 
         <template #chat>
-          <ChatPanel domain="bus" :llm="llm" :embedding="embedding" :geometries="geometries" @goto="goto" @select-route="(r) => (selected = r)" />
+          <ChatPanel domain="bus" :llm="llm" :embedding="embedding" :geometries="geometries" :role="documentRole" @goto="goto" @select-route="(r) => (selected = r)" />
         </template>
 
         <template #metrics>
