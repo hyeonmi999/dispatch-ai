@@ -88,7 +88,7 @@ async def ask(domain: str, req: AskRequest):
     if not adapter.implemented and not adapter.knowledge_base.has_docs():
         raise DomainNotImplemented(domain, "ask")
     result = await run_in_threadpool(
-        adapter.knowledge_base.ask, req.question, req.llm, req.embedding, req.top_k, req.use_llm,
+        adapter.knowledge_base.ask, req.question, req.llm, req.embedding, req.top_k, req.use_llm, role=req.role,
     )
     saved_id = await repo.save_qa(domain, result)
     return {**result, "domain": domain, "db_saved": saved_id is not None}

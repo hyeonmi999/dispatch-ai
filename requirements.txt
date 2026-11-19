@@ -60,3 +60,5 @@ beautifulsoup4
 # Test
 pytest
 httpx
+
+python-multipart            # 문서 업로드 폼 처리

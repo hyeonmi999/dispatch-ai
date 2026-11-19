@@ -14,12 +14,16 @@ import subprocess
 import sys
 
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
+from pydantic import ValidationError
 from fastapi.concurrency import run_in_threadpool
 
 from app.core.domain import DomainAdapter
 from app.domains.bus.advisor import BusAdvisor, _num, congestion_level
 from app.domains.bus.data import BusDataset
+from app.core.documents import (
+    BusDocuments, DocumentFields, DocumentInfo, DocumentList, DocumentUpdate, MAX_DOCUMENT_BYTES,
+)
 from app.domains.bus.forecaster import BusForecaster
 from app.db import repository as repo
 from app.domains.bus.calibration import load_ratios
@@ -155,6 +159,29 @@ class BusAdapter(DomainAdapter):
 
     def router(self) -> APIRouter:
         r = APIRouter(prefix="/api/bus", tags=["버스 지도·차트"])
+
+        documents = BusDocuments(self.knowledge_base.docs_dir)
+
+        @r.get("/documents", response_model=DocumentList, summary="법규 문서 목록")
+        def list_documents():
+            return documents.list()
+
+        @r.post("/documents", response_model=DocumentInfo, status_code=201, summary="법규 문서 추가")
+        def create_document(file: UploadFile = File(...), title: str = Form(...),
+                            type: str = Form(...), grade: str = Form(...)):
+            try:
+                fields = DocumentFields(title=title, type=type, grade=grade)
+            except ValidationError as exc:
+                raise HTTPException(400, "제목, 종류, 등급을 확인해 주세요.") from exc
+            return documents.create(file.filename or "", fields, file.file.read(MAX_DOCUMENT_BYTES + 1))
+
+        @r.put("/documents/{file}", response_model=DocumentInfo, summary="법규 문서 수정")
+        def update_document(file: str, fields: DocumentUpdate):
+            return documents.update(file, fields)
+
+        @r.delete("/documents/{file}", status_code=204, response_class=Response, summary="법규 문서 삭제")
+        def delete_document(file: str):
+            documents.delete(file)
 
         @r.get("/meta", summary="데이터 기간·노선·평가 지표")
         def meta():
