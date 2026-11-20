@@ -31,7 +31,8 @@ export const api = {
   stops: (route, date, hour) => http.get(`/bus/routes/${route}/stops`, { params: { date, hour } }).then((r) => r.data),
   overview: (date, hour) => http.get('/bus/overview', { params: { date, hour } }).then((r) => r.data),
   predict: (domain, body) => http.post(`/${domain}/predict`, body).then((r) => r.data),
-  knowledgeStatus: (domain, embedding) => http.get(`/${domain}/knowledge-status`, { params: { embedding } }).then((r) => r.data),
+  // 상태 조회는 안내용입니다. 실패하거나 지연돼도 실제 질문은 계속 보냅니다.
+  knowledgeStatus: (domain, embedding) => http.get(`/${domain}/knowledge-status`, { params: { embedding }, timeout: 3000 }).then((r) => r.data).catch(() => null),
   ask: (domain, body) => http.post(`/${domain}/ask`, body).then((r) => r.data),
   advise: (domain, body) => http.post(`/${domain}/advise`, body).then((r) => r.data),
   chat: (domain, body) => http.post(`/${domain}/chat`, body).then((r) => r.data),
