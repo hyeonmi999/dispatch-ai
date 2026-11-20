@@ -85,7 +85,7 @@
 |---|---|
 | `message` | 2~500자 |
 | `history` | 최대 10건, 오래된 것부터. 이어 묻기("그럼 4시는?")에 사용. 생략 가능 |
-| `use_llm` | `false`(기본)면 정해진 문장 틀로 답함. `true`면 규정 답변은 LLM이 요약하고, 예측·권고 답변은 LLM이 문장을 다듬음 |
+| `use_llm` | `false`(기본)면 정해진 문장 틀로 답함. `true`면 규정 답변은 LLM이 요약하고, 예측·권고 답변은 LLM이 문장을 다듬음. 다듬은 문장의 숫자(값·단위·순서·설명)나 결론(권고 방향·혼잡 단계)이 문장 틀 답변과 다르면 버리고 문장 틀 답변을 씀(`llm_rejected: true`) |
 | `location` | 현재 위치. 길안내 질문에서 출발 정류장을 말하지 않았을 때만 씀. 응답의 `slots`·`tools`에는 좌표가 들어 있지만, 대화 기록(`chat_log`)에는 좌표를 빼고 `slots.location_used: true`만 남김 |
 | `role` | 문서 열람 역할 `citizen`(기본) · `staff` · `admin`. 규정 검색에 전달 (6번) |
 | `intent` | `predict` · `advise` · `ask` · `guide` · `route_info` · `simulate` · `optimize` · `clarify`(빠진 값 되묻기) · `out_of_scope` |
@@ -106,8 +106,8 @@
 요청: {"origin": "정릉우체국앞", "destination": "종로3가역", "date": "2026-10-25", "hour": 8}
       또는 {"lat": 37.5665, "lng": 126.978, "destination": "종로3가역", "date": "...", "hour": 8}   ← 현재 위치
 응답: {"date": "2026-10-25", "hour": 8, "is_forecast": false,
-       "origin": {"label": "정릉우체국앞", "stop": "정릉우체국앞", "lat": 37.6, "lng": 127.0, "walk_m": 0, "far": false},
-       "destination": {"stop": "종로3가역.탑골공원", "lat": 37.57, "lng": 126.99},
+       "origin": {"label": "정릉우체국앞", "stop": "정릉우체국앞", "lat": 37.6, "lng": 127.0, "walk_m": 0, "far": false, "ambiguous": false},
+       "destination": {"stop": "종로3가역.탑골공원", "lat": 37.57, "lng": 126.99, "ambiguous": false},
        "options": [{"kind": "direct", "routes": ["143"], "total_min": 27,
                     "max_congestion": 0.321, "level": "여유",
                     "fastest": true, "least_crowded": true, "recommended": true,
@@ -116,6 +116,7 @@
                               "stops": 11, "walk_m": 0, "walk_min": 0, "interval_min": 8.6, "wait_min": 4.3,
                               "ride_min": 23, "congestion": 0.321, "level": "여유"}]}],
        "recommendation": {"index": 0, "reason": "fastest", "slower_by_min": 0},
+       "walk_only": null,
        "assumption": "..."}
 ```
 
@@ -128,6 +129,8 @@
 - 정류장 이름은 일부만 적어도 됩니다 ("종로3가역" → "종로3가역.탑골공원"). 없는 이름이면 422.
 - `origin.far`가 `true`면 걸어갈 거리(500m) 안에 정류장이 없어 가장 가까운 정류장에서 타는 경로입니다. 이때 걷는 시간은 `total_min`에 넣지 않습니다.
 - 요청한 날짜가 예측 범위 밖이면 범위 안의 가장 가까운 같은 요일로 계산하고, 응답의 `date`에 계산한 날짜를, `requested_date`에 원래 요청한 날짜를 넣습니다. 길은 날짜와 상관없이 같고 혼잡도·배차간격만 그날 기준입니다.
+- `walk_only`: 출발지(정류장 또는 현재 위치)가 도착지에서 300m 안이면 `{"walk_m": 45, "walk_min": 1}`이고, 이때 `options`는 빈 목록·`recommendation`은 `null`입니다. 그 밖에는 `null`.
+- `origin.ambiguous`·`destination.ambiguous`: 같은 이름의 정류장이 1.5km 넘게 떨어진 여러 곳에 있으면 `true`. 상대편(출발지·도착지)에서 가까운 곳부터 최대 3곳을 찾아보고, 경로가 있는 첫 번째 곳으로 안내합니다. 어디에도 경로가 없으면 가장 가까운 곳 기준으로 답합니다.
 - `kind`: `direct` · `transfer`. `recommendation.reason`: `fastest` · `less_crowded`(조금 더 걸리지만 덜 붐빔).
 - 소요 시간은 운행시간에서 어림한 값이고, 혼잡도는 F-03의 예측값입니다.
 - `GET /api/bus/stops/search?q=종로&limit=10` → `[{"name", "lat", "lng", "routes": ["143", "271"]}]`. `limit` 최대 20.
