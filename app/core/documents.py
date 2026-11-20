@@ -73,15 +73,24 @@ def document_records(root: Path) -> dict:
     return {**read_document_manifest(root), **read_document_manifest(managed_document_dir(root))}
 
 
-def document_files(root: Path) -> list[Path]:
+def document_files(root: Path, *, strict: bool = True) -> list[Path]:
     files = {}
+    duplicates = set()
     for folder in (root, managed_document_dir(root)):
         for path in sorted(folder.glob("*")):
             if path.is_file() and not path.is_symlink() and path.suffix.lower() in DOCUMENT_SUFFIXES:
-                if path.name in files:
-                    raise HTTPException(409, "기본 문서와 업로드 문서의 파일명이 중복됩니다.")
-                files[path.name] = path
-    return sorted(files.values(), key=lambda path: path.name)
+                key = path.name.casefold()
+                if key in files:
+                    duplicates.add(key)
+                else:
+                    files[key] = path
+    if duplicates:
+        if strict:
+            raise HTTPException(409, "기본 문서와 업로드 문서의 파일명이 중복됩니다.")
+        # 어느 파일의 등급인지 모호하므로 둘 다 검색에서 제외합니다.
+        logger.warning("중복 파일 %d개를 문서 검색에서 제외했습니다.", len(duplicates))
+    return sorted((path for key, path in files.items() if key not in duplicates),
+                  key=lambda path: path.name)
 
 
 def require_document_admin(role: str) -> None:
