@@ -166,26 +166,27 @@
 
 ## 5. `/api/bus/documents` — 법규 문서 관리 (F-36)
 
-김주혜가 구현했습니다(`app/core/documents.py`, PR #6). 아래는 구현을 옮겨 적은 것입니다.
+로컬 시연용 `role` 쿼리를 받으며 기본값은 `citizen`입니다. 로그인 인증은 별도 범위입니다.
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
-| GET | `/api/bus/documents` | 문서 목록 `{"items": [...]}`. `docs/bus/`의 PDF·TXT 파일 전부 |
-| POST | `/api/bus/documents` | 파일 올리기 (multipart: `file`, `title`, `type`, `grade`). 201 |
-| PUT | `/api/bus/documents/{file}` | `title`, `type`, `grade`, `active` 수정 |
-| DELETE | `/api/bus/documents/{file}` | 파일과 목록 항목 삭제. 204 |
+| GET | `/api/bus/documents?role=citizen&limit=100` | 역할이 볼 수 있는 등급의 목록 `{"items": [...]}`. limit 1~1000 |
+| POST | `/api/bus/documents?role=admin` | multipart file·title·type·grade. 201 |
+| PUT | `/api/bus/documents/{file}?role=admin` | JSON title·type·grade·active. 200 |
+| DELETE | `/api/bus/documents/{file}?role=admin` | 업로드 파일과 목록 항목 삭제. 204 |
 
-```
-문서 1건: {"file": "sample.txt", "title": "등록한 문서", "type": "법령", "grade": "공개",
-           "active": true, "created_at": "2026-11-18T00:00:00Z"}
-```
-
-- `type`: `법령` · `조례` · `보도자료` · `내부자료`. `grade`: `공개` · `내부` · `제한`.
-- 파일은 PDF·TXT만, 최대 20MB. 이름에 경로 문자가 있으면 400, 같은 이름이 있으면 409, 없는 문서는 404.
-- 등록 정보는 `docs/bus/documents.json`에 저장합니다. 여기에 없는 기존 파일은 `공개`·사용 중으로 봅니다.
-- `active: false`인 문서는 검색에서 빠집니다.
-- 규정 문서로 읽는 파일은 `.pdf`·`.txt`뿐입니다. `SOURCES.md` 같은 `.md`는 읽지 않습니다.
-- 알려진 문제: 등급·사용 여부만 바꿔도 색인을 다시 만듦(#9), 올린 파일이 git 추적 폴더에 저장됨(#10), 역할 확인 없음(#11).
+- 추가·수정·삭제는 admin만 허용하며 나머지 역할은 403입니다. 목록은 공개·내부·제한 등급을 역할별로 거릅니다.
+- 문서 응답은 file·title·type·grade·active·created_at·deletable입니다. 기존 기본 문서의 created_at은 null일 수 있습니다.
+- 기본 PDF·TXT는 docs/bus/에서 팀이 공유하고, 화면 업로드는 Git에서 제외한 data/docs/bus/에 저장합니다.
+- 운영 목록은 data/docs/bus/documents.json이며 커밋하지 않습니다. 기존 docs/bus/documents.json도 읽되 로컬 운영 목록이 우선합니다.
+- 기본 문서는 deletable=false이며 삭제는 403입니다. 제목·등급·사용 여부 변경은 운영 목록에만 저장합니다.
+- 같은 파일명은 기본·업로드 폴더 전체에서 충돌로 처리합니다(409). 없는 파일은 404입니다.
+- PDF·UTF-8 TXT만 최대 20MB까지 허용합니다. 경로·확장자·내용·크기 오류는 400, 제목·종류·등급 검증은 추가·수정 모두 422입니다.
+- 종류는 법령·조례·보도자료·내부자료, 등급은 공개·내부·제한입니다.
+- 사용 중지 문서도 색인에는 유지하고, 검색 시 최신 등급·사용 여부를 적용합니다. 정책만 바뀌면 재색인하지 않습니다.
+- 파일 추가·삭제·내용 수정이나 제목 변경은 다음 검색에서 재색인합니다. Markdown 출처 목록은 검색에서 제외합니다.
+- GET /api/bus/knowledge-status?embedding=bge 는 rebuild_required(bool)만 반환합니다. 파일명이나 문서 내용을 노출하지 않습니다. 질문 화면과 챗봇은 이 상태로 검색 색인 갱신 대기를 안내합니다.
+- 기존 업로드는 자동 이동하지 않습니다. 관리자가 기존 docs/bus 자료를 확인한 뒤 새 업로드 경로로 이관해야 합니다.
 
 ## 6. `role` 값 — 문서 열람 역할 (F-37)
 

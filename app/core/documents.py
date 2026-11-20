@@ -1,4 +1,4 @@
-"""버스 법규 문서 파일과 등록 정보 관리."""
+"""법규 문서 파일과 등록 정보 관리."""
 
 import json
 import logging
@@ -12,10 +12,13 @@ from typing import Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field, field_validator
+from app.config import (
+    DOCS_DIR, UPLOADED_DOCS_DIR, MAX_DOCUMENT_BYTES, ROLE_GRADES, DOCUMENT_LIST_LIMIT,
+    RAG_DOCUMENT_SUFFIXES,
+)
 
 MANIFEST_NAME = "documents.json"
-DOCUMENT_SUFFIXES = {".pdf", ".txt"}
-MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
+DOCUMENT_SUFFIXES = set(RAG_DOCUMENT_SUFFIXES)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +41,7 @@ class DocumentUpdate(DocumentFields):
 class DocumentInfo(DocumentUpdate):
     file: str
     created_at: datetime | None
+    deletable: bool = True
 
 
 class DocumentList(BaseModel):
@@ -46,9 +50,43 @@ class DocumentList(BaseModel):
 
 def read_document_manifest(root: Path) -> dict:
     try:
-        return json.loads((root / MANIFEST_NAME).read_text(encoding="utf-8"))
+        records = json.loads((root / MANIFEST_NAME).read_text(encoding="utf-8"))
+        if not isinstance(records, dict) or not all(isinstance(value, dict) for value in records.values()):
+            raise ValueError("문서 목록 형식 오류")
+        return records
     except FileNotFoundError:
         return {}
+    except (OSError, ValueError) as exc:
+        logger.exception("문서 목록을 읽지 못했습니다.")
+        raise HTTPException(500, "문서 목록을 읽지 못했습니다. 파일을 확인해 주세요.") from exc
+
+
+def managed_document_dir(root: Path) -> Path:
+    """기본 법규는 저장소에, 업로드와 운영 목록은 Git 제외 폴더에 둡니다."""
+    if root.resolve().parent == DOCS_DIR.resolve():
+        return UPLOADED_DOCS_DIR / root.name
+    return root / ".uploads"
+
+
+def document_records(root: Path) -> dict:
+    # 이전 버전의 목록도 읽고 운영 목록의 수정 사항을 우선합니다.
+    return {**read_document_manifest(root), **read_document_manifest(managed_document_dir(root))}
+
+
+def document_files(root: Path) -> list[Path]:
+    files = {}
+    for folder in (root, managed_document_dir(root)):
+        for path in sorted(folder.glob("*")):
+            if path.is_file() and not path.is_symlink() and path.suffix.lower() in DOCUMENT_SUFFIXES:
+                if path.name in files:
+                    raise HTTPException(409, "기본 문서와 업로드 문서의 파일명이 중복됩니다.")
+                files[path.name] = path
+    return sorted(files.values(), key=lambda path: path.name)
+
+
+def require_document_admin(role: str) -> None:
+    if role != "admin":
+        raise HTTPException(403, "문서 변경은 관리자 역할에서만 가능합니다.")
 
 
 def write_document_manifest(root: Path, records: dict) -> None:
@@ -90,23 +128,27 @@ def _legacy_type(name: str) -> str:
     return "법령" if name.lower().endswith(".pdf") else "내부자료"
 
 
-class BusDocuments:
+class Documents:
     def __init__(self, root: Path):
-        self.root = root
+        self.base = root
+        self.root = managed_document_dir(root)
         self.lock = threading.Lock()
 
-    def list(self) -> DocumentList:
+    def list(self, role: str = "citizen", limit: int = DOCUMENT_LIST_LIMIT) -> DocumentList:
         with self.lock:
-            records = read_document_manifest(self.root)
+            records = document_records(self.base)
             items = []
-            for path in sorted(self.root.iterdir()) if self.root.is_dir() else []:
+            for path in document_files(self.base):
                 if path.is_symlink() or not path.is_file() or path.suffix.lower() not in DOCUMENT_SUFFIXES:
                     continue
                 item = records.get(path.name, {
                     "title": path.stem, "type": _legacy_type(path.name), "grade": "공개",
                     "active": True, "created_at": None,
                 })
-                items.append(DocumentInfo(file=path.name, **item))
+                if item.get("grade", "공개") in ROLE_GRADES[role]:
+                    items.append(DocumentInfo(file=path.name, deletable=path.parent == self.root, **item))
+                    if len(items) == limit:
+                        break
             return DocumentList(items=items)
 
     def create(self, name: str, fields: DocumentFields, data: bytes) -> DocumentInfo:
@@ -128,14 +170,14 @@ class BusDocuments:
         with self.lock:
             self.root.mkdir(parents=True, exist_ok=True)
             records = read_document_manifest(self.root)
-            if any(p.name.casefold() == path.name.casefold() for p in self.root.iterdir()):
+            if any(p.name.casefold() == path.name.casefold() for p in document_files(self.base)):
                 raise HTTPException(409, "같은 이름의 문서가 이미 있습니다.")
             item = DocumentInfo(file=path.name, **fields.model_dump(), active=True, created_at=datetime.now(timezone.utc))
             with path.open("xb") as stream:
                 try:
                     stream.write(data)
                     stream.close()
-                    records[path.name] = item.model_dump(mode="json", exclude={"file"})
+                    records[path.name] = item.model_dump(mode="json", exclude={"file", "deletable"})
                     write_document_manifest(self.root, records)
                 except Exception:
                     stream.close()
@@ -147,15 +189,19 @@ class BusDocuments:
         with self.lock:
             path = self._existing(name)
             records = read_document_manifest(self.root)
+            previous = document_records(self.base).get(path.name, {})
+            self.root.mkdir(parents=True, exist_ok=True)
             item = DocumentInfo(file=path.name, **fields.model_dump(),
-                                created_at=records.get(path.name, {}).get("created_at"))
-            records[path.name] = item.model_dump(mode="json", exclude={"file"})
+                                deletable=path.parent == self.root, created_at=previous.get("created_at"))
+            records[path.name] = item.model_dump(mode="json", exclude={"file", "deletable"})
             write_document_manifest(self.root, records)
             return item
 
     def delete(self, name: str) -> None:
         with self.lock:
             path = self._existing(name)
+            if path.parent != self.root:
+                raise HTTPException(403, "기본 법규 문서는 삭제할 수 없습니다. 사용 여부를 변경해 주세요.")
             records = read_document_manifest(self.root)
             with NamedTemporaryFile(dir=self.root, delete=False) as stream:
                 temporary = Path(stream.name)
@@ -177,6 +223,8 @@ class BusDocuments:
 
     def _existing(self, name: str) -> Path:
         path = document_path(self.root, name)
+        if not path.is_file():
+            path = document_path(self.base, name)
         if not path.is_file():
             raise HTTPException(404, "문서를 찾을 수 없습니다.")
         return path

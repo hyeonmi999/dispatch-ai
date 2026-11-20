@@ -63,11 +63,11 @@ app/core/rag.py의 load_documents()와 docs_fingerprint()가 docs/bus/ 폴더를
 ```
 
 ```
-docs/bus/documents.json(문서 목록 파일)을 읽고 쓰는 함수와,
+data/docs/bus/documents.json(문서 목록 파일)을 읽고 쓰는 함수와,
 GET/POST/PUT/DELETE /api/bus/documents API 4개를 만드는 계획을 알려줘.
 - POST는 PDF·TXT 파일 업로드 + 제목·종류·등급. 확장자는 pdf, txt만, 크기 20MB 이하, 파일명은 안전하게 정리
 - 파일 경로는 docs/bus/ 밖으로 나가지 못하게 검사
-- documents.json이 바뀌어도 검색 목록이 다시 만들어지도록 docs_fingerprint에 포함
+- 파일·제목 변경은 docs_fingerprint에 포함하고, 등급·사용 여부는 재색인 없이 검색 시 적용
 - 파일 읽고 쓸 때 encoding="utf-8"
 - 정상 1개, 잘못된 파일 1개 테스트
 ```
@@ -84,7 +84,9 @@ frontend/src/components/의 기존 패널 하나가 api.js로 데이터를 불�
 <details markdown="1">
 <summary>기술 세부 내용</summary>
 
-- 문서 정보 저장: `docs/bus/documents.json` (DB가 꺼져도 동작해야 해서 파일로 저장)
+- 기본 법규는 `docs/bus/`에 보관하고 화면에서 삭제하지 않습니다. 업로드와 운영 목록은 Git 제외 경로 `data/docs/bus/`에 저장합니다.
+- 문서 관리는 관리자 역할에서만 열고, 서버도 변경 요청의 `role=admin`을 검사합니다.
+- 문서 정보 저장: `data/docs/bus/documents.json` (DB가 꺼져도 동작해야 해서 파일로 저장)
 
 ```json
 {"여객자동차 운수사업법 시행규칙(...).pdf":
@@ -94,7 +96,7 @@ frontend/src/components/의 기존 패널 하나가 api.js로 데이터를 불�
 
 - 목록에 없는 기존 파일은 "공개 · 사용"으로 간주 (기존 문서 그대로 동작)
 - API: `GET /api/bus/documents`, `POST /api/bus/documents`(업로드), `PUT /api/bus/documents/{file}`, `DELETE /api/bus/documents/{file}`. 위치는 `adapter.py`의 `router()` 안
-- 파일 업로드 안전: 확장자·크기 제한, `Path.resolve()`로 `docs/bus/` 하위인지 확인
+- 파일 업로드 안전: 확장자·크기 제한, `Path.resolve()`로 `data/docs/bus/` 하위인지 확인
 - 설계 근거: [기능별 설계](algorithms.md)의 F-36
 
 </details>

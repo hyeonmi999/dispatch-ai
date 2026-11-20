@@ -5,7 +5,7 @@
 
     <template v-for="(item, id) in layout" :key="id">
       <section
-        v-if="item.on || KEEP_MOUNTED.has(id)"
+        v-if="allowedPanels.includes(id) && (item.on || KEEP_MOUNTED.has(id))"
         v-show="item.on"
         class="slot"
         :class="{ moving: drag?.id === id }"
@@ -50,6 +50,7 @@ import { COLS, MIN_SIZE, ROW, TITLES, resolve } from '../layout'
 const props = defineProps({
   layout: { type: Object, required: true },
   metas: { type: Object, default: () => ({}) },
+  allowedPanels: { type: Array, default: () => Object.keys(TITLES) },
 })
 const emit = defineEmits(['update:layout', 'commit', 'close'])
 
@@ -61,9 +62,12 @@ const gridEl = ref(null)
 const drag = ref(null) // 화면 표시용: { id, mode, dx, dy, x0, y0 }
 let g = null // 끌기 시작 시점의 값
 
-const visibleCount = computed(() => Object.values(props.layout).filter((i) => i.on).length)
+const visibleItems = computed(() => Object.entries(props.layout)
+  .filter(([id, item]) => props.allowedPanels.includes(id) && item.on)
+  .map(([, item]) => item))
+const visibleCount = computed(() => visibleItems.value.length)
 const gridHeight = computed(() => {
-  const bottom = Math.max(0, ...Object.values(props.layout).filter((i) => i.on).map((i) => i.y + i.h))
+  const bottom = Math.max(0, ...visibleItems.value.map((item) => item.y + item.h))
   return `${(bottom + 1) * ROW}px`
 })
 const ghost = computed(() => (drag.value?.mode === 'move' ? props.layout[drag.value.id] : null))

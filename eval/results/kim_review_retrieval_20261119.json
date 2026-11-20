@@ -1,0 +1,128 @@
+{
+  "scope": "retrieval only; real bge; Qwen/OpenAI answer evaluation not run",
+  "baseline": "origin/dev",
+  "cases": 20,
+  "matches": 20,
+  "results": [
+    {
+      "id": "A1",
+      "found": true,
+      "sources": 4,
+      "matches_dev": true
+    },
+    {
+      "id": "A2",
+      "found": true,
+      "sources": 4,
+      "matches_dev": true
+    },
+    {
+      "id": "A3",
+      "found": true,
+      "sources": 4,
+      "matches_dev": true
+    },
+    {
+      "id": "A4",
+      "found": true,
+      "sources": 4,
+      "matches_dev": true
+    },
+    {
+      "id": "A5",
+      "found": true,
+      "sources": 4,
+      "matches_dev": true
+    },
+    {
+      "id": "A6",
+      "found": true,
+      "sources": 4,
+      "matches_dev": true
+    },
+    {
+      "id": "A7",
+      "found": true,
+      "sources": 4,
+      "matches_dev": true
+    },
+    {
+      "id": "A8",
+      "found": true,
+      "sources": 4,
+      "matches_dev": true
+    },
+    {
+      "id": "A9",
+      "found": true,
+      "sources": 4,
+      "matches_dev": true
+    },
+    {
+      "id": "A10",
+      "found": true,
+      "sources": 4,
+      "matches_dev": true
+    },
+    {
+      "id": "A11",
+      "found": true,
+      "sources": 4,
+      "matches_dev": true
+    },
+    {
+      "id": "A12",
+      "found": true,
+      "sources": 4,
+      "matches_dev": true
+    },
+    {
+      "id": "R1",
+      "found": true,
+      "sources": 4,
+      "matches_dev": true
+    },
+    {
+      "id": "R2",
+      "found": false,
+      "sources": 0,
+      "matches_dev": true
+    },
+    {
+      "id": "R3",
+      "found": true,
+      "sources": 4,
+      "matches_dev": true
+    },
+    {
+      "id": "R4",
+      "found": true,
+      "sources": 4,
+      "matches_dev": true
+    },
+    {
+      "id": "R5",
+      "found": true,
+      "sources": 4,
+      "matches_dev": true
+    },
+    {
+      "id": "R6",
+      "found": true,
+      "sources": 4,
+      "matches_dev": true
+    },
+    {
+      "id": "R7",
+      "found": true,
+      "sources": 3,
+      "matches_dev": true
+    },
+    {
+      "id": "R8",
+      "found": true,
+      "sources": 1,
+      "matches_dev": true
+    }
+  ]
+}

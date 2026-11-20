@@ -33,20 +33,16 @@ from app.config import (
     RAG_ROLE_OVERFETCH,
     RAG_SCORE_THRESHOLD,
     RAG_TOP_K,
+    ROLE_GRADES,
     VECTORSTORE_DIR,
 )
 from app.core import llm as llm_module
 from app.core.llm import LLMConfigError
 from app.core.prompts import RAG_SYSTEM_MESSAGE as SYSTEM_MESSAGE   # 프롬프트는 prompts.py 한 곳에
 from app.core.schemas import DocumentRole
-from app.core.documents import MANIFEST_NAME, read_document_manifest
+from app.core.documents import document_records, document_files
 
 EMBEDDING_CHOICES = ("bge", "openai")
-ROLE_GRADES = {
-    "citizen": {"공개"},
-    "staff": {"공개", "내부"},
-    "admin": {"공개", "내부", "제한"},
-}
 
 # LLM이 형식을 어기고 "명시되지 않았습니다"처럼 돌려 말해도 근거 없음으로 처리
 NOT_FOUND_HINTS = ("찾을 수 없", "명시되지 않", "언급되지 않", "나와 있지 않", "포함되어 있지 않",
@@ -236,14 +232,12 @@ def load_txt(path: Path) -> list[dict]:
 
 
 def load_documents(docs_dir: Path) -> list[dict]:
-    records = read_document_manifest(docs_dir)
+    records = document_records(docs_dir)
     chunks = []
-    for path in sorted(docs_dir.glob("*")):
+    for path in document_files(docs_dir):
         if path.is_symlink() or not path.is_file():
             continue
         record = records.get(path.name, {})
-        if record.get("active") is False:
-            continue
         if path.suffix.lower() == ".pdf":
             parts = load_pdf_articles(path)
             if not parts and record:
@@ -277,14 +271,13 @@ def load_documents(docs_dir: Path) -> list[dict]:
 
 def docs_fingerprint(docs_dir: Path) -> str:
     h = hashlib.md5(f"chunk-v{CHUNK_VERSION}".encode())
-    for path in sorted(docs_dir.glob("*")):
+    for path in document_files(docs_dir):
         if not path.is_symlink() and path.is_file() and path.suffix.lower() in RAG_DOCUMENT_SUFFIXES:
             h.update(f"{path.name}:{path.stat().st_size}:{int(path.stat().st_mtime)}".encode())
-    manifest = docs_dir / MANIFEST_NAME
-    try:
-        h.update(manifest.read_text(encoding="utf-8").encode("utf-8"))
-    except FileNotFoundError:
-        pass
+    records = document_records(docs_dir)
+    titles = {path.name: records.get(path.name, {}).get("title")
+              for path in document_files(docs_dir)}
+    h.update(json.dumps(titles, ensure_ascii=False, sort_keys=True).encode("utf-8"))
     return h.hexdigest()
 
 
@@ -303,14 +296,11 @@ class KnowledgeBase:
         return VECTORSTORE_DIR / self.domain / embedding
 
     def has_docs(self) -> bool:
-        return self.docs_dir.exists() and any(
-            p.suffix.lower() in {".pdf", ".txt"} for p in self.docs_dir.glob("*")
-        )
+        return bool(document_files(self.docs_dir))
 
     def status(self) -> dict:
         out = {"docs_dir": str(self.docs_dir), "documents": 0, "indexes": {}}
-        if self.docs_dir.exists():
-            out["documents"] = len([p for p in self.docs_dir.glob("*") if p.suffix.lower() in {".pdf", ".txt"}])
+        out["documents"] = len(document_files(self.docs_dir))
         for emb in EMBEDDING_CHOICES:
             manifest = self.index_dir(emb) / "manifest.json"
             out["indexes"][emb] = json.loads(manifest.read_text(encoding="utf-8")) if manifest.exists() else None
@@ -348,6 +338,13 @@ class KnowledgeBase:
         (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"✅ [{self.domain}/{embedding}] FAISS 인덱스 생성: {len(documents)} chunks ({time.time() - t0:.0f}s)")
         return store
+
+    def index_needs_rebuild(self, embedding: str) -> bool:
+        manifest = self.index_dir(embedding) / "manifest.json"
+        return not manifest.exists() or (
+            json.loads(manifest.read_text(encoding="utf-8")).get("fingerprint")
+            != docs_fingerprint(self.docs_dir)
+        )
 
     def get_store(self, embedding: str):
         """인덱스가 없거나 docs가 바뀌었으면 다시 만들고, 있으면 로드합니다."""
@@ -387,7 +384,7 @@ class KnowledgeBase:
         store = self.get_store(embedding)
         if store is None:
             return []
-        records = read_document_manifest(self.docs_dir)
+        records = document_records(self.docs_dir)
         allowed = ROLE_GRADES[role]
         total = store.index.ntotal
         fetch = min(k * RAG_ROLE_OVERFETCH, total)
@@ -396,7 +393,7 @@ class KnowledgeBase:
             for doc, score in store.similarity_search_with_score(query, k=fetch):
                 # 기존 인덱스에도 파일명이 있으므로 최신 목록의 등급을 우선 적용합니다.
                 record = records.get(doc.metadata.get("file"), {})
-                grade = record.get("grade", doc.metadata.get("grade", "공개"))
+                grade = record.get("grade", "공개")
                 if record.get("active") is not False and grade in allowed:
                     hits.append((doc, score))
                     if len(hits) == k:

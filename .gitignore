@@ -32,3 +32,11 @@ frontend/dist/
 .DS_Store
 .idea/
 .vscode/
+
+# 문서 관리 업로드와 로컬 등급 목록
+data/docs/
+.test-temp/
+.review/
+
+# 이전 버전의 문서 운영 목록
+/docs/*/documents.json

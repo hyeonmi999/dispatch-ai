@@ -38,7 +38,7 @@
       </div>
 
       <!-- 로딩 상태 -->
-      <div v-if="loading" class="turn assistant"><n-spin size="small" /> <span class="sm">답변을 만드는 중</span></div>
+      <div v-if="loading" class="turn assistant"><n-spin size="small" /> <span class="sm" role="status">{{ pendingNotice }}</span></div>
     </div>
 
     <div class="input">
@@ -92,6 +92,7 @@ const examples = ['160번 버스 노선 알려줘', '143번 내일 오전 8시�
 const turns = ref([])
 const draft = ref('')
 const loading = ref(false)
+const pendingNotice = ref('문서 검색 상태를 확인하는 중입니다.')
 const useLlm = ref(false)
 const listEl = ref(null)
 
@@ -172,12 +173,17 @@ async function send(text) {
     .map((t) => ({ role: t.role, content: t.content.slice(0, HISTORY_ITEM_MAX) }))
   turns.value.push({ role: 'user', content: message })
   draft.value = ''
+  pendingNotice.value = '문서 검색 상태를 확인하는 중입니다.'
   loading.value = true
   scrollDown()
   try {
     let user = here.value
     const body = { message, history, llm: props.llm, embedding: props.embedding, use_llm: useLlm.value, role: props.role }
     if (user) body.location = user
+    const status = await api.knowledgeStatus(props.domain, props.embedding)
+    pendingNotice.value = status?.rebuild_required
+      ? '문서 검색이 필요하면 색인을 갱신한 후 답변합니다. 시간이 더 걸릴 수 있습니다.'
+      : '답변을 만드는 중'
     let r = await api.chat(props.domain, body)
     // "여기서 ○○ 어떻게 가?"인데 현재 위치가 꺼져 있으면, 되묻지 않고 위치를 얻어 한 번 더 물음
     if (r?.intent === 'clarify' && r?.slots?.from_here && !user) {
