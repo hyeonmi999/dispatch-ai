@@ -287,3 +287,50 @@ def test_index_status_tracks_content_changes_not_policy(tmp_path, monkeypatch):
     client.put("/api/bus/documents/status.txt", json={**fields, "title": "제목 변경", "active": True})
     assert client.get(endpoint).json() == {"rebuild_required": True}
     assert client.get(endpoint, params={"embedding": "invalid"}).status_code == 422
+
+
+
+def test_reupload_same_file_identity_does_not_reuse_old_content(tmp_path, monkeypatch):
+    import os
+    client, root, kb = document_client(tmp_path, monkeypatch)
+    endpoint = "/api/bus/documents"
+    fields = {"title": "자료", "type": "내부자료", "grade": "제한"}
+    before = "문서검증표지 비밀내용A"
+    after = "문서검증표지 공개내용B"
+    assert len(before.encode()) == len(after.encode())
+    assert client.post(endpoint, data=fields, files={"file": ("a.txt", before, "text/plain")}).status_code == 201
+    assert before in kb.search("문서검증표지", "bge", role="admin")[0]["text"]
+    path = managed_document_dir(root) / "a.txt"
+    stamp = path.stat()
+    assert client.delete(endpoint + "/a.txt").status_code == 204
+    assert client.post(endpoint, data={**fields, "grade": "공개"},
+                       files={"file": ("a.txt", after, "text/plain")}).status_code == 201
+    os.utime(path, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+    # ns 수정 시각까지 같아도 삭제한 제한 문서 내용이 노출되면 안 됩니다.
+    hits = kb.search("문서검증표지", "bge", role="citizen")
+    assert after in hits[0]["text"]
+    assert all(before not in hit["text"] for hit in hits)
+
+
+@pytest.mark.parametrize("name", ["same.txt", "SAME.TXT"])
+def test_duplicate_files_do_not_break_search_or_status(tmp_path, monkeypatch, name):
+    client, root, kb = document_client(tmp_path, monkeypatch)
+    fields = {"title": "자료", "type": "법령", "grade": "공개"}
+    assert client.post("/api/bus/documents", data=fields,
+                       files={"file": ("same.txt", "문서검증표지 업로드", "text/plain")}).status_code == 201
+    assert kb.search("문서검증표지", "bge")
+    (root / name).write_text("문서검증표지 기본 파일", encoding="utf-8")
+    (root / "other.txt").write_text("문서검증표지 정상 자료", encoding="utf-8")
+    # 관리는 충돌을 알리고 검색은 등급이 모호한 양쪽 파일을 모두 제외합니다.
+    assert client.get("/api/bus/documents").status_code == 409
+    hits = kb.search("문서검증표지", "bge")
+    assert len(hits) == 1 and hits[0]["document"] == "other"
+    assert kb.status()["documents"] == 1
+    assert kb.has_docs()
+    assert not kb.index_needs_rebuild("bge")
+    from app.api import routes
+    from types import SimpleNamespace
+    client.app.include_router(routes.router)
+    monkeypatch.setattr(routes, "llm_status", lambda: {})
+    monkeypatch.setattr(routes.registry, "all", lambda: [SimpleNamespace(info=kb.status)])
+    assert client.get("/api/health").status_code == 200

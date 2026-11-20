@@ -1,0 +1,7 @@
+{
+  "scope": "Document chunk/text/metadata comparison only; no LLM answer evaluation",
+  "baseline": "bb14b4b16d56562569a65b7c542b6877574dd3a2",
+  "chunks": 1039,
+  "identical": true,
+  "sha256": "3512616906d513085a9bbffb7a083ebe3af9bf2b7ff06cafcf5444391e0be9cb"
+}
