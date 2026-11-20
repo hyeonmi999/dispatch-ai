@@ -388,9 +388,10 @@ class KnowledgeBase:
         allowed = ROLE_GRADES[role]
         total = store.index.ntotal
         fetch = min(k * RAG_ROLE_OVERFETCH, total)
+        vector = get_embedder(embedding).embed_query(query)      # 후보를 늘려 다시 찾아도 질문은 한 번만 임베딩
         while True:
             hits = []
-            for doc, score in store.similarity_search_with_score(query, k=fetch):
+            for doc, score in store.similarity_search_with_score_by_vector(vector, k=fetch):
                 # 기존 인덱스에도 파일명이 있으므로 최신 목록의 등급을 우선 적용합니다.
                 record = records.get(doc.metadata.get("file"), {})
                 grade = record.get("grade", "공개")

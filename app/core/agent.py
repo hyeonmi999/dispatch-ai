@@ -332,8 +332,84 @@ def verify_numbers(answer: str, *evidence) -> bool:
     return True
 
 
-# LLM이 문장을 다듬다가 결론을 뒤집는 것을 막는 확인 (숫자는 같아도 "유지"를 "감차해도 됨"으로 바꾸는 경우)
-# 권고마다 답변에 꼭 있어야 하는 말과, 있으면 안 되는 말
+# --- LLM이 다시 쓴 문장의 숫자 확인 (verify_numbers보다 엄격함) ---
+# verify_numbers는 "근거에 있는 숫자인가"만 봐서, 날짜의 20을 "20명"으로 쓰거나 0.618을 "1"로 쓰거나
+# 예측과 작년 값을 바꿔 써도 통과함. 다시 쓴 문장은 문장 틀 답변과 "값 + 단위"가 같아야 하고, 순서와 설명도 같아야 함.
+_UNIT_NUMBER_RE = re.compile(r"(\d+(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(km|명|분|회|대|시|번|개|곳|안|m|%|건|배)?")
+_SENTENCE_END_RE = re.compile(r"[.!?\n]")
+_KOREAN_WORD_RE = re.compile(r"[가-힣]{2,}")
+
+
+def _unit_numbers(text: str) -> tuple[list[tuple[float, str, str]], set[str]]:
+    """([(값, 단위, 앞 구절)], {날짜}) — 앞 구절은 같은 문장에서 바로 앞 숫자 뒤부터 이 숫자 앞까지.
+
+    날짜(2026-11-20, 11월 20일)는 숫자 목록에 넣지 않고 따로 모음 (날짜의 20이 "20명"의 근거가 되지 않게).
+    """
+    dates: set[str] = set()
+
+    def take_date(match: re.Match) -> str:
+        groups = match.groups()
+        dates.add(f"{int(groups[-2]):02d}-{int(groups[-1]):02d}")
+        return " " * len(match.group(0))       # 자리를 그대로 두어 앞 구절이 이어 붙지 않게
+    text = _KOR_DATE_RE.sub(take_date, _ISO_DATE_RE.sub(take_date, text))
+    out, last = [], 0
+    for match in _UNIT_NUMBER_RE.finditer(text):
+        before = _SENTENCE_END_RE.split(text[last:match.start()])[-1]
+        out.append((float(match.group(1).replace(",", "")), match.group(2) or "", before))
+        last = match.end()
+    return out, dates
+
+
+def _label_keys(phrase: str) -> list[str]:
+    """구절에서 설명하는 말의 앞 두 글자: "작년 같은 요일은" → [작년, 같은, 요일] (조사가 달라도 같게 보려고 두 글자만)"""
+    return [word[:2] for word in _KOREAN_WORD_RE.findall(phrase)]
+
+
+def same_numbers(answer: str, template: str) -> bool:
+    """다시 쓴 답변의 숫자가 문장 틀 답변과 같은 뜻으로 쓰였으면 True.
+
+    1) 값과 단위가 문장 틀에 있는 짝이어야 함 (3,133명 → "3,133명"만. "3,133회"나 "3,100명"은 안 됨)
+    2) 같은 단위의 서로 다른 값은 문장 틀과 같은 순서 ("7.5분에서 7분으로"를 "7분에서 7.5분으로"로 바꾸면 안 됨)
+    3) 숫자 앞의 설명이 다른 값의 설명이면 안 됨 ("작년 3,133명"인데 3,133은 예상 값인 경우)
+    뜻이 같아도 순서를 바꿔 쓴 답은 버려짐 → 문장 틀 답변을 그대로 씀 (틀린 답을 내보내는 것보다 안전).
+    """
+    wanted, wanted_dates = _unit_numbers(template)
+    shown, shown_dates = _unit_numbers(answer)
+    if not shown_dates <= wanted_dates:
+        return False
+    pairs = [(value, unit) for value, unit, _ in wanted]
+    if any((value, unit) not in pairs for value, unit, _ in shown):
+        return False
+
+    # 단위별로: 문장 틀에서 값이 처음 나온 순서, 값마다 그 값에만 붙은 설명
+    for unit in {unit for _, unit in pairs}:
+        order: list[float] = []
+        labels: dict[float, set[str]] = {}
+        for value, u, before in wanted:
+            if u == unit:
+                if value not in order:
+                    order.append(value)
+                labels.setdefault(value, set()).update(_label_keys(before))
+        if len(order) < 2:
+            continue
+        own = {v: keys - set().union(*(labels[o] for o in order if o != v)) for v, keys in labels.items()}
+        owner = {key: v for v, keys in own.items() for key in keys}
+        seen: list[float] = []
+        for value, u, before in shown:
+            if u != unit:
+                continue
+            if value not in seen:
+                if any(order.index(value) < order.index(s) for s in seen):
+                    return False                                   # 2) 순서가 바뀜
+                seen.append(value)
+            marks = [key for key in _label_keys(before) if key in owner]
+            if marks and owner[marks[-1]] != value:
+                return False                                       # 3) 가장 가까운 설명이 다른 값의 것
+    return True
+
+
+# --- LLM이 문장을 다듬다가 결론을 뒤집는 것을 막는 확인 (숫자는 같아도 "유지"를 "감차해도 됨"으로 바꾸는 경우) ---
+# 권고마다 답변에 꼭 있어야 하는 말과, 있으면 안 되는 말 (다른 권고를 뜻하는 말)
 ACTION_MUST = {
     "increase": ("단축", "증차", "늘리", "늘려"),
     "increase_limited": ("최소 배차간격", "별도 대책", "한계"),
@@ -341,28 +417,58 @@ ACTION_MUST = {
     "keep": ("유지",),
 }
 ACTION_FORBID = {
-    "increase": ("유지", "않아도", "필요 없", "필요없", "감차"),
-    "increase_limited": ("감차해도",),
-    "decrease": ("증차해야", "늘려야", "단축해야"),
-    "keep": ("증차해야", "증차가 필요", "늘려야", "단축해야", "감차해도", "감차가 필요", "감차해야", "줄여도", "줄여야"),
+    "increase": ("유지", "감차", "줄이", "줄여"),
+    "increase_limited": ("감차", "줄이", "줄여"),
+    "decrease": ("증차", "늘리", "늘려", "단축", "유지"),
+    "keep": ("증차", "감차", "단축", "늘리", "늘려", "줄이", "줄여"),
 }
 LEVELS = ("매우혼잡", "혼잡", "보통", "여유")
+# 바로 뒤에 오면 뜻이 뒤집히는 말: "감차하지 않아도", "유지보다는", "혼잡하지 않습니다", "여유가 없습니다"
+_NEGATION_AFTER = r"[^.!?\n,]{0,12}(?:않|없|말고|마세요|마십|보다|아니|어렵|불필요)"
+NOT_LEVEL_PHRASES = ("혼잡도", "혼잡 구간", "혼잡 단계")          # 단계를 말하는 것이 아닌 표현
+_CROWDED_CLAIM_RE = re.compile(r"붐비(?!는 구간)|붐빕|붐벼|붐빌")   # "가장 붐비는 구간"은 문장 틀에도 있는 표현
+CALM_CLAIMS = ("한산", "한가", "널널", "쾌적")
+_OPTION_NO_RE = re.compile(r"(\d+)\s*안")
+
+
+def _negated(text: str, words: tuple) -> bool:
+    return any(re.search(re.escape(word) + _NEGATION_AFTER, text) for word in words)
 
 
 def keeps_meaning(answer: str, facts: dict) -> bool:
-    """다시 쓴 답변이 권고 방향과 혼잡 단계를 그대로 전하면 True"""
+    """다시 쓴 답변이 권고 방향·혼잡 단계·추천 경로를 그대로 전하면 True"""
     action = facts.get("action")
     if action:
-        if not _has(answer, ACTION_MUST.get(action, ())) or _has(answer, ACTION_FORBID.get(action, ())):
+        must = ACTION_MUST.get(action, ())
+        if not _has(answer, must) or _negated(answer, must) or _has(answer, ACTION_FORBID.get(action, ())):
             return False
     level = facts.get("level")
     if level:
-        # 답변에 혼잡 단계를 적었다면 기능 결과의 단계여야 함 ("혼잡"은 "매우혼잡"에도 들어 있어 긴 말부터 지우며 확인)
-        rest = answer.replace("혼잡도", " ").replace("혼잡 구간", " ").replace("혼잡 단계", " ")   # 단계가 아닌 말
+        rest = answer.replace("매우 혼잡", "매우혼잡")
+        for phrase in NOT_LEVEL_PHRASES:
+            rest = rest.replace(phrase, " ")
+        if _negated(rest, (level,)):
+            return False
+        # 다른 단계는 적지 않아야 함 ("혼잡"은 "매우혼잡"에도 들어 있어 긴 말부터 지우며 확인)
+        found = False
         for word in LEVELS:
-            if word in rest and word != level:
-                return False
+            if word in rest:
+                if word != level:
+                    return False
+                found = True
             rest = rest.replace(word, " ")
+        # 단계를 적지 않았으면 붐빈다·한산하다는 말을 하지 않아야 하고, 적었으면 그 단계와 어긋나는 말을 하지 않아야 함
+        crowded, calm = bool(_CROWDED_CLAIM_RE.search(rest)), _has(rest, CALM_CLAIMS)
+        if not found and (crowded or calm):
+            return False
+        if (level == "여유" and crowded) or (level in ("혼잡", "매우혼잡") and calm):
+            return False
+    recommended = facts.get("recommended_no")
+    if recommended:
+        # 길안내: "추천"을 말한 문장의 "N안"은 추천 경로의 번호여야 함
+        for sentence in _SENTENCE_END_RE.split(answer):
+            if "추천" in sentence and any(int(n) != recommended for n in _OPTION_NO_RE.findall(sentence)):
+                return False
     return True
 
 
@@ -494,6 +600,16 @@ def _guide(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, list[di
         facts["origin_walk_m"] = origin["walk_m"]
         lines.append(f"📍 가장 가까운 정류장은 {origin['stop']}(약 {origin['walk_m']}m)입니다.")
 
+    for place, asked, other in ((origin, slots.get("origin"), "도착지"), (dest, slots.get("destination"), "출발지")):
+        if place.get("ambiguous"):
+            lines.append(f"ℹ️ '{asked or place['stop']}'(으)로 찾은 정류장이 멀리 떨어진 여러 곳에 있어, {other}에서 가까운 곳부터 찾아 {place['stop']}(으)로 안내합니다.")
+    walk = result.get("walk_only")
+    if walk:
+        facts["walk_only"] = walk
+        start = "현재 위치" if origin.get("label") == "현재 위치" else origin["stop"]
+        lines = [f"🧭 {start} → {dest['stop']}",
+                 f"🚶 바로 근처입니다. 걸어서 약 {walk['walk_m']}m(약 {walk['walk_min']}분)라 버스를 탈 필요가 없습니다."]
+        return args, "\n".join(lines), [], {**facts, "data": result}
     if not options:
         lines.append("😢 두 정류장을 잇는 경로를 찾지 못했습니다 (직행·환승 한 번 기준).")
         return args, "\n".join(lines), [], {**facts, "data": result}
@@ -522,6 +638,7 @@ def _guide(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, list[di
     rec = result["recommendation"]
     if rec:
         number = rec["index"] + 1
+        facts["recommended_no"] = number
         if rec["reason"] == "less_crowded":
             facts["slower_by_min"] = rec["slower_by_min"]
             lines.append(f"👉 추천은 {number}안입니다. 약 {rec['slower_by_min']}분 더 걸리지만 덜 붐빕니다.")
@@ -608,7 +725,7 @@ HANDLERS = {"predict": _predict, "advise": _advise, "ask": _ask, "guide": _guide
 
 
 def _rewrite(llm: str, message: str, template: str, facts: dict) -> str | None:
-    """문장 틀 답변을 LLM이 자연스럽게 다시 씀. 숫자가 하나라도 달라지면 None (문장 틀 답변을 그대로 씀)"""
+    """문장 틀 답변을 LLM이 자연스럽게 다시 씀. 숫자나 결론이 문장 틀 답변과 달라지면 None (문장 틀 답변을 그대로 씀)"""
     shown = {k: v for k, v in facts.items() if k != "data"}
     user = f"[기능 결과]{chr(10)}{json.dumps(shown, ensure_ascii=False)}{chr(10)}{chr(10)}[기본 답변]{chr(10)}{template}{chr(10)}{chr(10)}[질문]{chr(10)}{message}"
     try:
@@ -618,7 +735,8 @@ def _rewrite(llm: str, message: str, template: str, facts: dict) -> str | None:
     except Exception as error:      # 모델 로드 실패·메모리 부족 등: 문장 틀 답변으로 계속
         logger.warning("챗봇 LLM 문장 작성 실패, 문장 틀 답변 사용: %s", error)
         return None
-    ok = bool(answer) and verify_numbers(answer, shown, template) and keeps_meaning(answer, shown)
+    # "�": 모델이 글자를 깨뜨려 낸 자리 (예: "가장 � boom하는 구간")
+    ok = bool(answer) and "�" not in answer and same_numbers(answer, template) and keeps_meaning(answer, shown)
     return answer if ok else None
 
 

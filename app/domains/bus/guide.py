@@ -43,6 +43,8 @@ from app.config import (
     GUIDE_PEAK_FACTOR,
     GUIDE_PEAK_HOURS,
     GUIDE_PLACE_M,
+    GUIDE_PLACE_TRIES,
+    GUIDE_SAME_PLACE_M,
     GUIDE_SCAN_FACTOR,
     GUIDE_SHORT_LEG_MIN,
     GUIDE_SPEED_RANGE_KMH,
@@ -275,6 +277,26 @@ class BusGuide:
             raise GuideError(f"'{name}' 정류장을 찾을 수 없습니다. {scope} 이름으로 알려 주세요.")
         return [s for s in self.stops if s["name"] == best[0]["name"]]
 
+    @staticmethod
+    def places(matched: list[dict]) -> list[list[dict]]:
+        """이름으로 찾은 정류장을 '곳'으로 묶음: GUIDE_SAME_PLACE_M 안에서 이어지는 정류장끼리 한 곳.
+
+        "서울역"·"서울역버스환승센터"는 한 곳, 서로 수 km 떨어진 "농수산물센터" 3곳은 세 곳.
+        """
+        groups: list[list[dict]] = []
+        for stop in matched:
+            near = [g for g in groups
+                    if any(distance_m(stop["lat"], stop["lng"], o["lat"], o["lng"]) <= GUIDE_SAME_PLACE_M for o in g)]
+            for g in near:
+                groups.remove(g)
+            groups.append([s for g in near for s in g] + [stop])
+        return groups
+
+    @staticmethod
+    def gap_m(a: list[dict], b: list[dict]) -> float:
+        """두 묶음에서 가장 가까운 정류장 사이의 직선거리"""
+        return min(distance_m(x["lat"], x["lng"], y["lat"], y["lng"]) for x in a for y in b)
+
     def around(self, matched: list[dict]) -> list[dict]:
         """이름으로 찾은 정류장 + 그 주변(GUIDE_PLACE_M)의 정류장. 길 건너편이나 다른 출구에서 타는 노선을 놓치지 않기 위함.
 
@@ -427,24 +449,21 @@ class BusGuide:
                     "나머지 노선은 평일 기준 배차간격만 안내합니다. 탑승 시간은 정류장별 공식 시간표로 계산했고 실시간 교통 상황은 반영하지 않습니다.")
         return "이 서비스가 다루는 노선만 안내합니다. 소요 시간은 운행시간에서 어림한 값이고, 혼잡도는 예측값입니다."
 
-    def find(self, date, hour: int, destination: str, origin: str | None = None,
-             lat: float | None = None, lng: float | None = None) -> dict:
-        self._build()
-        if origin:
-            named = self.by_name(origin)
-            origin_name = Counter(s["name"] for s in named).most_common(1)[0][0]
-            origins, far, origin_label = self.around(named), False, origin_name
-        elif lat is not None and lng is not None:
+    def _plan(self, date, hour: int, origin_place: list[dict] | None, named_dests: list[dict],
+              lat: float | None, lng: float | None) -> dict:
+        """출발지 한 곳과 도착지 한 곳 사이의 경로 후보를 계산 (origin_place가 없으면 현재 위치에서 출발)"""
+        dest_name = Counter(s["name"] for s in named_dests).most_common(1)[0][0]
+        if origin_place:
+            origin_name = Counter(s["name"] for s in origin_place).most_common(1)[0][0]
+            origins, far, origin_label = self.around(origin_place), False, origin_name
+        else:
             origins, far = self.near(lat, lng)
             origin_label = "현재 위치"
             origin_name = min(origins, key=lambda s: s.get("walk_m", 0))["name"]
-        else:
-            raise GuideError("출발 정류장 이름이나 현재 위치(lat, lng)가 필요합니다")
-        named_dests = self.by_name(destination)
-        dest_name = Counter(s["name"] for s in named_dests).most_common(1)[0][0]
-        if origin and {s["station_id"] for s in named} & {s["station_id"] for s in named_dests}:
-            raise GuideError("출발 정류장과 도착 정류장이 같습니다")
         dests = self.around(named_dests)
+        # 출발지가 도착지 바로 옆이면 버스를 탈 필요가 없음 → 경로 대신 걸어갈 거리만 알림
+        gap = self.gap_m(origin_place or [{"lat": lat, "lng": lng}], named_dests)
+        walk_only = {"walk_m": round(gap), "walk_min": math.ceil(gap / GUIDE_WALK_M_PER_MIN)} if gap <= GUIDE_PLACE_M else None
 
         # 정류장이 걸어갈 거리 밖이면 걷는 시간은 계산에서 빼고, 거리만 따로 알림
         origin_walk_m = round(min(s.get("walk_m", 0) for s in origins))
@@ -453,7 +472,7 @@ class BusGuide:
 
         options = []
         # 정류장 수가 적은 후보부터 계산. 그 시간대에 안 다니는 노선(심야버스 등)은 빼고, 쓸 수 있는 후보가 찰 때까지 더 봄
-        for legs in self._candidates(origins, dests)[:GUIDE_CANDIDATES * GUIDE_SCAN_FACTOR]:
+        for legs in ([] if walk_only else self._candidates(origins, dests)[:GUIDE_CANDIDATES * GUIDE_SCAN_FACTOR]):
             if len(options) >= GUIDE_CANDIDATES:
                 break
             try:
@@ -472,16 +491,45 @@ class BusGuide:
                 "fastest": False, "least_crowded": False, "recommended": False,
             })
         options.sort(key=lambda o: o["total_min"])
-        options = options[:GUIDE_MAX_OPTIONS]
+        return {"origins": origins, "named_dests": named_dests, "options": options[:GUIDE_MAX_OPTIONS], "walk_only": walk_only,
+                "origin_name": origin_name, "origin_label": origin_label, "dest_name": dest_name, "far": far,
+                "origin_walk_m": origin_walk_m}
+
+    def find(self, date, hour: int, destination: str, origin: str | None = None,
+             lat: float | None = None, lng: float | None = None) -> dict:
+        self._build()
+        if not origin and (lat is None or lng is None):
+            raise GuideError("출발 정류장 이름이나 현재 위치(lat, lng)가 필요합니다")
+        named_dests = self.by_name(destination)
+        named = self.by_name(origin) if origin else []
+        if origin and {s["station_id"] for s in named} & {s["station_id"] for s in named_dests}:
+            raise GuideError("출발 정류장과 도착 정류장이 같습니다")
+
+        # 같은 이름의 정류장이 멀리 떨어진 여러 곳에 있으면, 출발지와 도착지가 서로 가까운 곳부터 찾아보고
+        # 경로가 있는(또는 걸어갈 수 있는) 첫 번째 곳으로 안내. 어디에도 경로가 없으면 가장 가까운 곳 기준으로 답함
+        here = [{"lat": lat, "lng": lng}]
+        origin_places, dest_places = (self.places(named) if origin else [here]), self.places(named_dests)
+        pairs = sorted(((o, d) for o in origin_places for d in dest_places), key=lambda pair: self.gap_m(*pair))
+        plan = None
+        for origin_place, dest_place in pairs[:GUIDE_PLACE_TRIES]:
+            tried = self._plan(date, hour, origin_place if origin else None, dest_place, lat, lng)
+            plan = plan or tried
+            if tried["walk_only"] or tried["options"]:
+                plan = tried
+                break
+        origins, named_dests, options, walk_only = plan["origins"], plan["named_dests"], plan["options"], plan["walk_only"]
+        origin_name, origin_label, dest_name, far, origin_walk_m = (
+            plan["origin_name"], plan["origin_label"], plan["dest_name"], plan["far"], plan["origin_walk_m"])
 
         day = self.advisor.analyze_day(self.routes[0], date)
         first_origin = min(origins, key=lambda s: s.get("walk_m", 0))
+        near_dest = min(named_dests, key=lambda s: distance_m(first_origin["lat"], first_origin["lng"], s["lat"], s["lng"]))
         result = {
             "date": f"{day['date']:%Y-%m-%d}", "hour": hour, "is_forecast": day["is_future"],
             "origin": {"label": origin_label, "stop": origin_name, "lat": first_origin["lat"], "lng": first_origin["lng"],
-                       "walk_m": origin_walk_m, "far": far},
-            "destination": {"stop": dest_name, "lat": named_dests[0]["lat"], "lng": named_dests[0]["lng"]},
-            "options": options, "recommendation": None, "assumption": self.assumption(),
+                       "walk_m": origin_walk_m, "far": far, "ambiguous": len(origin_places) > 1},
+            "destination": {"stop": dest_name, "lat": near_dest["lat"], "lng": near_dest["lng"], "ambiguous": len(dest_places) > 1},
+            "options": options, "recommendation": None, "walk_only": walk_only, "assumption": self.assumption(),
         }
         if not options:
             return result

@@ -73,6 +73,12 @@ class BusGuidePlace(BaseModel):
     lng: float
     walk_m: int = 0
     far: bool = Field(False, description="True면 걸어갈 거리 안에 정류장이 없어 가장 가까운 정류장으로 안내")
+    ambiguous: bool = Field(False, description="True면 같은 이름의 정류장이 멀리 떨어진 여러 곳에 있어, 상대편(출발지·도착지)에서 가장 가까운 곳으로 고름")
+
+
+class BusGuideWalkOnly(BaseModel):
+    walk_m: int
+    walk_min: int
 
 
 class BusGuideRecommendation(BaseModel):
@@ -90,6 +96,7 @@ class BusGuideResponse(BaseModel):
     destination: BusGuidePlace
     options: list[BusGuideOption] = Field(..., description="빠른 순. 경로가 없으면 빈 목록")
     recommendation: BusGuideRecommendation | None = None
+    walk_only: BusGuideWalkOnly | None = Field(None, description="출발지가 도착지 바로 옆이면 걸어갈 거리. 이때 options는 빈 목록")
     assumption: str
 
 

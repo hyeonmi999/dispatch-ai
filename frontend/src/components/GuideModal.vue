@@ -9,7 +9,8 @@
       <MapView v-if="show" :geometries="geometries" :guide="view" />
     </div>
 
-    <p v-if="!options.length" class="empty-note">두 정류장을 잇는 경로를 찾지 못했습니다 (직행·환승 한 번 기준).</p>
+    <p v-if="guide?.walk_only" class="empty-note">도착지가 바로 근처입니다. 걸어서 약 {{ guide.walk_only.walk_m }}m(약 {{ guide.walk_only.walk_min }}분)입니다.</p>
+    <p v-else-if="!options.length" class="empty-note">두 정류장을 잇는 경로를 찾지 못했습니다 (직행·환승 한 번 기준).</p>
 
     <button v-for="(o, i) in options" :key="i" class="opt" :class="{ on: i === index }" :aria-pressed="i === index" @click="index = i">
       <span class="top">
