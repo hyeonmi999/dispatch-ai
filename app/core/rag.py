@@ -234,7 +234,7 @@ def load_txt(path: Path) -> list[dict]:
 def load_documents(docs_dir: Path) -> list[dict]:
     records = document_records(docs_dir)
     chunks = []
-    for path in document_files(docs_dir):
+    for path in document_files(docs_dir, strict=False):
         if path.is_symlink() or not path.is_file():
             continue
         record = records.get(path.name, {})
@@ -271,13 +271,14 @@ def load_documents(docs_dir: Path) -> list[dict]:
 
 def docs_fingerprint(docs_dir: Path) -> str:
     h = hashlib.md5(f"chunk-v{CHUNK_VERSION}".encode())
-    for path in document_files(docs_dir):
+    for path in document_files(docs_dir, strict=False):
         if not path.is_symlink() and path.is_file() and path.suffix.lower() in RAG_DOCUMENT_SUFFIXES:
-            h.update(f"{path.name}:{path.stat().st_size}:{int(path.stat().st_mtime)}".encode())
+            h.update(f"{path.name}:{path.stat().st_size}:{path.stat().st_mtime_ns}".encode())
     records = document_records(docs_dir)
-    titles = {path.name: records.get(path.name, {}).get("title")
-              for path in document_files(docs_dir)}
-    h.update(json.dumps(titles, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    identities = {path.name: {field: records.get(path.name, {}).get(field)
+                              for field in ("title", "created_at")}
+              for path in document_files(docs_dir, strict=False)}
+    h.update(json.dumps(identities, ensure_ascii=False, sort_keys=True).encode("utf-8"))
     return h.hexdigest()
 
 
@@ -296,11 +297,11 @@ class KnowledgeBase:
         return VECTORSTORE_DIR / self.domain / embedding
 
     def has_docs(self) -> bool:
-        return bool(document_files(self.docs_dir))
+        return bool(document_files(self.docs_dir, strict=False))
 
     def status(self) -> dict:
         out = {"docs_dir": str(self.docs_dir), "documents": 0, "indexes": {}}
-        out["documents"] = len(document_files(self.docs_dir))
+        out["documents"] = len(document_files(self.docs_dir, strict=False))
         for emb in EMBEDDING_CHOICES:
             manifest = self.index_dir(emb) / "manifest.json"
             out["indexes"][emb] = json.loads(manifest.read_text(encoding="utf-8")) if manifest.exists() else None
