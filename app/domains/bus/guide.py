@@ -463,7 +463,7 @@ class BusGuide:
         dests = self.around(named_dests)
         # 출발지가 도착지 바로 옆이면 버스를 탈 필요가 없음 → 경로 대신 걸어갈 거리만 알림
         gap = self.gap_m(origin_place or [{"lat": lat, "lng": lng}], named_dests)
-        walk_only = {"walk_m": round(gap), "walk_min": math.ceil(gap / GUIDE_WALK_M_PER_MIN)} if gap <= GUIDE_PLACE_M else None
+        walk_only = {"walk_m": round(gap), "walk_min": max(1, math.ceil(gap / GUIDE_WALK_M_PER_MIN))} if gap <= GUIDE_PLACE_M else None
 
         # 정류장이 걸어갈 거리 밖이면 걷는 시간은 계산에서 빼고, 거리만 따로 알림
         origin_walk_m = round(min(s.get("walk_m", 0) for s in origins))

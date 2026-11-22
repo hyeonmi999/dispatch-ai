@@ -600,15 +600,19 @@ def _guide(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, list[di
         facts["origin_walk_m"] = origin["walk_m"]
         lines.append(f"📍 가장 가까운 정류장은 {origin['stop']}(약 {origin['walk_m']}m)입니다.")
 
-    for place, asked, other in ((origin, slots.get("origin"), "도착지"), (dest, slots.get("destination"), "출발지")):
-        if place.get("ambiguous"):
-            lines.append(f"ℹ️ '{asked or place['stop']}'(으)로 찾은 정류장이 멀리 떨어진 여러 곳에 있어, {other}에서 가까운 곳부터 찾아 {place['stop']}(으)로 안내합니다.")
+    same_name_notes = [
+        f"ℹ️ '{asked or place['stop']}'(으)로 찾은 정류장이 멀리 떨어진 여러 곳에 있어, {other}에서 가까운 곳부터 찾아 {place['stop']}(으)로 안내합니다."
+        for place, asked, other in ((origin, slots.get("origin"), "도착지"), (dest, slots.get("destination"), "출발지"))
+        if place.get("ambiguous")]
+    lines += same_name_notes
     walk = result.get("walk_only")
     if walk:
         facts["walk_only"] = walk
         start = "현재 위치" if origin.get("label") == "현재 위치" else origin["stop"]
-        lines = [f"🧭 {start} → {dest['stop']}",
-                 f"🚶 바로 근처입니다. 걸어서 약 {walk['walk_m']}m(약 {walk['walk_min']}분)라 버스를 탈 필요가 없습니다."]
+        # 어느 정류장으로 잡았는지 알리는 줄은 남김: 다른 곳에 있는 사용자가 "바로 근처"를 그대로 믿지 않게 (이슈 #22)
+        lines = [f"🧭 {start} → {dest['stop']}", *([history_note] if history_note else []), *same_name_notes,
+                 f"🚶 바로 근처입니다. 걸어서 약 {walk['walk_m']}m(약 {walk['walk_min']}분)라 버스를 탈 필요가 없습니다."
+                 if walk["walk_m"] else "📍 이미 도착 정류장에 있습니다. 버스를 탈 필요가 없습니다."]
         return args, "\n".join(lines), [], {**facts, "data": result}
     if not options:
         lines.append("😢 두 정류장을 잇는 경로를 찾지 못했습니다 (직행·환승 한 번 기준).")
