@@ -1,0 +1,68 @@
+{
+ "summary": {
+  "name": "chat_latency_1",
+  "date": "2026-11-22",
+  "repeat": 10,
+  "target_seconds": 5.0,
+  "llm_measured": null,
+  "how": "앱 안에서 POST /api/bus/chat 호출 (네트워크 왕복 없음, 이력 DB 저장 없음). 기능별 첫 호출은 버림",
+  "seconds": 15
+ },
+ "template": [
+  {
+   "intent": "predict",
+   "q": "143번 2026-11-01 8시에 혼잡해?",
+   "got_intent": "predict",
+   "intent_ok": true,
+   "median_seconds": 0.006,
+   "min_seconds": 0.005,
+   "max_seconds": 0.006,
+   "within_target": true,
+   "llm_used": null
+  },
+  {
+   "intent": "advise",
+   "q": "143번 2026-11-01 8시 증차해야 해?",
+   "got_intent": "advise",
+   "intent_ok": true,
+   "median_seconds": 0.025,
+   "min_seconds": 0.025,
+   "max_seconds": 0.028,
+   "within_target": true,
+   "llm_used": null
+  },
+  {
+   "intent": "ask",
+   "q": "시내버스 운수종사자 휴식시간 규정 알려줘",
+   "got_intent": "ask",
+   "intent_ok": true,
+   "median_seconds": 0.022,
+   "min_seconds": 0.02,
+   "max_seconds": 0.025,
+   "within_target": true,
+   "llm_used": null
+  },
+  {
+   "intent": "guide",
+   "q": "개포주공5단지경기여고에서 휘문중고등학교 어떻게 가? 2026-11-01 8시",
+   "got_intent": "guide",
+   "intent_ok": true,
+   "median_seconds": 0.183,
+   "min_seconds": 0.169,
+   "max_seconds": 0.235,
+   "within_target": true,
+   "llm_used": null
+  },
+  {
+   "intent": "route_info",
+   "q": "143번 노선 정보 알려줘",
+   "got_intent": "route_info",
+   "intent_ok": true,
+   "median_seconds": 0.007,
+   "min_seconds": 0.006,
+   "max_seconds": 0.008,
+   "within_target": true,
+   "llm_used": null
+  }
+ ]
+}
