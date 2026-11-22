@@ -22,7 +22,8 @@
 - 의존성·환경: 없음. 설정 `OPTIMIZE_RUNS_LIMIT`, `GUIDE_CLOCK_MINUTE`, `EVAL_RESULTS_DIR`, `BACKTEST_RESULT_PATH` 추가. `scripts/backtest.py`는 결과 경로를 config에서 읽음
 
 **확인한 것**
-- `python -m pytest -q` 155개 통과 (dev 140개 + 새 테스트 15개: 최적화 이력 6, 메서드 = API 1, 길안내 시간 기준 4, 성능 비교 API 4)
+- `python -m pytest -q` 157개 통과 (dev 140개 + 새 테스트 17개: 최적화 이력 6, 메서드 = API 1, 길안내 시간 기준 4, 성능 비교 API 4, 규격 문서 = 스키마 2)
+- 오정훈 계획서(`oh-assistant.md`)의 박성훈 확인 칸 3개: 규격 문서의 simulate·optimize 예시와 스키마 필드가 1:1로 일치(`tests/test_contracts.py`, 필드 이름을 일부러 틀리게 하면 실패함을 확인), 어댑터 메서드 확인
 - `npm run build` 성공
 - 서버·화면을 띄워 직접 호출: 최적화 1회 → `run_id` 1·이력 조회에 보임, `limit=101`은 422, DB를 끄고 최적화 → 결과 그대로 `db_saved: false`, DB를 끈 채 이력 조회 → 503. 성능 비교 API·화면 5행이 `backtest.json`과 같음(현행 20.66% · 규칙 12.12% · 그리디 8.70% · 최적화 8.31% · 감차 허용 8.57%)
 - 길안내 실데이터: 150번 금하마을 → 종로2가 8시 혼잡도 0.202 → 0.951 (기점 5시 출발 버스). 5개 노선 × 5곳 비교에서 8시 25곳 중 20곳이 다른 시간대를 읽고 차이 평균 0.128, 18시 0.148 (`eval/results/guide_time_basis_1·2.json`)
