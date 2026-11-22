@@ -243,6 +243,45 @@ def test_rewrite_meaning_rejects_negation_and_contradiction():
     assert not keeps_meaning("추천은 2안입니다.", {"recommended_no": 1})
 
 
+def test_rewrite_checks_reject_issue_21_sentences():
+    """이슈 #21: 낱말만 바꾸면 통과하던 틀린 문장"""
+    from app.core.agent import keeps_meaning, same_numbers
+    increase, decrease, keep = ({"action": "increase", "level": "혼잡"}, {"action": "decrease", "level": "여유"},
+                                {"action": "keep", "level": "보통"})
+    # 1. 부정 표현: 목록에 없던 말, 12자 밖, 쉼표 뒤
+    for facts, wrong in (
+        (increase, "증차할 단계는 아닙니다. 지금은 혼잡입니다."),
+        (decrease, "감차는 안 해도 됩니다. 지금은 여유입니다."),
+        (keep, "유지하면 안 됩니다. 혼잡도는 보통입니다."),
+        (increase, "증차할 필요는 현재로서는 전혀 없다고 봅니다. 혼잡입니다."),
+        (increase, "증차는, 필요하지 않습니다. 혼잡입니다."),
+        (increase, "증차는 보류하세요. 혼잡입니다."),
+        (increase, "증차 대신 지금 간격 그대로 두세요. 혼잡입니다."),
+        (increase, "증차에 반대합니다. 혼잡입니다."),
+        (increase, "증차는 못 합니다. 혼잡입니다."),
+        (increase, "증차를 권고합니다. 혼잡과는 거리가 멉니다."),
+        (increase, "증차를 권고합니다. 혼잡은 풀렸습니다."),
+    ):
+        assert not keeps_meaning(wrong, facts), wrong
+    # 맞는 문장은 그대로 통과 ("방안"의 "안", 다음 문장의 부정은 상관없음)
+    assert keeps_meaning("증차 방안을 권고합니다. 지금은 혼잡입니다. 최종 결정은 담당자 검토 없이 하지 않습니다.", increase)
+    assert keeps_meaning(ADVISE_TEMPLATE, increase)
+
+    # 2. 숫자의 설명을 동의어로 바꾸거나 뒤에 붙임
+    assert not same_numbers("현재 6분 간격으로 운행 중입니다.", ADVISE_TEMPLATE)                  # 6분은 권고, 지금은 6.7분
+    assert not same_numbers("현재 혼잡도는 0.73입니다.", ADVISE_TEMPLATE)                        # 0.73은 증차 뒤 예상
+    assert not same_numbers("143번은 3,065명이 탈 것으로 예상됩니다.", PREDICT_TEMPLATE)          # 3,065는 작년 값
+    assert same_numbers("현재 6.7분 간격이고 권고는 6분입니다. 혼잡도는 0.82이고 그때 예상은 0.73입니다.", ADVISE_TEMPLATE)
+    # 3. 숫자 주변에서 뜻을 바꾸는 말
+    assert not same_numbers("오후 8시 예상 승차는 3,133명입니다.", PREDICT_TEMPLATE)
+    assert not same_numbers("2025-11-20 8시 예상 승차는 3,133명입니다.", PREDICT_TEMPLATE)        # 연도가 다름
+    assert not same_numbers("예상 승차는 3,133명의 두 배입니다.", PREDICT_TEMPLATE)
+    assert not same_numbers("예상 승차는 3,133명 미만입니다.", PREDICT_TEMPLATE)
+    assert not same_numbers("예상 승차는 삼천 명 정도입니다.", PREDICT_TEMPLATE)                  # 한글로 쓴 다른 값
+    assert not same_numbers("8시간 동안 3,133명이 탑니다.", PREDICT_TEMPLATE)                    # 8시 → 8시간
+    assert same_numbers("2026-11-20 8시 예상 승차는 3,133명입니다.", PREDICT_TEMPLATE)
+
+
 # ==================================================
 # 7. 길안내·검색 정리 (이슈 #17)
 # ==================================================
