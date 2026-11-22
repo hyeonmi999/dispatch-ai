@@ -39,6 +39,8 @@ export const api = {
   adviseAll: (body) => http.post('/bus/advise/all', body).then((r) => r.data),
   simulate: (body) => http.post('/bus/simulate', body).then((r) => r.data),
   optimize: (body) => http.post('/bus/optimize', body).then((r) => r.data),
+  optimizeRuns: (limit = 10) => http.get('/bus/optimize/runs', { params: { limit } }).then((r) => r.data),
+  backtest: () => http.get('/bus/backtest').then((r) => r.data),
   advisoryBatches: (domain) => http.get('/advisories/batches', { params: { domain, limit: 30 } }).then((r) => r.data),
   advisoryBatch: (id) => http.get(`/advisories/batches/${id}`).then((r) => r.data),
   advisory: (id) => http.get(`/advisories/${id}`).then((r) => r.data),
