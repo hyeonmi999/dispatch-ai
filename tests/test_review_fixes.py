@@ -259,6 +259,11 @@ def test_guide_from_location_next_to_destination_says_walk(client, bus):
                     location={"lat": dest["lat"] + 0.0005, "lng": dest["lng"]}, now=NOW)
     assert out["intent"] == "guide" and "걸어서" in out["answer"] and "찾지 못했습니다" not in out["answer"]
     assert out["numbers_verified"] is True
+    # 이슈 #22: 위치가 정류장 좌표와 같으면 "약 0m(약 0분)"이 아니라 이미 도착했다고 알림
+    out = agent.run(bus, f"여기서 {dest['name'].replace(' ', '')} 어떻게 가? {date} 8시",
+                    location={"lat": dest["lat"], "lng": dest["lng"]}, now=NOW)
+    assert out["data"]["walk_only"] == {"walk_m": 0, "walk_min": 1}
+    assert "이미 도착" in out["answer"] and "0m" not in out["answer"] and out["numbers_verified"] is True
     # 멀리서 출발하면 그대로 버스 경로를 안내
     far = client.post("/api/bus/guide", json={
         "origin": client.get(f"/api/bus/routes/{route}/geometry").json()["stops"][2]["name"],
@@ -316,6 +321,33 @@ def test_same_name_falls_back_to_a_place_that_has_a_route(client, bus):
     result = guide.find(dt.date.fromisoformat(date), 10, "농수산물센터", origin="먼출발")
     assert result["destination"]["ambiguous"] is True
     assert [o["routes"] for o in result["options"]] == [["A1"]] and abs(result["destination"]["lat"] - 37.30) < 0.01
+
+
+def test_walk_answer_keeps_same_name_and_history_notes(client, bus):
+    """이슈 #22: 걸어갈 거리 답변에서도 '같은 이름 여러 곳'·'앞에서 말씀하신 출발지' 안내가 남아야 함"""
+    from app.domains.bus.guide import BusGuide
+    _, date = sample(client)
+    north = _line("N1", ["미래빌라", "용호약국", "북쪽종점"], 37.60, 127.00, step=0.002)     # 정류장 간격 약 180m
+    south = _line("S1", ["미래빌라", "남쪽중간", "남쪽종점"], 37.40, 127.00)                 # 약 22km 남쪽의 같은 이름
+    info = pd.DataFrame([{"route": r, "route_type": "지선", "company": "", "start": "", "end": "", "interval": 5.0,
+                          "run_minutes": 20.0, "first_bus": "04:00", "last_bus": "23:59"} for r in ("N1", "S1")])
+    guide = BusGuide(bus.advisor, bus.dataset.routes, network=(pd.DataFrame(north + south), info))
+    result = guide.find(dt.date.fromisoformat(date), 10, "용호약국", origin="미래빌라")
+    assert result["walk_only"] and result["origin"]["ambiguous"] is True
+
+    bus.__dict__["guide_engine"] = guide
+    try:
+        # 재현: 다른 미래빌라에 있는 사용자에게도 "바로 근처입니다"만 답했음
+        out = agent.run(bus, f"미래빌라에서 용호약국 어떻게 가? {date} 10시", now=NOW)
+        assert out["intent"] == "guide" and "걸어서" in out["answer"] and "여러 곳" in out["answer"]
+        assert out["numbers_verified"] is True
+        # 재현: 앞 대화의 출발지를 이어 썼다는 안내가 사라졌음
+        history = [{"role": "user", "content": f"미래빌라에서 북쪽종점 어떻게 가? {date} 10시"}, {"role": "assistant", "content": "..."}]
+        out = agent.run(bus, "용호약국 어떻게 가?", history=history, now=NOW)
+        assert out["slots"].get("origin_from_history") is True
+        assert "걸어서" in out["answer"] and "앞에서 말씀하신" in out["answer"]
+    finally:
+        bus.__dict__.pop("guide_engine", None)
 
 
 def test_role_search_embeds_the_question_once(tmp_path, monkeypatch):
