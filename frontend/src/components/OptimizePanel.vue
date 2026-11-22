@@ -124,6 +124,40 @@
 
       <p class="foot sm">{{ result.assumption }} · {{ result.solve_seconds }}초</p>
     </template>
+
+    <!-- 실행 이력 (optimization_run): 시간대·날짜를 바꿔 돌린 결과를 나란히 비교 -->
+    <details class="runs" @toggle="onRunsToggle">
+      <summary class="sm">최근 실행 기록</summary>
+      <div v-if="runsError" class="notice warn" role="alert">{{ runsError }}</div>
+      <p v-else-if="runsLoading && !runs" class="empty-note">불러오는 중</p>
+      <p v-else-if="runs && !runs.db?.available" class="empty-note">DB가 꺼져 있어 실행 기록을 남기지 않습니다.</p>
+      <p v-else-if="runs && !runs.items?.length" class="empty-note">아직 실행 기록이 없습니다.</p>
+      <div v-else-if="runs" class="scroll">
+        <table class="runlist">
+          <caption class="sm">최근 {{ runs.items.length }}회 · 붐비는 곳은 혼잡도 0.8 이상 (승객 수 상한 기준)</caption>
+          <thead>
+            <tr>
+              <th scope="col">실행</th>
+              <th scope="col">날짜</th>
+              <th scope="col">시간대</th>
+              <th scope="col">가중치 (과밀·운행·변경)</th>
+              <th scope="col" class="num">붐비는 곳</th>
+              <th scope="col" class="num">운행 증감</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="run in runs.items" :key="run.id" :class="{ now: run.id === result?.run_id }">
+              <td class="num">#{{ run.id }} <small>{{ run.created_at?.slice(5, 16) }}</small></td>
+              <td class="num">{{ run.date }}</td>
+              <td class="num">{{ hourSpan(run.hours) }}</td>
+              <td class="num">{{ weightText(run.weights) }}</td>
+              <td class="num">{{ run.overcrowded_before ?? '-' }} → {{ run.overcrowded_after ?? '-' }}</td>
+              <td class="num">{{ run.extra_trips == null ? '-' : signed(run.extra_trips) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
   </div>
 </template>
 
@@ -186,6 +220,7 @@ async function run() {
     result.value = data
     error.value = ''
     empty.value = ''
+    if (runsOpen) loadRuns()
   } catch (e) {
     if (id !== latest) return
     result.value = null
@@ -195,6 +230,37 @@ async function run() {
   } finally {
     if (id === latest) loading.value = false
   }
+}
+
+// ---------- 실행 기록 (펼쳤을 때만 불러옴) ----------
+const RUNS_LIMIT = 10
+const runs = ref(null)
+const runsLoading = ref(false)
+const runsError = ref('')
+let runsOpen = false
+
+const hourSpan = (hs) => {
+  if (!hs?.length) return '-'
+  const contiguous = hs.every((h, i) => i === 0 || h === hs[i - 1] + 1)
+  return contiguous ? `${hs[0]}~${hs[hs.length - 1]}시` : hs.map((h) => `${h}`).join(',') + '시'
+}
+const weightText = (w) => [w?.overload, w?.trips, w?.change].map((v) => v ?? '-').join(' · ')
+
+async function loadRuns() {
+  runsLoading.value = true
+  try {
+    runs.value = await api.optimizeRuns(RUNS_LIMIT)
+    runsError.value = ''
+  } catch (e) {
+    runsError.value = errorMessage(e)
+  } finally {
+    runsLoading.value = false
+  }
+}
+
+function onRunsToggle(e) {
+  runsOpen = e.target.open
+  if (runsOpen) loadRuns()
 }
 
 function onRange(value) {
@@ -272,8 +338,19 @@ dd small { font-size: 11px; font-weight: 400; color: var(--ink3); margin-left: 3
 .bind ul { margin: 2px 0 0; padding-left: 16px; font-size: 12px; color: var(--ink2); }
 .foot { margin: 8px 0 0; }
 
+.runs { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 6px; }
+.runs summary { cursor: pointer; min-height: 26px; display: flex; align-items: center; }
+.runlist { border-collapse: collapse; width: 100%; font-size: 12px; }
+.runlist caption { text-align: left; padding: 3px 0; caption-side: top; }
+.runlist th, .runlist td { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: left; white-space: nowrap; }
+.runlist thead th { font-size: 11px; font-weight: 500; color: var(--ink2); background: var(--panel2); }
+.runlist small { color: var(--ink3); margin-left: 3px; }
+.runlist tr.now td { font-weight: 600; }
+.runlist tr.now td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+
 @media (max-width: 820px) {
   .cell { min-height: 44px; }
   .segb button { min-height: 44px; min-width: 44px; }
+  .runs summary { min-height: 44px; }
 }
 </style>

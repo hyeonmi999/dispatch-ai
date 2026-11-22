@@ -165,13 +165,14 @@ async def save_chat(domain: str, question: str, result: dict) -> int | None:
     ))
 
 
-async def save_optimization_run(domain: str, result: dict) -> int | None:
-    """result: POST /api/bus/optimize 응답 (docs/contracts.md 2번)"""
+async def save_optimization_run(domain: str, result: dict, hours: list[int] | None = None) -> int | None:
+    """result: POST /api/bus/optimize 응답 (docs/contracts.md 2번)
+    hours: 요청한 시간대. 운행이 없어 plan에서 빠진 시간대도 남기려고 따로 받음 (없으면 plan에서 뽑음)"""
     kpi = result.get("kpi") or {}
     return await _add(OptimizationRun(
         domain=domain,
         target_date=dt.date.fromisoformat(result["date"]),
-        hours=sorted({item["hour"] for item in result.get("plan") or []}),
+        hours=sorted(set(hours)) if hours else sorted({item["hour"] for item in result.get("plan") or []}),
         weights=result.get("weights"),
         method=result.get("method", ""),
         status=result.get("status", ""),

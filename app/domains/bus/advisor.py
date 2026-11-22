@@ -152,6 +152,22 @@ class BusAdvisor(Advisor):
         self._day_cache[key] = result
         return result
 
+    def departure_hour(self, route: str, daytype: str, seq: int, clock_minute: float,
+                       minutes_from_start: float | None = None) -> int:
+        """seq 정류장을 clock_minute(그날 0시부터 분)에 지나는 버스가 기점을 떠난 시간대 (0~23)
+
+        구간 재차인원·운행횟수는 기점 출발 시각 기준이라(docs/decisions.md 2026-11-13), 노선 중간에서 타는 승객은
+        그보다 앞 시간대의 값을 읽어야 함. minutes_from_start(기점 → 이 정류장 소요 분)를 모르면
+        운행시간 × (순번 - 1) ÷ (마지막 순번 - 1)로 어림. 전날 출발이면 0시, 다음 날로 넘어가면 23시로 묶음.
+        """
+        if minutes_from_start is None:
+            run = self.ds.route_info_for(route, daytype).get("run_minutes")
+            last = max((s for _, s in self.stop_names(route)), default=0)
+            ok = run is not None and pd.notna(run) and last > 1
+            minutes_from_start = float(run) * (seq - 1) / (last - 1) if ok else 0.0
+        start = clock_minute - max(minutes_from_start, 0.0)
+        return int(min(max(start // 60, 0), HOURS_PER_DAY - 1))
+
     # ==================================================
     # 2. 시간대 권고 수치
     # ==================================================

@@ -51,6 +51,7 @@ class BusGuideLeg(BaseModel):
     congestion: float | None = Field(None, description="타는 구간에서 가장 붐비는 곳의 예상 혼잡도. 예측하지 않는 노선은 null")
     level: str | None = None
     predicted: bool = Field(True, description="False면 혼잡도를 예측하지 않는 노선 (배차간격은 평일 기준 기본값)")
+    start_hour: int | None = Field(None, description="이 정류장에서 탈 버스가 기점을 떠난 시간대. 혼잡도·배차간격은 이 시간대 값. 예측하지 않는 노선은 null")
     path: list[list[float]] = Field(default_factory=list, description="타고 가는 정류장들의 [위도, 경도] (지도에 그림)")
 
 
@@ -281,3 +282,55 @@ class BusOptimizeResponse(BaseModel):
     assumption: str
     cut_notice: str | None = Field(None, description="감차 권고가 하나라도 있을 때의 안내")
     needs_review: bool = Field(True, description="항상 True. 담당자 검토 필요")
+    run_id: int | None = Field(None, description="이력 테이블 optimization_run의 id. DB가 꺼져 있으면 None")
+    db_saved: bool = Field(False, description="이력 저장 여부. DB가 꺼져 있어도 최적화 결과는 그대로 나옴")
+
+
+class BusOptimizeRun(BaseModel):
+    id: int
+    date: str
+    hours: list[int]
+    weights: dict[str, float]
+    status: str
+    solve_seconds: float | None = None
+    overcrowded_before: int | None = None
+    overcrowded_after: int | None = None
+    extra_trips: int | None = None
+    created_at: str = Field(..., description="저장 시각 (DB 서버 시각)")
+
+
+class BusOptimizeRunList(BaseModel):
+    db: dict = Field(..., description="DB 연결 상태 {available, error}")
+    items: list[BusOptimizeRun] = Field(..., description="최근 실행부터. DB가 꺼져 있으면 빈 목록")
+
+
+class BusBacktestWindow(BaseModel):
+    start: str
+    end: str
+    days: int
+
+
+class BusBacktestMethod(BaseModel):
+    name: str = Field(..., description="현행 · 규칙 · 그리디 · 최적화 · 감차 허용")
+    label: str
+    weights: dict[str, float] | None = Field(None, description="최적화 가중치 (과밀·운행·변경). 최적화 계열만")
+    reference: bool = Field(False, description="True면 미리 정한 순서로 고른 설정이 아닌 참고 행")
+    why: str | None = None
+    cells: int = Field(..., description="채점한 노선·시간 수")
+    route_days: int
+    overcrowded_cells: int
+    overcrowded_pct: float = Field(..., description="붐비는 노선·시간 비율(%). 실제 승객 기준 혼잡도 ≥ crowded_threshold")
+    total_trips: float
+    trips_vs_current_pct: float = Field(..., description="총 운행횟수의 현행 대비 증감(%)")
+    changed_cells: int = Field(..., description="현행과 운행횟수가 달라진 노선·시간 수")
+    fleet_over_new_days: int = Field(..., description="현행에는 없던 인가대수 초과가 생긴 노선·일 수")
+
+
+class BusBacktestResponse(BaseModel):
+    eval_window: BusBacktestWindow
+    tune_window: BusBacktestWindow
+    crowded_threshold: float
+    methods: list[BusBacktestMethod]
+    pick_order: list[str] = Field(..., description="가중치를 고를 때 본 순서")
+    notes: list[str]
+    caution: str

@@ -36,6 +36,8 @@ DOCS_DIR = ROOT / "docs"               # docs/<domain>/ 에 PDF·TXT를 넣으�
 MODELS_DIR = ROOT / "models"
 VECTORSTORE_DIR = ROOT / "vectorstore"
 HF_CACHE_DIR = ROOT / "hf_models"
+EVAL_RESULTS_DIR = ROOT / "eval" / "results"
+BACKTEST_RESULT_PATH = EVAL_RESULTS_DIR / "backtest.json"   # 배차 방식 성능 비교 (scripts/backtest.py가 만듦, F-14)
 
 # 모델(Qwen3, bge-m3)을 한 번 받아 두면 Hugging Face Hub 접속 없이 로컬 캐시만 사용
 # (Hub 확인 요청·safetensors 변환 스레드 때문에 시작/종료가 지연되는 문제 방지)
@@ -168,6 +170,7 @@ BUS_P90_FIXED_RATIO = 1.10           # 비교용 후보: 전 노선 고정 배�
 BUS_OPT_WEIGHTS = {"overload": 10, "trips": 1, "change": 0}
 BUS_OPT_TIME_LIMIT_SEC = 10          # 풀이 시간 제한
 BUS_OPT_SEED = 42
+OPTIMIZE_RUNS_LIMIT = 20               # GET /api/bus/optimize/runs 기본 개수 (최대 LIST_LIMIT_MAX)
 
 # 길안내 (app/domains/bus/guide.py)
 GUIDE_WALK_M = 500             # 이 거리 안의 정류장을 출발 후보로 봄 (걸어서 약 7분)
@@ -192,6 +195,7 @@ GUIDE_SAME_PLACE_M = 1500      # 같은 이름의 정류장이 이보다 멀리 
 GUIDE_PLACE_TRIES = 3           # 같은 이름이 여러 곳일 때, 가까운 곳부터 몇 곳까지 경로를 찾아볼지
 GUIDE_SEARCH_LIMIT_MAX = 20    # 정류장 검색 결과 최대 개수
 GUIDE_DATE_FALLBACK_WEEKS = 8  # 요청한 날이 예측 범위 밖이면 같은 요일로 몇 주까지 거슬러 찾을지
+GUIDE_CLOCK_MINUTE = 30        # 'N시에 출발'을 N시 30분에 출발하는 것으로 봄 (시간대의 가운데). 탈 정류장에 닿는 시각 계산용
 ROUTE_INFO_KEY_STOPS = 8       # 노선 정보에 보여 줄 주요 정류장 수
 
 # 학기 중/방학 구분 (서울 초중고 대략 기준, 계절성 피처)

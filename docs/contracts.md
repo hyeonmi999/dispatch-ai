@@ -6,7 +6,9 @@
 | 규격 | 만드는 사람 | 쓰는 사람 | 상태 |
 |---|---|---|---|
 | `POST /api/bus/simulate` | 박성훈 | 챗봇 | 구현됨 (PR #1). 챗봇 연결됨 |
-| `POST /api/bus/optimize` | 박성훈 | 챗봇, 발표 | 구현됨 (PR #1). 챗봇 연결됨 |
+| `POST /api/bus/optimize` | 박성훈 | 챗봇, 발표 | 구현됨 (PR #1). 챗봇 연결됨. 실행 이력 저장(`run_id`, `db_saved`) 추가 |
+| `GET /api/bus/optimize/runs` | 박성훈 | 최적화 화면 | 구현됨 (park-next P-2) |
+| `GET /api/bus/backtest` | 박성훈 | 성능 비교 화면, 발표 | 구현됨 (park-next P-4) |
 | `POST /api/bus/chat` | 오정훈 | 채팅 화면 | 구현됨 (예측·권고·규정·길안내·노선 정보·시뮬레이션·최적화) |
 | `POST /api/bus/guide` · `GET /api/bus/stops/search` | 오정훈 | 챗봇, 길안내 팝업 | 구현됨 |
 | `GET /api/bus/routes/{route}/info` | 오정훈 | 챗봇 | 구현됨 |
@@ -55,7 +57,8 @@
        "kpi": {"overcrowded_before": 6, "overcrowded_after": 1, "extra_trips": 9, "changed": 8,
                "increased": 6, "decreased": 2, "total_trips_before": 120, "total_trips_after": 129},
        "binding": [], "skipped": [{"route": "160", "hour": 6, "reason": "..."}],
-       "assumption": "...", "cut_notice": null, "needs_review": true}
+       "assumption": "...", "cut_notice": null, "needs_review": true,
+       "run_id": 7, "db_saved": true}
 ```
 
 - `action`: `increase` · `decrease` · `keep`.
@@ -63,6 +66,34 @@
 - 챗봇이 쓰는 필드: `kpi` 전체, `plan[].route·hour·current_trips·recommended_trips·change·action`, `binding`, `cut_notice`.
 - 챗봇과 API는 같은 메서드(`BusAdapter.optimize`)를 부릅니다. 챗봇은 "7시부터 9시", "출근 시간"(7~9시), "퇴근 시간"(17~19시)을 `hours`로 바꿉니다.
 - 이력 테이블 `optimization_run`에는 요청(`date`, `hours`, `weights`)과 `plan`, `kpi`, `binding`, `solve_seconds`를 저장합니다.
+- **API로 부를 때마다 이력에 한 줄 저장**하고 `run_id`(저장한 id)·`db_saved`를 돌려줍니다. DB가 꺼져 있으면 결과는 그대로이고 `run_id: null`, `db_saved: false`입니다. 챗봇이 메서드로 부른 최적화는 저장하지 않습니다.
+- 최적화 화면은 날짜·시간대를 바꿀 때마다 API를 부르므로, 화면을 쓴 만큼 이력이 쌓입니다.
+
+### 2-1. `GET /api/bus/optimize/runs?limit=20` — 최적화 실행 이력
+
+```
+응답: {"db": {"available": true, "error": null},
+       "items": [{"id": 7, "date": "2026-10-28", "hours": [6, 7, 8, 9], "weights": {"overload": 10, "trips": 1, "change": 0},
+                  "status": "optimal", "solve_seconds": 0.4, "overcrowded_before": 6, "overcrowded_after": 1,
+                  "extra_trips": 9, "created_at": "2026-11-22 03:12:45"}]}
+```
+
+- 최근 실행부터. `limit`은 1~100(기본 20). DB가 꺼져 있으면 `items`는 빈 목록이고 `db.available: false`.
+- `hours`는 요청한 시간대입니다(운행이 없어 `plan`에서 빠진 시간대 포함).
+
+### 2-2. `GET /api/bus/backtest` — 배차 방식 성능 비교 (F-14)
+
+```
+응답: {"eval_window": {"start": "2026-09-30", "end": "2026-11-01", "days": 32},
+       "tune_window": {"start": "2026-09-01", "end": "2026-09-28", "days": 28}, "crowded_threshold": 0.8,
+       "methods": [{"name": "현행", "label": "현행", "weights": null, "reference": false, "why": null,
+                    "cells": 3103, "route_days": 160, "overcrowded_cells": 641, "overcrowded_pct": 20.66,
+                    "total_trips": 24806.0, "trips_vs_current_pct": 0.0, "changed_cells": 0, "fleet_over_new_days": 0}, ...],
+       "pick_order": ["새로 생긴 인가대수 초과 0건", ...], "notes": ["..."], "caution": "..."}
+```
+
+- `methods` 순서: 현행 · 규칙 · 그리디 · 최적화 · 감차 허용(`reference: true`, 참고 행). 숫자는 `eval/results/backtest.json`을 그대로 옮긴 값이고, 서버는 다시 계산하지 않습니다.
+- 결과 파일이 없으면 404(`python scripts/backtest.py`를 먼저 실행), 형식이 다르면 500.
 
 ## 3. `POST /api/bus/chat` — 배차 상담 챗봇 (F-25)
 
@@ -114,7 +145,7 @@
                     "legs": [{"route": "143", "board": {"name": "...", "seq": 6, "lat": 0, "lng": 0},
                               "alight": {"name": "...", "seq": 17, "lat": 0, "lng": 0}, "direction": "개포동",
                               "stops": 11, "walk_m": 0, "walk_min": 0, "interval_min": 8.6, "wait_min": 4.3,
-                              "ride_min": 23, "congestion": 0.321, "level": "여유"}]}],
+                              "ride_min": 23, "congestion": 0.321, "level": "여유", "start_hour": 7}]}],
        "recommendation": {"index": 0, "reason": "fastest", "slower_by_min": 0},
        "walk_only": null,
        "assumption": "..."}
@@ -125,6 +156,7 @@
 - **혼잡도는 예측하는 노선(143·150·160·271·272)에만 있습니다.** 그 밖의 노선은 `legs[].predicted: false`, `congestion: null`이고 배차간격은 노선 기본정보의 평일 값입니다.
 - 이름으로 찾은 정류장 주변 300m의 정류장도 타고 내릴 곳으로 봅니다(길 건너·다른 출구). 그래서 `legs[].walk_m`(타러 가는 거리)과 `legs[].exit_walk_m`(내려서 도착지까지)이 붙습니다.
 - `legs[].path`: 타고 가는 정류장들의 `[위도, 경도]`. 화면이 팝업 지도에 그립니다.
+- **`legs[].congestion`·`interval_min`의 시간 기준**: 구간 혼잡도·운행횟수는 버스가 기점을 떠난 시간대 기준 값입니다(`docs/decisions.md` 2026-11-13). 그래서 "N시 30분에 출발 → 걸어서 탈 정류장에 닿는 시각"에서 기점 → 그 정류장 소요 시간(공식 시간표, 없으면 운행시간 × 순번 비율)을 빼서, 그 버스가 기점을 떠난 시간대의 값을 읽습니다. 그 시간대가 `legs[].start_hour`입니다(예측하지 않는 노선은 `null`). 갈아탄 뒤 구간은 앞 구간의 걷기·대기·탑승 시간만큼 지난 시각으로 계산합니다.
 - `legs[].ride_min`(탑승 시간)은 **정류장별 공식 시간표**(첫차·막차 시각)의 구간 차이로 계산합니다. 새벽 5시까지는 첫차 시간표, 그 뒤는 막차 시간표를 쓰고, 출퇴근 시간(7~9시, 17~19시)에는 1.15를 곱합니다(가정값). 시간표가 없거나 이상한 노선은 도로 거리 ÷ 평균 속도로 계산합니다. `legs[].distance_km`은 도로 거리입니다. 실시간 교통 상황은 반영하지 않습니다.
 - 정류장 이름은 일부만 적어도 됩니다 ("종로3가역" → "종로3가역.탑골공원"). 없는 이름이면 422.
 - `origin.far`가 `true`면 걸어갈 거리(500m) 안에 정류장이 없어 가장 가까운 정류장에서 타는 경로입니다. 이때 걷는 시간은 `total_min`에 넣지 않습니다.

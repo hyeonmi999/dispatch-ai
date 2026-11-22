@@ -77,12 +77,12 @@ POST /api/bus/guide
 
 **검증:**
 - [x] `python -m pytest -q` 통과
-- [ ] `contracts.md`의 `simulate`·`optimize` 예시가 PR #1의 Pydantic 스키마 필드와 1:1로 맞는지 박성훈과 대조
+- [x] `contracts.md`의 `simulate`·`optimize` 예시가 PR #1의 Pydantic 스키마 필드와 1:1로 맞는지 박성훈과 대조 — 2026-11-22 박성훈: 요청·응답 필드가 양쪽 모두 남는 것 없이 일치. 앞으로 어긋나면 `tests/test_contracts.py`가 실패함 (PR #25)
 
 **팀원 확인:**
-- [ ] 박성훈 확인 완료 (`simulate`·`optimize`)
+- [x] 박성훈 확인 완료 (`simulate`·`optimize`) — 2026-11-22
 - [ ] 김주혜 확인 완료 (`agent_eval.json`·`documents`·`role`)
-- **확인일:** 
+- **확인일:** 박성훈 2026-11-22 (김주혜 확인 대기)
 
 ### Task 2: 설치·실행 자동화 (F-22)
 
@@ -210,8 +210,8 @@ PR #1이 2026-11-19에 머지돼 진행했습니다.
 - [ ] 최적화 1회 실행 → `optimization_run`에 한 줄 (저장 연결 전)
 
 **팀원 확인:**
-- [ ] 박성훈 확인 완료 (어댑터 메서드로 옮긴 부분)
-- **확인일:**
+- [x] 박성훈 확인 완료 (어댑터 메서드로 옮긴 부분) — 메서드는 요청 검증 → 모델·비율표 확인 → 계산만 하고, 라우터는 메서드를 부르기만 함. 메서드와 API가 같은 값을 내는지 `tests/test_optimize.py::test_adapter_methods_match_api`로 확인 (PR #25)
+- **확인일:** 2026-11-22
 
 ### Task 8: 최종 채점 — 김주혜 문제집 도착 후
 
