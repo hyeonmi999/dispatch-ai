@@ -252,3 +252,82 @@ def test_cut_stops_at_cut_floor():
 
     assert free["r1", 8] == 6         # 하한이 없으면 목표 혼잡도까지 줄임
     assert floored["r1", 8] == 7      # 줄인 뒤 혼잡도 0.6 이하가 되는 7회에서 멈춤
+
+
+# ---------- 실행 이력 (P-2) ----------
+
+def test_optimize_works_without_db_and_says_not_saved(client):
+    # 준비: 테스트는 DB를 끈 상태 (conftest)
+    body = {"date": _meta(client)["dates"]["max_date"], "hours": [8]}
+
+    # 실행
+    r = client.post("/api/bus/optimize", json=body)
+
+    # 확인: 결과는 그대로, 저장만 안 됨
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["db_saved"] is False and out["run_id"] is None
+    assert out["plan"] and out["needs_review"] is True
+
+
+def test_optimize_saves_requested_hours_when_db_is_on(client, monkeypatch):
+    # 준비: 저장 함수를 가짜로 바꿔 무엇을 넘기는지 봄
+    from app.db import repository as repo
+    calls = []
+
+    async def fake_save(domain, result, hours=None):
+        calls.append((domain, result, hours))
+        return 7
+
+    monkeypatch.setattr(repo, "save_optimization_run", fake_save)
+    body = {"date": _meta(client)["dates"]["max_date"], "hours": [9, 7, 8]}
+
+    # 실행
+    out = client.post("/api/bus/optimize", json=body).json()
+
+    # 확인
+    assert out["run_id"] == 7 and out["db_saved"] is True
+    domain, result, hours = calls[0]
+    assert domain == "bus" and hours == [7, 8, 9]          # 요청 스키마가 정렬함
+    assert result["kpi"] == out["kpi"] and "run_id" not in result
+
+
+def test_optimize_runs_empty_without_db(client):
+    r = client.get("/api/bus/optimize/runs")
+    assert r.status_code == 200, r.text
+    assert r.json() == {"db": r.json()["db"], "items": []}
+    assert r.json()["db"]["available"] is False
+
+
+@pytest.mark.parametrize("limit", [0, 101])
+def test_optimize_runs_rejects_bad_limit(client, limit):
+    r = client.get("/api/bus/optimize/runs", params={"limit": limit})
+    assert r.status_code == 422, r.text
+
+
+def test_optimize_runs_says_503_when_db_drops(client, monkeypatch):
+    # 서버가 뜬 뒤에 DB가 꺼지면 조회가 예외를 냄 → 500이 아니라 이유를 담은 503
+    from app.db import repository as repo
+
+    async def broken(domain, limit):
+        raise ConnectionError("db down")
+
+    monkeypatch.setattr(repo, "list_optimization_runs", broken)
+    r = client.get("/api/bus/optimize/runs")
+    assert r.status_code == 503 and "DB" in r.json()["detail"]
+
+
+def test_adapter_methods_match_api(client):
+    # 챗봇이 부르는 어댑터 메서드와 API가 같은 계산을 함 (park-next P-1)
+    from app.core.registry import registry
+    adapter = registry.get("bus")
+    date = _meta(client)["dates"]["max_date"]
+    route = _meta(client)["routes"][0]["route"]
+
+    sim = {"route": route, "date": date, "hour": 8, "interval": 6}
+    assert adapter.simulate(sim) == client.post("/api/bus/simulate", json=sim).json()
+
+    opt = {"date": date, "hours": [7, 8]}
+    direct, api = adapter.optimize(opt), client.post("/api/bus/optimize", json=opt).json()
+    for key in ("plan", "kpi", "binding", "status"):
+        assert direct[key] == api[key]

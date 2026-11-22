@@ -1,0 +1,319 @@
+{
+  "date": "2026-10-28",
+  "hour": 18,
+  "clock_minute": 30,
+  "ride_stops": 5,
+  "rows": 25,
+  "timetable_used": 25,
+  "start_hour_changed": 20,
+  "mean_abs_diff": 0.148,
+  "by_position": [
+    {
+      "position": 0.05,
+      "mean_diff": 0.0,
+      "mean_abs_diff": 0.0,
+      "n": 5
+    },
+    {
+      "position": 0.25,
+      "mean_diff": 0.219,
+      "mean_abs_diff": 0.219,
+      "n": 5
+    },
+    {
+      "position": 0.5,
+      "mean_diff": 0.138,
+      "mean_abs_diff": 0.138,
+      "n": 5
+    },
+    {
+      "position": 0.75,
+      "mean_diff": 0.163,
+      "mean_abs_diff": 0.176,
+      "n": 5
+    },
+    {
+      "position": 0.9,
+      "mean_diff": 0.208,
+      "mean_abs_diff": 0.208,
+      "n": 5
+    }
+  ],
+  "rows_detail": [
+    {
+      "route": "143",
+      "position": 0.05,
+      "seq": 6,
+      "board": "정릉우체국앞",
+      "minutes_from_start": 5.2,
+      "timetable": true,
+      "start_hour": 18,
+      "before": 0.329,
+      "after": 0.329
+    },
+    {
+      "route": "143",
+      "position": 0.25,
+      "seq": 29,
+      "board": "잠원동성당",
+      "minutes_from_start": 59.6,
+      "timetable": true,
+      "start_hour": 17,
+      "before": 0.191,
+      "after": 0.283
+    },
+    {
+      "route": "143",
+      "position": 0.5,
+      "seq": 57,
+      "board": "개포주공5단지경기여고",
+      "minutes_from_start": 104.9,
+      "timetable": true,
+      "start_hour": 16,
+      "before": 0.088,
+      "after": 0.13
+    },
+    {
+      "route": "143",
+      "position": 0.75,
+      "seq": 85,
+      "board": "용산구청",
+      "minutes_from_start": 156.7,
+      "timetable": true,
+      "start_hour": 15,
+      "before": 0.309,
+      "after": 0.392
+    },
+    {
+      "route": "143",
+      "position": 0.9,
+      "seq": 102,
+      "board": "미아리고개.미아리예술극장",
+      "minutes_from_start": 191.9,
+      "timetable": true,
+      "start_hour": 15,
+      "before": 0.321,
+      "after": 0.322
+    },
+    {
+      "route": "272",
+      "position": 0.05,
+      "seq": 5,
+      "board": "면동초등학교",
+      "minutes_from_start": 3.9,
+      "timetable": true,
+      "start_hour": 18,
+      "before": 0.432,
+      "after": 0.432
+    },
+    {
+      "route": "272",
+      "position": 0.25,
+      "seq": 24,
+      "board": "보문동성당",
+      "minutes_from_start": 34.5,
+      "timetable": true,
+      "start_hour": 17,
+      "before": 0.506,
+      "after": 0.59
+    },
+    {
+      "route": "272",
+      "position": 0.5,
+      "seq": 48,
+      "board": "명지대사거리.백련시장",
+      "minutes_from_start": 83.9,
+      "timetable": true,
+      "start_hour": 17,
+      "before": 0.088,
+      "after": 0.097
+    },
+    {
+      "route": "272",
+      "position": 0.75,
+      "seq": 71,
+      "board": "보문역2번출구",
+      "minutes_from_start": 132.2,
+      "timetable": true,
+      "start_hour": 16,
+      "before": 0.382,
+      "after": 0.349
+    },
+    {
+      "route": "272",
+      "position": 0.9,
+      "seq": 85,
+      "board": "상봉역4번출구",
+      "minutes_from_start": 160.1,
+      "timetable": true,
+      "start_hour": 15,
+      "before": 0.232,
+      "after": 0.442
+    },
+    {
+      "route": "160",
+      "position": 0.05,
+      "seq": 7,
+      "board": "도봉소방서.방학역남부",
+      "minutes_from_start": 10.8,
+      "timetable": true,
+      "start_hour": 18,
+      "before": 0.275,
+      "after": 0.275
+    },
+    {
+      "route": "160",
+      "position": 0.25,
+      "seq": 31,
+      "board": "종로1가.종각역",
+      "minutes_from_start": 64.8,
+      "timetable": true,
+      "start_hour": 17,
+      "before": 0.577,
+      "after": 0.866
+    },
+    {
+      "route": "160",
+      "position": 0.5,
+      "seq": 61,
+      "board": "온수역",
+      "minutes_from_start": 136.9,
+      "timetable": true,
+      "start_hour": 16,
+      "before": 0.092,
+      "after": 0.22
+    },
+    {
+      "route": "160",
+      "position": 0.75,
+      "seq": 91,
+      "board": "종로3가역.탑골공원",
+      "minutes_from_start": 207.6,
+      "timetable": true,
+      "start_hour": 15,
+      "before": 0.558,
+      "after": 0.789
+    },
+    {
+      "route": "160",
+      "position": 0.9,
+      "seq": 109,
+      "board": "수유3동우체국",
+      "minutes_from_start": 247.9,
+      "timetable": true,
+      "start_hour": 14,
+      "before": 0.211,
+      "after": 0.52
+    },
+    {
+      "route": "150",
+      "position": 0.05,
+      "seq": 7,
+      "board": "도봉소방서.방학역남부",
+      "minutes_from_start": 12.5,
+      "timetable": true,
+      "start_hour": 18,
+      "before": 0.252,
+      "after": 0.252
+    },
+    {
+      "route": "150",
+      "position": 0.25,
+      "seq": 31,
+      "board": "종로1가.종각역",
+      "minutes_from_start": 74.6,
+      "timetable": true,
+      "start_hour": 17,
+      "before": 0.414,
+      "after": 0.738
+    },
+    {
+      "route": "150",
+      "position": 0.5,
+      "seq": 62,
+      "board": "금하마을",
+      "minutes_from_start": 163.8,
+      "timetable": true,
+      "start_hour": 15,
+      "before": 0.102,
+      "after": 0.443
+    },
+    {
+      "route": "150",
+      "position": 0.75,
+      "seq": 93,
+      "board": "종로2가",
+      "minutes_from_start": 248.1,
+      "timetable": true,
+      "start_hour": 14,
+      "before": 0.424,
+      "after": 0.751
+    },
+    {
+      "route": "150",
+      "position": 0.9,
+      "seq": 111,
+      "board": "수유역.강북구청",
+      "minutes_from_start": 294.1,
+      "timetable": true,
+      "start_hour": 13,
+      "before": 0.191,
+      "after": 0.452
+    },
+    {
+      "route": "271",
+      "position": 0.05,
+      "seq": 7,
+      "board": "혜원여중고입구",
+      "minutes_from_start": 6.4,
+      "timetable": true,
+      "start_hour": 18,
+      "before": 0.251,
+      "after": 0.251
+    },
+    {
+      "route": "271",
+      "position": 0.25,
+      "seq": 31,
+      "board": "종로3가역.탑골공원",
+      "minutes_from_start": 50.5,
+      "timetable": true,
+      "start_hour": 17,
+      "before": 0.466,
+      "after": 0.77
+    },
+    {
+      "route": "271",
+      "position": 0.5,
+      "seq": 62,
+      "board": "월드컵파크7단지",
+      "minutes_from_start": 109.1,
+      "timetable": true,
+      "start_hour": 16,
+      "before": 0.084,
+      "after": 0.256
+    },
+    {
+      "route": "271",
+      "position": 0.75,
+      "seq": 93,
+      "board": "종로2가",
+      "minutes_from_start": 171.4,
+      "timetable": true,
+      "start_hour": 15,
+      "before": 0.371,
+      "after": 0.576
+    },
+    {
+      "route": "271",
+      "position": 0.9,
+      "seq": 111,
+      "board": "동부시장남문입구",
+      "minutes_from_start": 210.3,
+      "timetable": true,
+      "start_hour": 14,
+      "before": 0.276,
+      "after": 0.536
+    }
+  ]
+}
