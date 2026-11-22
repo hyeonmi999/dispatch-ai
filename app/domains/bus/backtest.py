@@ -18,9 +18,12 @@
 #   인가대수 초과  도로 위 버스가 인가대수를 넘는 순간이 있는 노선·일 수
 #                 (새로 생긴 초과 = 현행에는 없던 초과. 현행이 이미 넘는 순간은 현행 값까지 허용)
 
+import json
+from pathlib import Path
+
 import pandas as pd
 
-from app.config import CONGESTION_HIGH
+from app.config import BACKTEST_RESULT_PATH, CONGESTION_HIGH
 from app.domains.bus.advisor import BusAdvisor
 from app.domains.bus.optimizer import HOURS_PER_DAY, _checkpoints, _fleet_limits, _on_road, solve_cpsat, solve_greedy
 
@@ -124,3 +127,38 @@ def summarize(cells: pd.DataFrame, fleets: pd.DataFrame) -> dict:
         "fleet_over_days": int(fleets["over"].sum()),
         "fleet_over_new_days": int(fleets["over_new"].sum()),
     }
+
+
+# ==================================================
+# 결과 파일 읽기 (대시보드 GET /api/bus/backtest)
+# ==================================================
+# scripts/backtest.py가 만든 eval/results/backtest.json을 화면용 표로 정리합니다. 다시 계산하지 않습니다.
+
+METHODS = tuple(METHOD_LABELS.values())       # 표에 보일 순서 (backtest.json의 eval 키)
+METRIC_KEYS = ("cells", "route_days", "overcrowded_cells", "overcrowded_pct", "total_trips",
+               "trips_vs_current_pct", "changed_cells", "fleet_over_new_days")
+CAUTION = ("평가 구간은 설정을 고른 뒤에도 여러 번 채점했습니다(감차 허용 행 포함). "
+           "새 데이터로 다시 채점하기 전까지는 참고 수치로 봐 주세요.")
+
+
+def backtest_summary(path: Path = BACKTEST_RESULT_PATH) -> dict:
+    """FileNotFoundError: 결과 파일 없음 / ValueError: 파일 형식이 다름"""
+    if not path.exists():
+        raise FileNotFoundError(path)
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        evals = raw["eval"]
+        rows = [{"name": name, "label": name, "weights": raw.get("weights_chosen") if name == "최적화" else None,
+                 "reference": False, **{k: evals[name][k] for k in METRIC_KEYS}}
+                for name in METHODS if name in evals]
+        ref = raw.get("eval_reference")
+        if ref:
+            rows.append({"name": "감차 허용", "label": ref.get("label", "감차 허용"), "weights": ref.get("weights"),
+                         "reference": True, "why": ref.get("why"), **{k: ref["metrics"][k] for k in METRIC_KEYS}})
+        return {
+            "eval_window": raw["eval_window"], "tune_window": raw["tune_window"],
+            "crowded_threshold": raw["crowded_threshold"], "methods": rows,
+            "pick_order": raw.get("pick_order", []), "notes": raw.get("notes", []), "caution": CAUTION,
+        }
+    except (KeyError, TypeError, json.JSONDecodeError) as e:
+        raise ValueError(f"성능 비교 결과 파일의 형식이 예상과 다릅니다: {e}") from e

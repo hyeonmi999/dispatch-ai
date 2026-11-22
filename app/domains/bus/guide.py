@@ -22,7 +22,8 @@
 # 한계 (응답의 assumption에도 적음)
 # - 버스만 안내합니다. 지하철은 다루지 않습니다. 환승은 한 번까지입니다.
 # - 소요 시간은 "한 바퀴 운행시간 × 탄 정류장 수 비율"로 어림한 값입니다. 실시간 교통 정보가 아닙니다.
-# - 환승 뒤 구간도 같은 시간대 혼잡도로 봅니다.
+# - 혼잡도·배차간격은 기점 출발 시간대 기준 값이라, 탈 정류장에 닿는 시각에서 기점 → 그 정류장 소요 시간을 빼서
+#   그 버스가 기점을 떠난 시간대의 값을 읽습니다. 환승 뒤 구간은 앞 구간의 걷기·대기·탑승 시간만큼 지난 시각으로 계산합니다.
 
 import math
 import threading
@@ -33,6 +34,7 @@ import pandas as pd
 
 from app.config import (
     GUIDE_CANDIDATES,
+    GUIDE_CLOCK_MINUTE,
     GUIDE_CROWD_MIN_GAP,
     GUIDE_CROWD_TRADEOFF_MIN,
     GUIDE_DEFAULT_KMH,
@@ -383,22 +385,36 @@ class BusGuide:
         kept = [v for key, v in best.items() if len(key) == 1 or not (set(key) & direct)]
         return [legs for _, legs in sorted(kept, key=lambda v: v[0])]
 
-    def _leg(self, leg: dict, date, hour: int) -> dict:
-        """탈 구간 하나의 혼잡도 · 배차간격 · 대략의 탑승 시간"""
+    def minutes_from_start(self, board: dict, hour: int) -> float | None:
+        """기점(첫 정류장) → 탈 정류장 소요 분. 시간표·거리가 없으면 None (advisor가 운행시간 비율로 어림)"""
+        first = self.by_route[board["route"]][0]
+        if board["seq"] <= first["seq"]:
+            return 0.0
+        return self.ride_minutes(first, board, hour)[0]
+
+    def _leg(self, leg: dict, date, clock_minute: float) -> dict:
+        """탈 구간 하나의 혼잡도 · 배차간격 · 대략의 탑승 시간
+
+        clock_minute: 탈 정류장에 닿는 시각 (그날 0시부터 분). 예측 노선은 그 시각에 오는 버스의 기점 출발 시간대 값을 읽음
+        """
         board, alight = leg["board"], leg["alight"]
         route = board["route"]
+        hour = int(clock_minute // 60) % 24          # 승객이 타는 시계 시각의 시간대
+        start_hour = None
         stops = alight["seq"] - board["seq"]
         span = max(self.last_seq(route) - 1, 1)
 
         if route in self.routes:
             # 이 서비스가 예측하는 노선: 그 시간대 운행횟수와 구간 혼잡도
             day = self.advisor.analyze_day(route, date)
-            hrow = day["hourly"][day["hourly"]["hour"] == hour]
+            start_hour = self.advisor.departure_hour(route, day["daytype"], board["seq"], clock_minute,
+                                                     self.minutes_from_start(board, hour))
+            hrow = day["hourly"][day["hourly"]["hour"] == start_hour]
             if hrow.empty or not (hrow["trips"].iloc[0] > 0):
-                raise GuideError(f"{route}번은 {hour}시에 운행 데이터가 없습니다")
+                raise GuideError(f"{route}번은 {hour}시에 이 정류장을 지나는 버스의 운행 데이터가 없습니다")
             interval = 60.0 / float(hrow["trips"].iloc[0])
             seg = day["segments"]
-            ridden = seg[(seg["hour"] == hour) & (seg["stop_seq"] >= board["seq"]) & (seg["stop_seq"] < alight["seq"])]
+            ridden = seg[(seg["hour"] == start_hour) & (seg["stop_seq"] >= board["seq"]) & (seg["stop_seq"] < alight["seq"])]
             c = ridden["congestion"].max() if not ridden.empty else None
             has_c = c is not None and pd.notna(c)
             run_minutes = float(self.advisor.ds.route_info_for(route, day["daytype"]).get("run_minutes") or 0)
@@ -440,14 +456,30 @@ class BusGuide:
             "congestion": _num(c, 3) if has_c else None,
             "level": congestion_level(c) if has_c else None,
             "predicted": route in self.routes,
+            "start_hour": start_hour,
             "path": [[s["lat"], s["lng"]] for s in line if board["seq"] <= s["seq"] <= alight["seq"]],
         }
+
+    def _legs(self, legs: list[dict], date, hour: int) -> list[dict]:
+        """구간을 차례로 계산: 다음 구간은 앞 구간의 걷기·대기·탑승 시간만큼 지난 시각에 탐"""
+        clock = hour * 60 + GUIDE_CLOCK_MINUTE
+        detail = []
+        for leg in legs:
+            clock += math.ceil(float(leg["board"].get("walk_m", 0)) / GUIDE_WALK_M_PER_MIN)
+            d = self._leg(leg, date, clock)
+            detail.append(d)
+            clock += d["wait_min"] + d["ride_min"]
+        return detail
+
+    CROWD_TIMING = ("혼잡도는 탈 정류장에 그 시각에 오는 버스가 기점을 떠난 시간대의 예측값이고, "
+                    "갈아탄 뒤 구간은 앞 구간의 걷기·대기·탑승 시간만큼 지난 시각으로 계산했습니다.")
 
     def assumption(self) -> str:
         if self.whole_network:
             return (f"버스만 안내합니다(환승 한 번까지, 지하철 제외). 혼잡도 예측은 {', '.join(self.routes)}번만 있고, "
-                    "나머지 노선은 평일 기준 배차간격만 안내합니다. 탑승 시간은 정류장별 공식 시간표로 계산했고 실시간 교통 상황은 반영하지 않습니다.")
-        return "이 서비스가 다루는 노선만 안내합니다. 소요 시간은 운행시간에서 어림한 값이고, 혼잡도는 예측값입니다."
+                    "나머지 노선은 평일 기준 배차간격만 안내합니다. 탑승 시간은 정류장별 공식 시간표로 계산했고 실시간 교통 상황은 반영하지 않습니다. "
+                    + self.CROWD_TIMING)
+        return "이 서비스가 다루는 노선만 안내합니다. 소요 시간은 운행시간에서 어림한 값이고, 혼잡도는 예측값입니다. " + self.CROWD_TIMING
 
     def _plan(self, date, hour: int, origin_place: list[dict] | None, named_dests: list[dict],
               lat: float | None, lng: float | None) -> dict:
@@ -476,7 +508,7 @@ class BusGuide:
             if len(options) >= GUIDE_CANDIDATES:
                 break
             try:
-                detail = [self._leg(leg, date, hour) for leg in legs]
+                detail = self._legs(legs, date, hour)
             except GuideError:
                 continue
             levels = [l["congestion"] for l in detail if l["congestion"] is not None]

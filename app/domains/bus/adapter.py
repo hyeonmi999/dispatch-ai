@@ -7,9 +7,12 @@
 #   GET /api/bus/routes/{route}/timeseries    24시간 실제/예측/베이스라인 + 시간대별 최대 혼잡도
 #   GET /api/bus/overview?date=&hour=         전체 노선 구간별 혼잡도 (지도 색칠)
 #   POST /api/bus/simulate                    배차간격을 바꿨을 때의 구간별 혼잡도
-#   POST /api/bus/optimize                    전 노선 운행횟수를 인가대수 안에서 한꺼번에 권고
+#   POST /api/bus/optimize                    전 노선 운행횟수를 인가대수 안에서 한꺼번에 권고 (실행마다 이력 저장)
+#   GET /api/bus/optimize/runs                최적화 실행 이력
+#   GET /api/bus/backtest                     배차 방식 성능 비교 (eval/results/backtest.json)
 
 import datetime as dt
+import logging
 import subprocess
 import sys
 from functools import cached_property
@@ -22,7 +25,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from app.config import (
     DOCUMENT_LIST_LIMIT, DOCUMENT_LIST_MAX_LIMIT, MAX_DOCUMENT_BYTES,
-    GUIDE_DATE_FALLBACK_WEEKS, GUIDE_SEARCH_LIMIT_MAX, ROUTE_INFO_KEY_STOPS,
+    GUIDE_DATE_FALLBACK_WEEKS, GUIDE_SEARCH_LIMIT_MAX, LIST_LIMIT_MAX, OPTIMIZE_RUNS_LIMIT, ROUTE_INFO_KEY_STOPS,
 )
 from app.core.domain import DomainAdapter
 from app.domains.bus.advisor import BusAdvisor, _num, congestion_level
@@ -32,14 +35,18 @@ from app.core.documents import (
 )
 from app.domains.bus.forecaster import BusForecaster
 from app.domains.bus.guide import BusGuide, GuideError
+from app.db import database as db
 from app.db import repository as repo
 from app.domains.bus.calibration import load_ratios
+from app.domains.bus.backtest import backtest_summary
 from app.domains.bus.optimizer import optimize
 from app.domains.bus.schemas import (
-    BusAdviseAllRequest, BusAdviseRequest, BusGuideRequest, BusGuideResponse, BusOptimizeRequest, BusOptimizeResponse,
+    BusAdviseAllRequest, BusAdviseRequest, BusBacktestResponse, BusGuideRequest, BusGuideResponse, BusOptimizeRequest, BusOptimizeResponse, BusOptimizeRunList,
     BusPredictRequest, BusRouteInfoRequest, BusRouteInfoResponse, BusSimulateRequest, BusSimulateResponse, BusStopSearchItem,
 )
 from app.domains.bus.simulator import simulate
+
+logger = logging.getLogger(__name__)
 
 
 class BusAdapter(DomainAdapter):
@@ -407,8 +414,29 @@ class BusAdapter(DomainAdapter):
             return self.simulate(req.model_dump())
 
         @r.post("/optimize", response_model=BusOptimizeResponse, summary="전 노선 배차 최적화 (needs_review)")
-        def optimize_dispatch(req: BusOptimizeRequest):
-            return self.optimize(req.model_dump())
+        async def optimize_dispatch(req: BusOptimizeRequest):
+            # 풀이가 수 초 걸려 다른 요청을 막지 않게 스레드에서 돌림. 저장 실패는 결과를 막지 않음 (db_saved: false)
+            result = await run_in_threadpool(self.optimize, req.model_dump())
+            run_id = await repo.save_optimization_run("bus", result, req.hours)
+            return {**result, "run_id": run_id, "db_saved": run_id is not None}
+
+        @r.get("/backtest", response_model=BusBacktestResponse, summary="배차 방식 성능 비교 (F-14 결과 파일)")
+        def backtest():
+            try:
+                return backtest_summary()
+            except FileNotFoundError:
+                raise HTTPException(404, "성능 비교 결과가 없습니다. 실데이터로 python scripts/backtest.py를 먼저 실행하세요")
+            except ValueError as e:
+                raise HTTPException(500, str(e))
+
+        @r.get("/optimize/runs", response_model=BusOptimizeRunList, summary="최적화 실행 이력 (최근부터)")
+        async def optimize_runs(limit: int = Query(OPTIMIZE_RUNS_LIMIT, ge=1, le=LIST_LIMIT_MAX)):
+            try:
+                items = await repo.list_optimization_runs("bus", limit)
+            except Exception as e:      # 서버가 뜬 뒤에 DB가 꺼진 경우 (시작할 때 꺼져 있었으면 빈 목록)
+                logger.warning("최적화 이력 조회 실패: %s", e)
+                raise HTTPException(503, "DB에 연결할 수 없어 실행 기록을 불러오지 못했습니다")
+            return {"db": db.state, "items": items}
 
         @r.get("/overview", summary="전체 노선 구간별 혼잡도 (지도)")
         def overview(date: dt.date = Query(...), hour: int = Query(..., ge=0, le=23)):

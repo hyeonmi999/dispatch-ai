@@ -32,7 +32,7 @@ sys.path.insert(0, str(ROOT))
 
 import pandas as pd  # noqa: E402
 
-from app.config import BUS_OPT_WEIGHTS, BUS_TUNE_END, CONGESTION_HIGH, MODELS_DIR, PROCESSED_DIR  # noqa: E402
+from app.config import BACKTEST_RESULT_PATH, BUS_OPT_WEIGHTS, BUS_TUNE_END, CONGESTION_HIGH, MODELS_DIR, PROCESSED_DIR  # noqa: E402
 from app.domains.bus.advisor import BusAdvisor  # noqa: E402
 from app.domains.bus.backtest import (  # noqa: E402
     ALL_HOURS, METHOD_LABELS, actual_peaks, current_plan, decide, fleet_check, score_cells, summarize,
@@ -42,7 +42,7 @@ from app.domains.bus.data import BusDataset  # noqa: E402
 from app.domains.bus.forecaster import BusForecaster  # noqa: E402
 from app.domains.bus.optimizer import collect_inputs, solve_cpsat  # noqa: E402
 
-RESULT_PATH = ROOT / "eval" / "results" / "backtest.json"
+RESULT_PATH = BACKTEST_RESULT_PATH          # 대시보드(GET /api/bus/backtest)가 읽는 파일
 DETAIL_DIR = PROCESSED_DIR / "experiment" / "backtest"
 GRID = [{"overload": a, "trips": 1, "change": c} for a, c in itertools.product([5, 10, 20], [0, 1, 2])]
 # 참고 행: 바꾸는 비용을 0으로 두어 필요 없는 운행은 줄이는 설정 (정수계획만 가능, 그리디는 늘리기만 함)
