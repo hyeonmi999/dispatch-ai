@@ -167,6 +167,10 @@
           <MetricsCard :metrics="meta.metrics" />
         </template>
 
+        <template #backtest>
+          <BacktestPanel />
+        </template>
+
         <template #documents>
           <DocumentAdminPanel v-if="documentRole === 'admin'" :role="documentRole" />
         </template>
@@ -200,6 +204,7 @@ import DocumentAdminPanel from './DocumentAdminPanel.vue'
 import AdvicePanel from './AdvicePanel.vue'
 import AppLogo from './AppLogo.vue'
 import AskPanel from './AskPanel.vue'
+import BacktestPanel from './BacktestPanel.vue'
 import ChatPanel from './ChatPanel.vue'
 import ComingSoon from './ComingSoon.vue'
 import ForecastChart from './ForecastChart.vue'
@@ -363,6 +368,7 @@ const metas = computed(() => ({
   optimize: `${date.value} 전 노선`,
   whatif: `${selected.value}번 ${hour.value}시`,
   metrics: '검증 구간',
+  backtest: '지난 기록으로 채점',
 }))
 
 // 기본 날짜: 오늘(예측 범위 안이면), 아니면 실측 마지막 날 이전의 가장 최근 화요일
@@ -434,7 +440,11 @@ onBeforeUnmount(() => clearInterval(timer))
 
 <style scoped>
 .document-role { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-.document-role select { color: inherit; background: var(--panel); border: 1px solid var(--line); }
+/* 헤더 막대는 화면 테마와 상관없이 항상 어두움 → 선택칸도 헤더 버튼(.bbtn)과 같은 어두운 바탕·밝은 글자 */
+.document-role select { font-size: 12px; color: #e4e6e1; background: #15181a; border: 1px solid #4c5358; border-radius: 2px; padding: 4px 8px; min-height: 30px; }
+.document-role select:hover { border-color: #9aa09e; }
+.document-role select:focus-visible { outline: 2px solid #ff8a4c; outline-offset: 1px; }
+.document-role option { color: #e4e6e1; background: #15181a; }
 .app { min-height: 100vh; display: flex; flex-direction: column; background: var(--ground); }
 .bar { background: #15181a; color: #f1f1ec; display: flex; flex-wrap: wrap; align-items: stretch; gap: 0 28px; padding: 0 16px; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 9px 0; }
@@ -491,7 +501,7 @@ onBeforeUnmount(() => clearInterval(timer))
 @media (max-width: 820px) {
   .bar-right { margin-left: 0; }
   .seg-g { margin-left: 0; }
-  .ibtn, .tbtn, .bbtn, .segb button { min-height: 44px; min-width: 44px; }
+  .ibtn, .tbtn, .bbtn, .segb button, .document-role select { min-height: 44px; min-width: 44px; }
   .rt { padding: 12px 8px; }
 }
 </style>

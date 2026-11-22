@@ -338,3 +338,65 @@ def test_ride_time_ignores_broken_timetable(client):
     assert 2.5 < broken < 3.5
     # 거리 정보가 없으면 (None, None) → 예전 방식으로 어림
     assert guide.ride_minutes({"route": "T1"}, {"route": "T1"}, 14) == (None, None)
+
+
+# ==================================================
+# 8. 혼잡도 시간 기준: 탈 정류장에 오는 버스의 기점 출발 시간대 (park-next P-3)
+# ==================================================
+
+def test_departure_hour_goes_back_by_time_from_terminal(client):
+    from app.core.registry import registry
+    advisor = registry.get("bus").advisor
+    route = registry.get("bus").dataset.routes[0]
+    clock = 8 * 60 + 30
+
+    assert advisor.departure_hour(route, "weekday", 1, clock, 0) == 8          # 기점에서 타면 그 시간대
+    assert advisor.departure_hour(route, "weekday", 30, clock, 75) == 7        # 75분 전에 기점을 떠난 버스
+    assert advisor.departure_hour(route, "weekday", 30, clock, 600) == 0       # 전날 출발이면 0시로 묶음
+    assert advisor.departure_hour(route, "weekday", 30, 24 * 60 + 40, 10) == 23   # 다음 날로 넘어가면 23시
+
+
+def test_departure_hour_estimates_from_run_minutes_without_timetable(client):
+    from app.core.registry import registry
+    adapter = registry.get("bus")
+    route = adapter.dataset.routes[0]
+    run = float(adapter.dataset.route_info_for(route, "weekday")["run_minutes"])
+    last = max(seq for _, seq in adapter.advisor.stop_names(route))
+    clock = 12 * 60 + 30
+
+    # 마지막 정류장은 한 바퀴 운행시간만큼 전에 기점을 떠난 버스
+    assert adapter.advisor.departure_hour(route, "weekday", last, clock) == int((clock - run) // 60)
+    assert adapter.advisor.departure_hour(route, "weekday", 1, clock) == 12
+
+
+def test_guide_reads_congestion_of_bus_that_left_terminal_earlier(client):
+    routes, date = meta(client)
+    stops = stops_of(client, routes[0])
+    near_start = client.post("/api/bus/guide", json={
+        "origin": stops[1]["name"], "destination": stops[4]["name"], "date": date, "hour": 12}).json()
+    near_end = client.post("/api/bus/guide", json={
+        "origin": stops[-6]["name"], "destination": stops[-2]["name"], "date": date, "hour": 12}).json()
+
+    first = near_start["options"][0]["legs"][0]
+    late = near_end["options"][0]["legs"][0]
+    assert first["start_hour"] == 12                       # 기점 근처: 같은 시간대
+    assert late["start_hour"] < 12                          # 종점 근처: 한두 시간 전에 떠난 버스
+    assert "기점을 떠난 시간대" in near_end["assumption"]
+
+
+def test_guide_second_leg_is_boarded_later(client, monkeypatch):
+    from app.core.registry import registry
+    guide = registry.get("bus").guide_engine
+    seen = []
+
+    def fake_leg(leg, date, clock_minute):
+        seen.append(clock_minute)
+        return {"wait_min": 5.0, "ride_min": 20}
+
+    monkeypatch.setattr(guide, "_leg", fake_leg)
+    legs = [{"board": {"walk_m": 140}}, {"board": {"walk_m": 70}}]
+
+    guide._legs(legs, None, 8)
+
+    # 8시 30분 + 걷기 2분 → 탐. 그 뒤 대기 5분 + 탑승 20분 + 갈아타며 걷기 1분
+    assert seen == [8 * 60 + 30 + 2, 8 * 60 + 30 + 2 + 25 + 1]
