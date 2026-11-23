@@ -165,14 +165,34 @@ async def save_chat(domain: str, question: str, result: dict) -> int | None:
     ))
 
 
+def same_optimization_run(last: dict, result: dict, hours: list[int]) -> bool:
+    """직전 실행(list_optimization_runs의 한 줄)과 날짜·시간대·가중치·결과 요약이 모두 같으면 True"""
+    kpi = result.get("kpi") or {}
+    weights = {k: float(v) for k, v in (result.get("weights") or {}).items()}
+    return (last.get("date") == result.get("date")
+            and list(last.get("hours") or []) == hours
+            and {k: float(v) for k, v in (last.get("weights") or {}).items()} == weights
+            and last.get("status") == result.get("status")
+            and all(last.get(k) == kpi.get(k) for k in ("overcrowded_before", "overcrowded_after", "extra_trips")))
+
+
 async def save_optimization_run(domain: str, result: dict, hours: list[int] | None = None) -> int | None:
     """result: POST /api/bus/optimize 응답 (docs/contracts.md 2번)
-    hours: 요청한 시간대. 운행이 없어 plan에서 빠진 시간대도 남기려고 따로 받음 (없으면 plan에서 뽑음)"""
+    hours: 요청한 시간대. 운행이 없어 plan에서 빠진 시간대도 남기려고 따로 받음 (없으면 plan에서 뽑음)
+    직전 실행과 같은 조건·같은 결과면 새 줄을 만들지 않고 직전 id를 돌려줌 (화면을 오가며 같은 최적화를 다시 불러도 이력이 쌓이지 않게)"""
     kpi = result.get("kpi") or {}
+    hours = sorted(set(hours)) if hours else sorted({item["hour"] for item in result.get("plan") or []})
+    try:
+        last = (await list_optimization_runs(domain, 1) or [None])[0]
+    except Exception as error:          # 직전 기록을 못 읽어도 저장은 시도 (실패하면 _add가 None)
+        print(f"⚠️ 직전 최적화 기록 조회 실패: {error}")
+        last = None
+    if last and same_optimization_run(last, result, hours):
+        return last["id"]
     return await _add(OptimizationRun(
         domain=domain,
         target_date=dt.date.fromisoformat(result["date"]),
-        hours=sorted(set(hours)) if hours else sorted({item["hour"] for item in result.get("plan") or []}),
+        hours=hours,
         weights=result.get("weights"),
         method=result.get("method", ""),
         status=result.get("status", ""),
