@@ -1,0 +1,98 @@
+{
+  "scope": "F-33 최종 expect_tools 초안의 실제 기능선택 평가. 초기12/15 파일과 별도.",
+  "summary": {
+    "name": "kim_f33_expect_tools_20261124",
+    "file": "eval/agent_eval.json",
+    "today": "2026-10-28",
+    "correct": "12/15",
+    "accuracy": 0.8,
+    "numbers_failed": 0,
+    "seconds": 31.9,
+    "scoring_version": "agent-eval-v2",
+    "dataset_sha256": "d711996e559078f38a63bce7dc03b9154d01853663eaf5c25238911d885e5537",
+    "tool_execution_errors": 2
+  },
+  "per_tool": {
+    "predict": {
+      "correct": 2,
+      "total": 2
+    },
+    "advise": {
+      "correct": 1,
+      "total": 2
+    },
+    "optimize": {
+      "correct": 2,
+      "total": 2
+    },
+    "simulate": {
+      "correct": 1,
+      "total": 2
+    },
+    "ask": {
+      "correct": 2,
+      "total": 2
+    },
+    "none": {
+      "correct": 4,
+      "total": 5
+    }
+  },
+  "mistakes": [
+    {
+      "id": "G3",
+      "q": "143번 2026-10-30 출근 시간에 차를 더 넣어야 할까?",
+      "expected": [
+        "advise"
+      ],
+      "actual": "out_of_scope",
+      "wrong": [
+        "tools []"
+      ]
+    },
+    {
+      "id": "G8",
+      "q": "271번 2026-11-04 오후 6시에 8분마다 운행하면 어떻게 달라져?",
+      "expected": [
+        "simulate"
+      ],
+      "actual": "ask",
+      "wrong": [
+        "tools ['ask']"
+      ]
+    },
+    {
+      "id": "G11",
+      "q": "143번 담당자에게 줄 점심 도시락 메뉴 추천해줘.",
+      "expected": [
+        "none"
+      ],
+      "actual": "clarify",
+      "wrong": [
+        "intent clarify"
+      ]
+    }
+  ],
+  "tool_execution_errors": [
+    {
+      "id": "G5",
+      "answer": "⚠️ 승객 수 상한 비율표가 없습니다. python scripts/calibrate_p90.py 를 먼저 실행하세요."
+    },
+    {
+      "id": "G6",
+      "answer": "⚠️ 승객 수 상한 비율표가 없습니다. python scripts/calibrate_p90.py 를 먼저 실행하세요."
+    }
+  ],
+  "dataset_unchanged_during_scoring": true,
+  "LLM_generation": false,
+  "DB_enabled": false,
+  "data_notice": "로컬 구모델 xgb-bus-real-202611071209 및 2026-10-25까지의 보유자료 사용. 최신팀스냅샷 확인 안 됨. p90없어 최적화2건 계산 실패. 숫자 성능 근거로 사용하지 않음.",
+  "regression_checks": {
+    "pytest_passed": 169,
+    "seconds": 158.65,
+    "new_format_tests": 12,
+    "legacy_recorded_rows_replayed": 15,
+    "current_format_count": 15,
+    "legacy_sample_format_count": 21
+  }
+}
