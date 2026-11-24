@@ -334,3 +334,43 @@ def test_duplicate_files_do_not_break_search_or_status(tmp_path, monkeypatch, na
     monkeypatch.setattr(routes, "llm_status", lambda: {})
     monkeypatch.setattr(routes.registry, "all", lambda: [SimpleNamespace(info=kb.status)])
     assert client.get("/api/health").status_code == 200
+
+
+def test_duplicate_diagnostics_are_deduplicated_and_admin_only(tmp_path, monkeypatch, caplog):
+    import logging
+    from app.core.documents import document_files
+    client, root, kb = document_client(tmp_path, monkeypatch)
+    upload = managed_document_dir(root)
+    upload.mkdir()
+    (root / "Secret.txt").write_text("기본", encoding="utf-8")
+    (upload / "SECRET.TXT").write_text("업로드", encoding="utf-8")
+    caplog.set_level(logging.WARNING, logger="app.core.documents")
+    for _ in range(3):
+        assert document_files(root, strict=False) == []
+        rag.docs_fingerprint(root)
+    warnings = [r for r in caplog.records if r.name == "app.core.documents"]
+    assert len(warnings) == 1
+    assert "Secret.txt" in warnings[0].message and "SECRET.TXT" in warnings[0].message
+    admin = client.get("/api/bus/documents")
+    assert admin.status_code == 409 and "SECRET.TXT" in admin.text
+    citizen = client.get("/api/bus/documents", params={"role": "citizen"})
+    assert citizen.status_code == 409 and "SECRET.TXT" not in citizen.text and "Secret.txt" not in citizen.text
+    (upload / "SECRET.TXT").unlink()
+    assert len(document_files(root, strict=False)) == 1
+    (upload / "SECRET.TXT").write_text("다시 중복", encoding="utf-8")
+    document_files(root, strict=False)
+    assert len([r for r in caplog.records if r.name == "app.core.documents"]) == 2
+
+
+def test_fingerprint_reads_file_list_once(tmp_path, monkeypatch):
+    root = tmp_path / "bus"
+    root.mkdir()
+    path = root / "sample.txt"
+    path.write_text("자료", encoding="utf-8")
+    calls = []
+    def files(folder, **kwargs):
+        calls.append(folder)
+        return [path]
+    monkeypatch.setattr(rag, "document_files", files)
+    rag.docs_fingerprint(root)
+    assert calls == [root]

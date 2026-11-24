@@ -271,13 +271,14 @@ def load_documents(docs_dir: Path) -> list[dict]:
 
 def docs_fingerprint(docs_dir: Path) -> str:
     h = hashlib.md5(f"chunk-v{CHUNK_VERSION}".encode())
-    for path in document_files(docs_dir, strict=False):
+    paths = document_files(docs_dir, strict=False)
+    for path in paths:
         if not path.is_symlink() and path.is_file() and path.suffix.lower() in RAG_DOCUMENT_SUFFIXES:
             h.update(f"{path.name}:{path.stat().st_size}:{path.stat().st_mtime_ns}".encode())
     records = document_records(docs_dir)
     identities = {path.name: {field: records.get(path.name, {}).get(field)
                               for field in ("title", "created_at")}
-              for path in document_files(docs_dir, strict=False)}
+              for path in paths}
     h.update(json.dumps(identities, ensure_ascii=False, sort_keys=True).encode("utf-8"))
     return h.hexdigest()
 
