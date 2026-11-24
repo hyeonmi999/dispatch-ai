@@ -81,7 +81,7 @@ def validate_items(items: list) -> None:
         ids.add(item["id"])
         expected_tools(item)
         keyword_rules(item)
-        if "intent" in item and item["intent"] not in set(agent.HANDLERS) | {"clarify", "out_of_scope"}:
+        if "intent" in item and (not isinstance(item["intent"], str) or item["intent"] not in set(agent.HANDLERS) | {"clarify", "out_of_scope"}):
             raise ValueError("알 수 없는 intent입니다.")
         if not isinstance(item.get("slots", {}), dict):
             raise ValueError("slots는 객체여야 합니다.")

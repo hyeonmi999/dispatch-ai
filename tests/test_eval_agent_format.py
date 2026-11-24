@@ -77,3 +77,35 @@ def test_duplicate_ids_are_rejected():
     item = {"id": "A", "q": "질문", "expect_tools": ["none"]}
     with pytest.raises(ValueError):
         eval_agent.validate_items([item, item])
+
+
+@pytest.mark.parametrize("intent", [{"bad": True}, ["predict"]])
+def test_malformed_intent_raises_validation_error(intent):
+    item = {"id": "X", "q": "질문", "expect_tools": ["predict"], "intent": intent}
+    with pytest.raises(ValueError):
+        eval_agent.validate_items([item])
+
+
+def test_current_dataset_rejects_right_tool_with_wrong_route_or_hour():
+    import json
+    from pathlib import Path
+    items = json.loads((Path(__file__).resolve().parents[1] / "eval/agent_eval.json").read_text(encoding="utf-8"))
+    item = items[0]
+    assert item["slots"] == {"route": "160", "date": "2026-10-28", "hour": 15}
+    res = result("predict")
+    res["slots"] = dict(item["slots"])
+    assert eval_agent.judge(item, res)["ok"]
+    res["slots"]["route"] = "143"
+    assert not eval_agent.judge(item, res)["ok"]
+    res["slots"] = {**item["slots"], "hour": 18}
+    assert not eval_agent.judge(item, res)["ok"]
+
+
+def test_current_dataset_checks_simulation_interval():
+    import json
+    from pathlib import Path
+    items = json.loads((Path(__file__).resolve().parents[1] / "eval/agent_eval.json").read_text(encoding="utf-8"))
+    item = next(x for x in items if x["id"] == "G7")
+    res = result("simulate")
+    res["slots"] = {**item["slots"], "interval": 8.0}
+    assert not eval_agent.judge(item, res)["ok"]
