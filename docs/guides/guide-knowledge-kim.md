@@ -219,15 +219,32 @@ eval/agent_eval.json을 위 형식으로 15문항 만들고 싶어. 도구별로
 파일: `eval/agent_eval.json`
 
 ```json
-{"id": "G1",
- "q": "160번 10월 28일 오후 3시에 혼잡해?",
- "expect_tools": ["predict"],
- "must": [["혼잡", "보통", "여유"]],
- "forbid": [],
- "note": "숫자는 predict 결과와 같아야 함"}
+[
+  {"id": "G1", "q": "160번 2026-10-28 오후 3시에 승객 얼마나 탈까?",
+   "expect_tools": ["predict"], "must": [], "forbid": [],
+   "note": "160번·해당 날짜·15시의 승객 수 예측 기능을 호출"},
+  {"id": "G11", "q": "143번 담당자에게 줄 점심 도시락 메뉴 추천해줘.",
+   "expect_tools": ["none"], "must": [], "forbid": [],
+   "note": "노선번호가 있어도 업무와 무관한 질문은 범위 밖"}
+]
 ```
 
-`expect_tools` 값: `predict`(승객 예측) · `advise`(배차 권고) · `optimize`(최적화) · `simulate`(시뮬레이션) · `ask`(법규) · `none`(범위 밖)
+- 기본15문항은 사용자가 요청한 **expect_tools / must / forbid / note** 형식으로 저장합니다.
+- 기능 이름: predict(승객 예측), advise(배차 권고), optimize(최적화), simulate(간격 변경), ask(법규).
+- 범위 밖은 expect_tools: ["none"]입니다. 기능을 부르지 않고 out_of_scope로 처리해야 정답입니다. 단순히 기능을 안 부른 되묻기(clarify)는 정답이 아닙니다.
+- must는 바깥 그룹을 모두 만족해야 하며 안쪽 단어는 하나 이상 포함하면 됩니다. forbid의 단어가 답변에 있으면 오답입니다. 빈 목록은 키워드 조건을 적용하지 않는다는 뜻입니다.
+- 현재15문항은 기능 선택 초안이라 must/forbid를 비워두었습니다. note는 설명용 메모이며 자동 검사 조건이 아닙니다.
+- 기존 tools/intent/slots/history 형식도 계속 지원합니다. 두 도구 필드를 함께 적으면 서로 일치해야 합니다.
+- 실제 답변 숫자의 원천 정확도를 이 문제집만으로 보장하지 않습니다. 법규 답변 내용은 F-32에서 따로 평가합니다.
+- 날짜는 2026-10-26~2026-11-15 안의 절대 날짜입니다. 변경된 문항은 기존12/15 결과와 분리해 재채점합니다.
+
+```bash
+python scripts/eval_agent.py --check-only
+python scripts/eval_agent.py --name kim_f33_expect_tools --today 2026-10-28
+```
+
+- 기본 구성은 기능별2개×5 + 범위밖5의15문항입니다. 계획서K-1의 길안내·되묻기 등 확장 검사는 별도입니다.
+- 결과의 tool_execution_errors는 기능 선택과 별도로 확인합니다. 계산 오류가 있어도 기능 선택 정답으로 셀 수 있습니다.
 
 </details>
 
