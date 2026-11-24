@@ -1,0 +1,113 @@
+{
+  "date": "2026-11-25",
+  "scope": "F-33 추가검증. 질문/기대기능은 유지, 정답입력값 검사 보강. 챗봇분류코드 변경 없음.",
+  "question_and_expected_tools_unchanged": true,
+  "dataset_sha256": "3c17df567852c988d71ca6be574bb5d05564d8734b13b4dbe2b6d9bcd693d9dd",
+  "snapshot": {
+    "release": "data-snapshot-20261113",
+    "downloaded_assets_sha256": {
+      "dispatch-ai-data.tar.gz": "be4939358c659a26fdb0538f439b97f19b003a96ace7a4bf3c3782ef1ef0b965",
+      "dispatch-ai-models.tar.gz": "177cdc5ce9e305a726c95819ae0e1633151019f8f5f73335b667d6493bfc1289"
+    },
+    "checksums_verified": true,
+    "model_version": "xgb-bus-real-202611130102",
+    "p90_passed": true,
+    "p90_fit_window": {
+      "start": "2026-09-01",
+      "end": "2026-09-28",
+      "days": 28
+    },
+    "p90_eval_window": {
+      "start": "2026-09-30",
+      "end": "2026-11-01",
+      "days": 32
+    }
+  },
+  "runs": [
+    {
+      "name": "kim_f33_snapshot_20261125_run1",
+      "file": "eval/agent_eval.json",
+      "today": "2026-10-28",
+      "correct": "12/15",
+      "accuracy": 0.8,
+      "numbers_failed": 0,
+      "seconds": 38.0,
+      "scoring_version": "agent-eval-v2",
+      "dataset_sha256": "3c17df567852c988d71ca6be574bb5d05564d8734b13b4dbe2b6d9bcd693d9dd",
+      "tool_execution_errors": 0
+    },
+    {
+      "name": "kim_f33_snapshot_20261125_run2",
+      "file": "eval/agent_eval.json",
+      "today": "2026-10-28",
+      "correct": "12/15",
+      "accuracy": 0.8,
+      "numbers_failed": 0,
+      "seconds": 41.7,
+      "scoring_version": "agent-eval-v2",
+      "dataset_sha256": "3c17df567852c988d71ca6be574bb5d05564d8734b13b4dbe2b6d9bcd693d9dd",
+      "tool_execution_errors": 0
+    }
+  ],
+  "repeat_comparison": {
+    "same_grades": true,
+    "same_slots": true,
+    "same_tool_calls_and_success": true,
+    "same_answers": true,
+    "same_numeric_verification": true
+  },
+  "mistakes": [
+    {
+      "id": "G3",
+      "q": "143번 2026-10-30 출근 시간에 차를 더 넣어야 할까?",
+      "expected": [
+        "advise"
+      ],
+      "actual": "out_of_scope",
+      "wrong": [
+        "tools []"
+      ]
+    },
+    {
+      "id": "G8",
+      "q": "271번 2026-11-04 오후 6시에 8분마다 운행하면 어떻게 달라져?",
+      "expected": [
+        "simulate"
+      ],
+      "actual": "ask",
+      "wrong": [
+        "tools ['ask']"
+      ]
+    },
+    {
+      "id": "G11",
+      "q": "143번 담당자에게 줄 점심 도시락 메뉴 추천해줘.",
+      "expected": [
+        "none"
+      ],
+      "actual": "clarify",
+      "wrong": [
+        "intent clarify"
+      ]
+    }
+  ],
+  "optimization": {
+    "G5": {
+      "tools_ok": true,
+      "numbers_verified": true
+    },
+    "G6": {
+      "tools_ok": true,
+      "numbers_verified": true
+    }
+  },
+  "new_test_pre_fix": "4 failed",
+  "new_test_after_fix": "16 passed (format module)",
+  "runtime": "use_llm=false, DB disabled, offline local BGE; assets isolated under ignored .review/",
+  "pr_state": "#31 Draft; do not mark ready automatically",
+  "regression_checks": {
+    "pytest_passed": 173,
+    "seconds": 162.22,
+    "format_module_passed": 16
+  }
+}
