@@ -104,7 +104,6 @@
   "new_test_pre_fix": "4 failed",
   "new_test_after_fix": "16 passed (format module)",
   "runtime": "use_llm=false, DB disabled, offline local BGE; assets isolated under ignored .review/",
-  "pr_state": "#31 Draft; do not mark ready automatically",
   "regression_checks": {
     "pytest_passed": 173,
     "seconds": 162.22,
