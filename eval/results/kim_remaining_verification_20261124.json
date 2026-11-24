@@ -1,0 +1,34 @@
+{
+  "date": "2026-11-24",
+  "scope": "격리 브라우저에서 문서 관리·검색 연결 검증, 실제 LLM 품질 평가 아님",
+  "url": "http://127.0.0.1:8016",
+  "storage": ".review/ui-check",
+  "embedding": "2차원 테스트용",
+  "answer_generator": "근거의 점검 표지를 반환하는 테스트용 함수",
+  "db_enabled": false,
+  "checks": {
+    "upload_internal_document": true,
+    "admin_search_before_token": true,
+    "citizen_excludes_internal": true,
+    "same_filename_replace_and_search_new_token": true,
+    "disabled_excludes_source": true,
+    "reenable_restores_source": true,
+    "delete_confirmation": true,
+    "deleted_excluded_from_search": true,
+    "uploaded_file_removed": true,
+    "manifest_empty_after_cleanup": true
+  },
+  "node20": {
+    "version": "20.20.2",
+    "api_tests_passed": 4
+  },
+  "llm_preflight": {
+    "ram_total_gib": 15.71,
+    "ram_available_before_ui_gib": 5.14,
+    "ram_available_during_ui_gib": 4.0,
+    "gpu": "Intel Iris Xe Graphics",
+    "qwen_default_cpu_dtype": "float32",
+    "actual_llm_eval40_run": false,
+    "reason": "여유 RAM이 기본 1.7B CPU float32 모델 가중치만 약6GB 이상인 요구량보다 적으며 추론·BGE 메모리는 별도. 기존 경량 시도는 기본 조건과 달라 정식 결과로 사용하지 않음."
+  }
+}
