@@ -53,3 +53,34 @@ def test_route_number_does_not_make_unrelated_recommendation_dispatch(client, wi
     body = client.post("/api/bus/chat", json={"message": f"{route}번 담당자에게 줄 {topic} 추천해줘", "history": history}).json()
     assert body["intent"] == "out_of_scope"
     assert body["tools"] == [] and body["sources"] == []
+
+
+# ==================================================
+# PR #31 리뷰에서 나온 분류 회귀 (오정훈)
+# ==================================================
+
+@pytest.mark.parametrize("message, expected", [
+    # '차 + 넣/빼'가 다른 낱말 안의 '차'와 '빼곡'에 걸리지 않음
+    ("143번 첫차 빼고 몇 시에 와?", "route_info"),
+    ("160번 막차 빼면 마지막 버스는?", "route_info"),
+    ("150번 주차 빼고 정류장 몇 개야?", "route_info"),
+    ("143번 버스 빼곡해?", None),
+    # 의도한 표현은 그대로 배차 권고
+    ("143번 출근 시간에 차를 더 넣어야 할까?", "advise"),
+    ("272번 시내버스를 더 넣는 게 좋을까?", "advise"),
+    ("143번 차 몇 대 빼도 돼?", "advise"),
+    # 노선과 시간을 대고 '추천'만 해도 배차 권고
+    ("150번 내일 8시 추천해줘", "advise"),
+    ("272번 출근 시간 대책 추천", "advise"),
+    ("160번 내일 저녁 운영 추천해줘", "advise"),
+    # 시간이 없는 업무 밖 추천은 그대로 분류 없음
+    ("143번 담당자에게 줄 점심 도시락 메뉴 추천해줘", None),
+    ("143번 담당자에게 줄 선물 추천해줘", None),
+])
+def test_review_regressions_in_dispatch_expressions(message, expected):
+    assert classify(message, True) == expected
+
+
+def test_recommend_without_route_is_not_dispatch():
+    assert classify("2026-10-31 부산 여행 숙소 추천해줘", False) is None
+    assert classify("내일 8시 맛집 추천해줘", False) is None
