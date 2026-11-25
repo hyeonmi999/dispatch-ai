@@ -28,7 +28,7 @@ import time
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from app.config import NOT_FOUND_ANSWER, RAG_TOP_K
+from app.config import GUIDE_START_HOUR_NOTE, NOT_FOUND_ANSWER, RAG_TOP_K
 from app.core import llm as llm_module
 from app.core.domain import DomainAdapter, InvalidRequest
 from app.core.llm import LLMConfigError
@@ -678,13 +678,17 @@ def _guide(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, list[di
             walk = f" (걸어서 약 {leg['walk_m']}m)" if leg["walk_m"] else ""
             exit_walk = f" (내려서 약 {leg['exit_walk_m']}m 걷기)" if leg.get("exit_walk_m") else ""
             distance = f"({_short(leg['distance_km'])}km)" if leg.get("distance_km") else ""
+            start_hour = leg.get("start_hour")   # 키 누락·None(예측 없는 노선) 모두 안전
+            basis = (" " + GUIDE_START_HOUR_NOTE.format(hour=start_hour)
+                     if start_hour is not None and start_hour != result["hour"] else "")
             lines.append(
                 f"   {leg['route']}번: {leg['board']['name']}{walk} → {leg['alight']['name']}{exit_walk}"
-                f" · 정류장 {leg['stops']}개{distance} · 약 {leg['ride_min']}분 · 배차간격 약 {_short(leg['interval_min'])}분{crowd}"
+                f" · 정류장 {leg['stops']}개{distance} · 약 {leg['ride_min']}분 · 배차간격 약 {_short(leg['interval_min'])}분{crowd}{basis}"
             )
         facts["options"].append({
             "total_min": option["total_min"],
-            "legs": [{k: leg[k] for k in ("route", "stops", "walk_m", "exit_walk_m", "ride_min", "distance_km", "interval_min", "congestion")}
+            "legs": [{k: leg[k] for k in ("route", "stops", "walk_m", "exit_walk_m", "ride_min", "distance_km", "interval_min", "congestion", "start_hour")
+                      if k in leg}
                      | {"board": leg["board"]["name"], "alight": leg["alight"]["name"]} for leg in option["legs"]],
         })
 

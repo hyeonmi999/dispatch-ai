@@ -199,6 +199,15 @@
 - 날짜는 "내일" 같은 말 대신 `10월 28일`처럼 적습니다 (채점하는 날에 따라 답이 달라지지 않게).
 - 채점: 응답의 `tools[].name` 목록이 `tools`와 같으면 정답. 합격 기준 90%.
 
+## 4-1. `eval/rag_eval.json` `gold_articles` · 검색 전용 결과 (E-4)
+
+- 정답형(`type=="answer"`) 항목에만 `gold_articles: [{"document": str, "article": str|null}]`. 키는 항목당 한 번. 거절형은 없음.
+- 일치: 공백 정규화 후 `document`는 부분 문자열, `article`은 접두 일치(`null`이면 문서만). 여러 개면 하나만 맞아도 hit. 형식: PDF `"제N조(제목) ① 제2호 마목"`, 보도자료 `"본문 N"`.
+- `python scripts/eval_rag.py --retrieval-only [--k 4] [--name rag_retrieval_1]` → `eval/results/<name>.json` = `{"summary","rows"}`. LLM을 로드하지 않음. 검색은 `max(k,3)`개라 hit@3은 k<3이어도 상위 3개 기준.
+- `summary`: `name, mode("retrieval_only"), embedding, role, k, n, hit_at_1/3/k(소수 4자리), hit_at_1/3/k_n("a/b"), mrr, seconds`
+- `rows[]`: `id, q, gold_articles, rank(상위 k 안 첫 일치, 없으면 null), hit_at_1/3/k(bool), retrieved(["문서 조항"]), scores(retrieved와 같은 길이)`
+- 읽는 쪽은 `summary.mode`로 분기. `mode`가 없으면 기존 judge 결과(`answer_correct` 등). 두 키 집합은 섞지 않음. 오류는 결과 파일 없이 `p.error`(종료 코드 2).
+
 ## 5. `/api/bus/documents` — 법규 문서 관리 (F-36)
 
 로컬 시연용 `role` 쿼리를 받으며 기본값은 `citizen`입니다. 로그인 인증은 별도 범위입니다.
