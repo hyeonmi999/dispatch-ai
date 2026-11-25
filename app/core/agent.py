@@ -60,9 +60,12 @@ OPTIMIZE_WORDS = ("최적화", "최적 배차", "전체 노선", "전 노선", "
 SIMULATE_WORDS = ("시뮬", "바꾸면", "바꿨을 때", "바꾼다면", "으로 하면", "로 하면", "줄이면", "늘리면", "좁히면", "넓히면", "운행하면", "운행한다면")
 ADVISE_WORDS = ("권고", "증차", "감차", "늘려야", "줄여야", "늘릴까", "줄일까", "조정", "적당", "적정")
 # "차를 더 넣어야 할까"도 배차 권고. '넣'만 찾으면 다른 주제에 걸리므로 차량 표현과 묶음.
-_ADVISE_VEHICLE_RE = re.compile(r"(?:버스|차량|차)(?:를|을)?\s*(?:(?:좀|더|조금|몇\s*대)\s*)*(?:넣|빼)")
+# '차' 한 글자는 앞이 한글이면 다른 낱말(첫차·막차·주차·기차)이라 제외, '빼곡'도 제외 (PR #31 리뷰)
+_ADVISE_VEHICLE_RE = re.compile(r"(?:버스|차량|(?<![가-힣])차)(?:를|을)?\s*(?:(?:좀|더|조금|몇\s*대)\s*)*(?:넣|빼)(?!곡)")
 # '추천' 자체는 업무 의도가 아님. 노선번호가 있는 도시락·숙소 추천을 배차 권고로 보내지 않음.
 ADVISE_RECOMMEND_CONTEXT = ("배차", "증차", "감차", "간격", "운행횟수", "운행 횟수")
+# 노선과 시간을 대고 "추천해줘"라고만 해도 배차 권고로 봄 ("150번 내일 8시 추천해줘"). 시간이 없으면 위 낱말이 있어야 함
+ADVISE_RECOMMEND_TIME = ("출근", "퇴근", "오늘", "내일", "모레", "아침", "저녁", "오전", "오후")
 # 길안내: "A에서 B 어떻게 가?" (요금·규정을 묻는 말이 섞이면 규정 질문으로 봄)
 GUIDE_WORDS = ("어떻게 가", "어떻게가", "가는 법", "가는법", "가는 방법", "가는 길", "가려면", "가고 싶", "갈 수 있",
                "갈래", "길안내", "길 안내", "길 알려", "환승", "몇 번 타", "뭐 타", "무슨 버스")
@@ -113,7 +116,8 @@ def classify(message: str, has_route: bool) -> str | None:
     if not has_route and _has(message, ASK_WEAK):
         return "ask"                                   # "혼잡도는 어떻게 구분하나요?"
     if (_has(message, ADVISE_WORDS) or _ADVISE_VEHICLE_RE.search(message)
-            or ("추천" in message and _has(message, ADVISE_RECOMMEND_CONTEXT))):
+            or ("추천" in message and (_has(message, ADVISE_RECOMMEND_CONTEXT) or (
+                has_route and (_has(message, ADVISE_RECOMMEND_TIME) or _HOUR_RE.search(message)))))):
         return "advise"
     if _has(message, PREDICT_WORDS):
         return "predict"
@@ -625,9 +629,11 @@ def _ask(adapter: DomainAdapter, message: str, llm: str, embedding: str, use_llm
         return {"question": message}, NOT_FOUND_ANSWER, [], {}
     if result.get("answer"):
         answer = result["answer"]
-    else:   # use_llm=False: 근거 조항만
+    else:   # use_llm=False 이거나, 외부 전송이 막혀 근거만 돌아온 경우 (이유는 note에)
         lines = "\n".join(f"[{s['id']}] {s['document']} · {s['article']}" for s in sources)
         answer = f"📚 관련 조항 {len(sources)}건을 찾았습니다. 아래 근거를 확인하세요.\n{lines}"
+        if use_llm and result.get("note"):
+            answer += f"\nℹ️ {result['note']}"
     return {"question": message}, answer, sources, {"sources": sources, "llm_answer": bool(result.get("answer"))}
 
 
