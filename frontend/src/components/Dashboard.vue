@@ -171,6 +171,10 @@
           <BacktestPanel />
         </template>
 
+        <template #drift>
+          <DriftPanel />
+        </template>
+
         <template #documents>
           <DocumentAdminPanel v-if="documentRole === 'admin'" :role="documentRole" />
         </template>
@@ -205,6 +209,7 @@ import AdvicePanel from './AdvicePanel.vue'
 import AppLogo from './AppLogo.vue'
 import AskPanel from './AskPanel.vue'
 import BacktestPanel from './BacktestPanel.vue'
+import DriftPanel from './DriftPanel.vue'
 import ChatPanel from './ChatPanel.vue'
 import ComingSoon from './ComingSoon.vue'
 import ForecastChart from './ForecastChart.vue'
@@ -369,6 +374,7 @@ const metas = computed(() => ({
   whatif: `${selected.value}번 ${hour.value}시`,
   metrics: '검증 구간',
   backtest: '지난 기록으로 채점',
+  drift: '예측 vs 나중 실측 · 결정은 담당자',
 }))
 
 // 기본 날짜: 오늘(예측 범위 안이면), 아니면 실측 마지막 날 이전의 가장 최근 화요일
