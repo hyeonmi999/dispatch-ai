@@ -3,6 +3,7 @@
 # ==================================================
 
 import datetime as dt
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -334,3 +335,76 @@ class BusBacktestResponse(BaseModel):
     pick_order: list[str] = Field(..., description="가중치를 고를 때 본 순서")
     notes: list[str]
     caution: str
+
+
+# ==================================================
+# 예측 오차 점검 → 재학습 권고 (요청 R-3, docs/contracts.md 2-3)
+# ==================================================
+
+class BusDriftWindow(BaseModel):
+    start: str
+    end: str
+    days: int = Field(..., description="실측이 있는 날 수")
+
+
+class BusDriftMetrics(BaseModel):
+    rows: int = Field(..., description="정류장·시간 행 수")
+    stop_hour_mae: float | None = Field(None, description="정류장·시간 MAE(명)")
+    baseline_mae: float | None = Field(None, description="같은 행의 작년 같은 요일 MAE(명)")
+    model_mae_on_baseline_rows: float | None = Field(None, description="작년 값이 있는 행만의 모델 MAE (베이스라인과 같은 행 비교)")
+    route_hour_cells: int = Field(0, description="노선·날짜·시간 합계 칸 수 (P90 적중률의 분모)")
+    p90_coverage_pct: float | None = Field(None, description="실제 합계가 P90 상한 이하인 비율(%). 비율표가 없으면 null")
+    mae_ratio: float | None = Field(None, description="stop_hour_mae ÷ 평가 MAE (전체 지표에만)")
+
+
+class BusDriftCheckItem(BaseModel):
+    name: str = Field(..., description="mae_ratio / vs_baseline / p90_coverage")
+    label: str
+    value: float | None
+    limit: float | None
+    failed: bool
+
+
+class BusDriftReview(BaseModel):
+    status: str = Field(..., description="approved / held / rejected")
+    reviewer: str = ""
+    note: str = ""
+    reviewed_at: str | None = None
+
+
+class BusDriftCheck(BaseModel):
+    id: str = Field(..., description="<kind>_<첫날>_<마지막 날>")
+    kind: str = Field(..., description="forward(실제 예측) / replay(평가 구간 다시 돌려 봄)")
+    kind_label: str
+    window: BusDriftWindow
+    model_version: str
+    reference_mae: float = Field(..., description="평가 구간 정류장·시간 MAE (metrics.json)")
+    metrics: BusDriftMetrics
+    by_daytype: dict[str, BusDriftMetrics]
+    by_route: dict[str, BusDriftMetrics]
+    checks: list[BusDriftCheckItem]
+    verdict: str = Field(..., description="retrain(재학습 권고) / ok / insufficient(실측이 모자라 판정 보류)")
+    recommend: bool
+    reasons: list[str]
+    next_steps: list[str] = Field(..., description="권고일 때 담당자가 실행할 순서. 서버는 학습을 돌리지 않음")
+    caution: str
+    needs_review: bool = True
+    review: BusDriftReview | None = Field(None, description="담당자 결정. 아직 없거나 DB가 꺼져 있으면 null")
+
+
+class BusDriftRules(BaseModel):
+    mae_ratio: float
+    p90_coverage_min: float
+    min_days: int
+
+
+class BusDriftList(BaseModel):
+    db: dict
+    rules: BusDriftRules
+    items: list[BusDriftCheck]
+
+
+class BusDriftReviewRequest(BaseModel):
+    status: Literal["approved", "held", "rejected"] = Field(..., description="승인 / 보류 / 반려")
+    reviewer: str = Field("", max_length=50)
+    note: str = Field("", max_length=500)
