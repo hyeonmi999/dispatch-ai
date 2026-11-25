@@ -148,9 +148,9 @@ documents.json의 등급으로 볼 수 없는 문서 조각을 빼는 계획을 
 | 새로 만들 문항 | 개수 | 예시 |
 |---|---|---|
 | 답할 질문: 운행 변경 절차 | 6 | Step 1에서 모은 문서 기반 |
-| 답할 질문: 기존 문서의 다른 조항 | 4 | 기존 문항과 겹치지 않게 |
-| 모른다고 해야 할 질문: 다른 교통수단·지역 | 4 | 지하철, 택시, 다른 도시 |
-| 모른다고 해야 할 질문: 그럴듯한 함정 | 4 | "혼잡도 80% 넘으면 과태료는?" |
+| 답할 질문: 기존 문서의 다른 조항 | 6 | 기존 문항과 겹치지 않게 |
+| 모른다고 해야 할 질문: 다른 교통수단·지역 | 3 | 지하철, 택시, 다른 도시 |
+| 모른다고 해야 할 질문: 그럴듯한 함정 | 3 | "혼잡도 80% 넘으면 과태료는?" |
 | 모른다고 해야 할 질문: 실시간 정보 | 2 | 지금 버스 위치, 오늘 날씨 |
 
 <details markdown="1">
@@ -185,6 +185,20 @@ docs/guides/guide-knowledge-kim.md의 Step 4를 읽고, eval/rag_eval.json 형�
 - 채점 실행: `python scripts/eval_rag.py --name <이름>` → `eval/results/`. 내 PC에서 어려우면 오정훈에게 부탁
 
 </details>
+
+
+형식만 검사할 때(모델 실행 없음):
+```bash
+python scripts/eval_rag.py --check-only --scoring normalized --criteria eval/rag_eval_criteria.json
+```
+
+실제 답변 평가(서버를 끄고 실행):
+```bash
+python scripts/eval_rag.py --name kim_eval40_normalized --scoring normalized --criteria eval/rag_eval_criteria.json
+```
+- 위 표는 총목표(정답형 24·거절형 16)와 Task K-2에 맞춰 새 문항을 6·6·3·3·2개로 정리했습니다.
+- 기존 결과 재현은 기본 literal 방식으로 비교합니다. normalized 및 강화 기준 결과는 채점 버전이 다르므로 구분해서 보고합니다.
+- 새 문항의 근거는 eval/rag_eval_sources.json을 확인합니다. 자동 채점 후에는 의미·부정·조건 누락도 원문과 대조합니다.
 
 ## Step 5. 챗봇 채점 문제집 (F-33)
 

@@ -21,6 +21,8 @@ MANIFEST_NAME = "documents.json"
 DOCUMENT_SUFFIXES = set(RAG_DOCUMENT_SUFFIXES)
 
 logger = logging.getLogger(__name__)
+_duplicate_states = {}
+_duplicate_state_lock = threading.Lock()
 
 
 class DocumentFields(BaseModel):
@@ -73,22 +75,34 @@ def document_records(root: Path) -> dict:
     return {**read_document_manifest(root), **read_document_manifest(managed_document_dir(root))}
 
 
-def document_files(root: Path, *, strict: bool = True) -> list[Path]:
+def document_files(root: Path, *, strict: bool = True, reveal_duplicates: bool = True) -> list[Path]:
     files = {}
     duplicates = set()
+    duplicate_names = set()
     for folder in (root, managed_document_dir(root)):
         for path in sorted(folder.glob("*")):
             if path.is_file() and not path.is_symlink() and path.suffix.lower() in DOCUMENT_SUFFIXES:
                 key = path.name.casefold()
                 if key in files:
                     duplicates.add(key)
+                    duplicate_names.update((files[key].name, path.name))
                 else:
                     files[key] = path
-    if duplicates:
-        if strict:
-            raise HTTPException(409, "기본 문서와 업로드 문서의 파일명이 중복됩니다.")
-        # 어느 파일의 등급인지 모호하므로 둘 다 검색에서 제외합니다.
-        logger.warning("중복 파일 %d개를 문서 검색에서 제외했습니다.", len(duplicates))
+    signature = tuple(sorted(duplicate_names))
+    root_key = root.resolve()
+    with _duplicate_state_lock:
+        if signature:
+            if _duplicate_states.get(root_key) != signature:
+                logger.warning("중복 문서를 검색에서 제외했습니다: %s", ", ".join(signature))
+                _duplicate_states[root_key] = signature
+        else:
+            _duplicate_states.pop(root_key, None)
+    if duplicates and strict:
+        detail = "기본 문서와 업로드 문서의 파일명이 중복됩니다."
+        if reveal_duplicates:
+            detail += " 중복 파일: " + ", ".join(signature) + ". 폴더에서 이름 충돌을 해소해 주세요."
+        raise HTTPException(409, detail)
+    # 어느 파일의 등급인지 모호하므로 둘 다 검색에서 제외합니다.
     return sorted((path for key, path in files.items() if key not in duplicates),
                   key=lambda path: path.name)
 
@@ -147,7 +161,7 @@ class Documents:
         with self.lock:
             records = document_records(self.base)
             items = []
-            for path in document_files(self.base):
+            for path in document_files(self.base, reveal_duplicates=role == "admin"):
                 if path.is_symlink() or not path.is_file() or path.suffix.lower() not in DOCUMENT_SUFFIXES:
                     continue
                 item = records.get(path.name, {

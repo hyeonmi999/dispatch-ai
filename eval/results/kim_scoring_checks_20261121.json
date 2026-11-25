@@ -1,0 +1,51 @@
+{
+  "scope": "synthetic scoring checks only; not fresh AI outputs or model accuracy",
+  "dataset": {
+    "total": 40,
+    "answer": 24,
+    "refuse": 16,
+    "baseline_20_unchanged": true
+  },
+  "scoring_version": "normalized-v1",
+  "criteria_version": "kim-source-criteria-v1",
+  "cases": [
+    {
+      "id": "A13",
+      "synthetic_answer": "50% 이하",
+      "literal_ok": false,
+      "normalized_with_criteria_ok": true
+    },
+    {
+      "id": "A19",
+      "synthetic_answer": "인가받은 1일 운행횟수를 벗어나지 않는 범위에서 시간대별 30% 이내",
+      "literal_ok": false,
+      "normalized_with_criteria_ok": true
+    },
+    {
+      "id": "A20",
+      "synthetic_answer": "동일한 시·군·구 안 또는 해당 차고지로부터 5km 범위",
+      "literal_ok": false,
+      "normalized_with_criteria_ok": true
+    },
+    {
+      "id": "A22",
+      "synthetic_answer": "해당 기간 중 30% 이내",
+      "literal_ok": false,
+      "normalized_with_criteria_ok": true
+    },
+    {
+      "id": "A4",
+      "synthetic_answer": "차고의 위치를 적은 서류입니다.",
+      "literal_ok": true,
+      "normalized_with_criteria_ok": false
+    },
+    {
+      "id": "A4",
+      "synthetic_answer": "신·구 사업계획 대비 서류 또는 도면과 차고 등 시설의 위치 및 수용능력을 적은 서류입니다.",
+      "literal_ok": true,
+      "normalized_with_criteria_ok": true
+    }
+  ],
+  "legacy_replay": "60 stored answers retain their original judgments in literal mode; tested by pytest",
+  "known_limit": "Meaning, negation, condition completeness and citations require additional manual review."
+}

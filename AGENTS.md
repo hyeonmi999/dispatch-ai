@@ -50,6 +50,8 @@ bash scripts/run.sh                   # macOS
 # 검증
 python -m pytest -q                                   # 합성 데이터 테스트 (LLM·외부 연결 없이 돎)
 cd frontend && npm run build                          # 프론트 빌드
+# frontend 폴더에서
+npm run test:api                                      # 화면 API 오류 처리 테스트
 python scripts/eval_rag.py --name <이름>               # 법규 질의응답 채점 → eval/results/
 python scripts/eval_agent.py --name <이름>             # 챗봇 기능 선택 채점 → eval/results/
 
