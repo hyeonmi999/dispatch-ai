@@ -331,3 +331,36 @@ def test_adapter_methods_match_api(client):
     direct, api = adapter.optimize(opt), client.post("/api/bus/optimize", json=opt).json()
     for key in ("plan", "kpi", "binding", "status"):
         assert direct[key] == api[key]
+
+
+def test_same_optimization_run_is_not_saved_twice(monkeypatch):
+    # 같은 조건·같은 결과를 연달아 저장하면 새 줄 없이 직전 id (PR #25 리뷰 LOW 4)
+    import asyncio
+    from app.db import repository as repo
+
+    rows, added = [], []
+
+    async def fake_list(domain, limit=20):
+        return rows[-1:][::-1]
+
+    async def fake_add(row):
+        added.append(row)
+        rows.append({"id": len(rows) + 1, "date": f"{row.target_date}", "hours": row.hours, "weights": row.weights,
+                     "status": row.status, "overcrowded_before": row.overcrowded_before,
+                     "overcrowded_after": row.overcrowded_after, "extra_trips": row.extra_trips})
+        return len(rows)
+
+    monkeypatch.setattr(repo, "list_optimization_runs", fake_list)
+    monkeypatch.setattr(repo, "_add", fake_add)
+    result = {"date": "2026-10-28", "weights": {"overload": 10, "trips": 1, "change": 0}, "status": "optimal",
+              "kpi": {"overcrowded_before": 6, "overcrowded_after": 1, "extra_trips": 9}, "plan": []}
+
+    first = asyncio.run(repo.save_optimization_run("bus", result, [8, 7]))
+    again = asyncio.run(repo.save_optimization_run("bus", result, [7, 8]))
+    other_hours = asyncio.run(repo.save_optimization_run("bus", result, [7, 8, 9]))
+    other_weights = asyncio.run(repo.save_optimization_run("bus", {**result, "weights": {"overload": 10, "trips": 1, "change": 1}}, [7, 8, 9]))
+    back = asyncio.run(repo.save_optimization_run("bus", result, [7, 8]))
+
+    assert (first, again) == (1, 1) and len(added) == 3 + 1
+    assert other_hours == 2 and other_weights == 3
+    assert back == 4                                 # 바로 앞과 다르면 예전과 같아도 새 줄 (연속 실행만 건너뜀)
