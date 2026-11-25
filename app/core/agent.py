@@ -57,8 +57,12 @@ def _is_regulation(text: str) -> bool:
 # ("해야"는 넣지 않음: "증차해야 해?"는 규정이 아니라 배차 권고 질문)
 ASK_WEAK = ("기준", "가능한가", "의무", "역할", "어떻게 구분")
 OPTIMIZE_WORDS = ("최적화", "최적 배차", "전체 노선", "전 노선", "모든 노선")
-SIMULATE_WORDS = ("시뮬", "바꾸면", "바꿨을 때", "바꾼다면", "으로 하면", "로 하면", "줄이면", "늘리면", "좁히면", "넓히면")
-ADVISE_WORDS = ("권고", "추천", "증차", "감차", "늘려야", "줄여야", "늘릴까", "줄일까", "조정", "적당", "적정")
+SIMULATE_WORDS = ("시뮬", "바꾸면", "바꿨을 때", "바꾼다면", "으로 하면", "로 하면", "줄이면", "늘리면", "좁히면", "넓히면", "운행하면", "운행한다면")
+ADVISE_WORDS = ("권고", "증차", "감차", "늘려야", "줄여야", "늘릴까", "줄일까", "조정", "적당", "적정")
+# "차를 더 넣어야 할까"도 배차 권고. '넣'만 찾으면 다른 주제에 걸리므로 차량 표현과 묶음.
+_ADVISE_VEHICLE_RE = re.compile(r"(?:버스|차량|차)(?:를|을)?\s*(?:(?:좀|더|조금|몇\s*대)\s*)*(?:넣|빼)")
+# '추천' 자체는 업무 의도가 아님. 노선번호가 있는 도시락·숙소 추천을 배차 권고로 보내지 않음.
+ADVISE_RECOMMEND_CONTEXT = ("배차", "증차", "감차", "간격", "운행횟수", "운행 횟수")
 # 길안내: "A에서 B 어떻게 가?" (요금·규정을 묻는 말이 섞이면 규정 질문으로 봄)
 GUIDE_WORDS = ("어떻게 가", "어떻게가", "가는 법", "가는법", "가는 방법", "가는 길", "가려면", "가고 싶", "갈 수 있",
                "갈래", "길안내", "길 안내", "길 알려", "환승", "몇 번 타", "뭐 타", "무슨 버스")
@@ -108,7 +112,8 @@ def classify(message: str, has_route: bool) -> str | None:
         return "simulate"
     if not has_route and _has(message, ASK_WEAK):
         return "ask"                                   # "혼잡도는 어떻게 구분하나요?"
-    if _has(message, ADVISE_WORDS):
+    if (_has(message, ADVISE_WORDS) or _ADVISE_VEHICLE_RE.search(message)
+            or ("추천" in message and _has(message, ADVISE_RECOMMEND_CONTEXT))):
         return "advise"
     if _has(message, PREDICT_WORDS):
         return "predict"

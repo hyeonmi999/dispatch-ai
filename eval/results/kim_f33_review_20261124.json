@@ -1,0 +1,136 @@
+{
+  "date": "2026-11-24",
+  "base_commit": "78f783436763ee21f1bfdbf3123796f5f271f3b6",
+  "scope": "F-33 기본15문항의 의도·도구 선택·명시한 입력값. 답변 품질·최적화 수치의 정확도 검증 아님",
+  "dataset_sha256": "6fa685e51ac58f8db2de8444a62a6b2b6079a222358c7a0fd4154baa64d61aef",
+  "questions_changed_after_scoring": false,
+  "summary": {
+    "name": "kim_f33_initial_20261124",
+    "file": "eval/agent_eval.json",
+    "today": "2026-10-28",
+    "correct": "12/15",
+    "accuracy": 0.8,
+    "numbers_failed": 0,
+    "seconds": 35.2
+  },
+  "per_category": {
+    "predict": {
+      "correct": 2,
+      "total": 2
+    },
+    "advise": {
+      "correct": 1,
+      "total": 2
+    },
+    "optimize": {
+      "correct": 2,
+      "total": 2
+    },
+    "simulate": {
+      "correct": 1,
+      "total": 2
+    },
+    "ask": {
+      "correct": 2,
+      "total": 2
+    },
+    "out_of_scope": {
+      "correct": 4,
+      "total": 5
+    }
+  },
+  "mistakes": [
+    {
+      "id": "G3",
+      "q": "143번 2026-10-30 출근 시간에 차를 더 넣어야 할까?",
+      "expected_tools": [
+        "advise"
+      ],
+      "expected_intent": "advise",
+      "actual_intent": "out_of_scope",
+      "wrong": [
+        "tools []",
+        "intent out_of_scope"
+      ]
+    },
+    {
+      "id": "G8",
+      "q": "271번 2026-11-04 오후 6시에 8분마다 운행하면 어떻게 달라져?",
+      "expected_tools": [
+        "simulate"
+      ],
+      "expected_intent": "simulate",
+      "actual_intent": "ask",
+      "wrong": [
+        "tools ['ask']",
+        "intent ask"
+      ]
+    },
+    {
+      "id": "G11",
+      "q": "143번 담당자에게 줄 점심 도시락 메뉴 추천해줘.",
+      "expected_tools": [],
+      "expected_intent": "out_of_scope",
+      "actual_intent": "clarify",
+      "wrong": [
+        "intent clarify"
+      ]
+    }
+  ],
+  "tool_execution_errors": [
+    {
+      "id": "G5",
+      "tools": [
+        {
+          "name": "optimize",
+          "args": {
+            "date": "2026-10-28",
+            "hours": [
+              7,
+              8,
+              9
+            ]
+          },
+          "ok": false
+        }
+      ],
+      "answer": "⚠️ 승객 수 상한 비율표가 없습니다. python scripts/calibrate_p90.py 를 먼저 실행하세요."
+    },
+    {
+      "id": "G6",
+      "tools": [
+        {
+          "name": "optimize",
+          "args": {
+            "date": "2026-11-03",
+            "hours": [
+              17,
+              18,
+              19
+            ]
+          },
+          "ok": false
+        }
+      ],
+      "answer": "⚠️ 승객 수 상한 비율표가 없습니다. python scripts/calibrate_p90.py 를 먼저 실행하세요."
+    }
+  ],
+  "conditions": {
+    "DATA_MODE": "real",
+    "DB": "disabled",
+    "use_llm": false,
+    "embedding": "local BGE",
+    "model_version": "xgb-bus-real-202611071209",
+    "observed_last_data_date": "2026-10-25",
+    "observed_forecast_end": "2026-11-15",
+    "p90": "missing",
+    "snapshot_notice": "이 PC의 보유자료는 최신 팀스냅샷으로 확인되지 않음. 숫자 성능 평가에 사용하지 않음."
+  },
+  "regression_checks": {
+    "pytest_passed": 157,
+    "seconds": 166.93,
+    "base": "dev 78f7834, PR #30 미포함",
+    "frontend_build": "해당 없음: 화면 변경 없음",
+    "chat_code_modified": false
+  }
+}

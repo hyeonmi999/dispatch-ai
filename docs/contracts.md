@@ -12,7 +12,7 @@
 | `POST /api/bus/chat` | 오정훈 | 채팅 화면 | 구현됨 (예측·권고·규정·길안내·노선 정보·시뮬레이션·최적화) |
 | `POST /api/bus/guide` · `GET /api/bus/stops/search` | 오정훈 | 챗봇, 길안내 팝업 | 구현됨 |
 | `GET /api/bus/routes/{route}/info` | 오정훈 | 챗봇 | 구현됨 |
-| `eval/agent_eval.json` 형식 | 김주혜 | 챗봇 채점 | 초안. 김주혜 확인 필요 |
+| `eval/agent_eval.json` 형식 | 김주혜 | 챗봇 채점 | 기본15문항 작성·실제채점. expect_tools와 기존tools 지원 |
 | `/api/bus/documents` | 김주혜 | 문서 관리 화면 | 구현됨 (PR #6). 아래 5번은 구현에 맞춰 고침 |
 | `role` 값 (열람 역할) | 김주혜 | 챗봇, 법규 질의응답 | 구현됨 (PR #6). `/ask`와 `/chat` 모두 적용 |
 
@@ -182,7 +182,7 @@
 - 챗봇은 "160번 버스 노선 알려줘", "143번 첫차 몇 시야?", "143번 어디서 어디까지 가?" 같은 질문에 이 기능을 부릅니다.
 - `GET /api/bus/meta`의 `routes[]`와 같은 값을 씁니다 (`adapter._route_row`).
 
-## 4. `eval/agent_eval.json` — 챗봇 채점 문제집 (F-33) · 초안
+## 4. `eval/agent_eval.json` — 챗봇 채점 문제집 (F-33)
 
 ```
 [{"id": "G1", "q": "160번 10월 28일 오후 3시에 혼잡해?", "tools": ["predict"],
@@ -194,10 +194,18 @@
 
 - `tools`: 불러야 하는 기능 이름 목록(위 3번의 `tools[].name`과 같은 값). 아무것도 부르면 안 되는 문항은 빈 목록.
 - 이어 묻기 문항은 `history`(이전 대화)를, 현재 위치를 쓰는 길안내 문항은 `location`을 함께 적습니다.
-- 형식 예시와 채점 방법은 `eval/agent_eval.sample.json`(오정훈이 만든 15문항)과 `scripts/eval_agent.py`를 보면 됩니다. 채점: `python scripts/eval_agent.py --name agent_1`
-- `slots`·`intent`는 선택. 적으면 그 값도 채점합니다.
+- 형식 예시와 채점 방법은 `eval/agent_eval.sample.json`(기존 연습용 예시)과 `scripts/eval_agent.py`를 보면 됩니다. 채점: `python scripts/eval_agent.py --name agent_1`
+- `slots`·`intent`는 선택. 적으면 그 값도 채점합니다. 기본15문항에는 계산질문의 노선·날짜·시간/시간대·간격과 G9 노선번호의 정답값을 지정합니다.
 - 날짜는 "내일" 같은 말 대신 `10월 28일`처럼 적습니다 (채점하는 날에 따라 답이 달라지지 않게).
 - 채점: 응답의 `tools[].name` 목록이 `tools`와 같으면 정답. 합격 기준 90%.
+- Step5 기본세트는15문항(5개 기능별2문항·범위밖5문항)입니다. tools의 순서와 intent·slots를 모두 지정한 문항은 해당 값까지 일치해야 합니다.
+- expect_tools도 지원합니다. ["none"]은 실제 호출[]와 intent=out_of_scope를 요구하며 clarify는 오답입니다. 기존 tools:[]는 기존처럼 intent를 따로 적어 되묻기·범위밖을 구분합니다.
+- 두 도구 필드를 동시에 적으면 정규화한 목록이 일치해야 합니다. 알 수 없는 도구·혼합 none·필드 누락·중복id는 실행 전에 거부합니다.
+- must는 그룹마다 한 단어 이상, forbid는 금지어 부재를 검사합니다. 빈 목록은 검사하지 않으며 note는 메모입니다. 현재 기본15문항은 키워드 조건을 비워두고 기능 선택만 검사합니다.
+- --check-only는 모델을 실행하지 않고 형식을 검사합니다. 결과의 scoring_version=agent-eval-v2와 dataset_sha256으로 기준·문항을 식별합니다.
+- tool_execution_errors는 선택한 기능의 실제 실행 오류 수이며 기능 선택 점수와 별개입니다.
+- 기능 호출 자체가 오류를 반환해도 올바른 기능을 선택했다면 현재 채점기는 정답으로 셉니다. 결과의 got_tools[].ok도 별도로 확인해야 합니다.
+- 실제 챗봇/예측/규정 코드를 문제집에 맞춰 고치지 않습니다. 오답은 담당자 검토 자료로 남깁니다.
 
 ## 4-1. `eval/rag_eval.json` `gold_articles` · 검색 전용 결과 (E-4)
 

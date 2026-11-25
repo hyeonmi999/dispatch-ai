@@ -1,0 +1,9 @@
+{
+  "server": "uvicorn",
+  "bind": "127.0.0.1",
+  "status": 200,
+  "intent": "out_of_scope",
+  "tools": [],
+  "db_saved": false,
+  "own_process_stopped_after_check": true
+}

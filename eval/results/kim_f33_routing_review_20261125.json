@@ -1,0 +1,87 @@
+{
+  "scope": "F-33에서 발견한分류 오류의 사용자 요청 후속 수정",
+  "baseline_head": "ff05a58fd6ecd5e693a48fecf40eb8789503f447",
+  "release": "data-snapshot-20261113",
+  "model": "xgb-bus-real-202611130102",
+  "p90_passed": true,
+  "pytest": {
+    "passed": 191,
+    "seconds": 156.93,
+    "new_regression_cases": 18,
+    "before_fix_failed": 13,
+    "before_fix_passed": 5
+  },
+  "f33_before": "12/15",
+  "f33_after": {
+    "name": "kim_f33_routing_20261125",
+    "file": "eval/agent_eval.json",
+    "today": "2026-10-28",
+    "correct": "15/15",
+    "accuracy": 1.0,
+    "numbers_failed": 0,
+    "seconds": 38.2,
+    "scoring_version": "agent-eval-v2",
+    "dataset_sha256": "417f075954422b8e304627e30465e054f160522006b084c5ead227f3391c53ca",
+    "tool_execution_errors": 0
+  },
+  "sample_after": {
+    "name": "kim_f33_routing_sample_20261125",
+    "file": "D:\\dispatch-ai-chat-fixes\\eval\\agent_eval.sample.json",
+    "today": "2026-10-28",
+    "correct": "21/21",
+    "accuracy": 1.0,
+    "numbers_failed": 0,
+    "seconds": 39.1,
+    "scoring_version": "agent-eval-v2",
+    "dataset_sha256": "65d9c210800ba7c7d6af0540b712a6bc7e96c4ef604947c9e8a74d6a48380f12",
+    "tool_execution_errors": 0
+  },
+  "http_after": {
+    "scope": "최신 팀자료의 실제 HTTP API 검사와 별도의 합성 채점검사",
+    "dataset_sha256": "417f075954422b8e304627e30465e054f160522006b084c5ead227f3391c53ca",
+    "http_200": 15,
+    "correct": "15/15",
+    "tool_execution_errors": 0,
+    "handler_argument_checks": 24,
+    "db_writes": 0,
+    "llm_generation": false,
+    "http_validation_checks": [
+      {
+        "case": "short_message",
+        "status": 422
+      },
+      {
+        "case": "invalid_role",
+        "status": 422
+      }
+    ],
+    "synthetic_wrong_answer_checks": 70,
+    "synthetic_wrong_answers_rejected": 70,
+    "seconds": 40.4
+  },
+  "cli_http_match_all_items": true,
+  "changed_intents": [
+    {
+      "id": "G3",
+      "before": "out_of_scope",
+      "after": "advise"
+    },
+    {
+      "id": "G8",
+      "before": "ask",
+      "after": "simulate"
+    },
+    {
+      "id": "G11",
+      "before": "clarify",
+      "after": "out_of_scope"
+    }
+  ],
+  "questions_expectations_and_slots_unchanged": true,
+  "hash_note": "기존 LF 파일과 새 worktree CRLF 파일의 바이트 해시는 다르지만 JSON 전체 값은 동일. 새 실행 중 파일 변경 없음.",
+  "baseline_dataset_sha256": "3c17df567852c988d71ca6be574bb5d05564d8734b13b4dbe2b6d9bcd693d9dd",
+  "normalized_lf_dataset_sha256": "417f075954422b8e304627e30465e054f160522006b084c5ead227f3391c53ca",
+  "interpretation": "수정에 사용한 문항을 재검증한 개발 결과이며, 미공개 독립 평가의 정확도·법규 답변 품질·예측 오차 평가가 아님.",
+  "llm_generation": false,
+  "db_writes": 0
+}
