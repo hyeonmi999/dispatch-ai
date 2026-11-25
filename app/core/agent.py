@@ -335,34 +335,64 @@ def verify_numbers(answer: str, *evidence) -> bool:
 # --- LLM이 다시 쓴 문장의 숫자 확인 (verify_numbers보다 엄격함) ---
 # verify_numbers는 "근거에 있는 숫자인가"만 봐서, 날짜의 20을 "20명"으로 쓰거나 0.618을 "1"로 쓰거나
 # 예측과 작년 값을 바꿔 써도 통과함. 다시 쓴 문장은 문장 틀 답변과 "값 + 단위"가 같아야 하고, 순서와 설명도 같아야 함.
-_UNIT_NUMBER_RE = re.compile(r"(\d+(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(km|명|분|회|대|시|번|개|곳|안|m|%|건|배)?")
+_UNIT_NUMBER_RE = re.compile(r"(\d+(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(km|명|분|회|대|시(?!간)|번|개|곳|안|m|%|건|배)?")
 _SENTENCE_END_RE = re.compile(r"[.!?\n]")
+_CLAUSE_END_RE = re.compile(r"[.!?\n,]")
+_SENTENCE_GAP_RE = re.compile(r"(?<=[.!?])\s+")       # 문장 사이. 소수점과 정류장 이름 속 마침표("가락시장.가락시장역")에서는 끊지 않음
 _KOREAN_WORD_RE = re.compile(r"[가-힣]{2,}")
+# 같은 뜻으로 바꿔 쓰는 설명은 한 가지 말로 봄 ("현재 6분"의 현재 = 문장 틀의 "지금")
+LABEL_SYNONYMS = (("현재", "지금"), ("현행", "지금"), ("기존", "지금"), ("예측", "예상"), ("전망", "예상"),
+                  ("지난해", "작년"), ("전년", "작년"), ("실측", "실제"), ("권장", "권고"))
+# 어느 때의 값인지 알려 주는 말. 문장 틀에서 한 문장에만 나오면, 그 말이 붙은 숫자는 그 문장의 값이어야 함
+FRAME_KEYS = ("지금", "예상", "작년", "실제", "그때")
+# 숫자의 뜻을 바꾸는 말: 문장 틀에 없는데 다시 쓴 문장에 있으면 버림
+_NUMBER_MODIFIER_RE = re.compile(r"[두세네몇]\s?배|절반|미만|이상|이하|초과")
+_KOREAN_NUMBER_RE = re.compile(r"(?<![가-힣])(?:수|몇)?[일이삼사오육칠팔구십백천만]+\s?(?:명|회|퍼센트)(?![가-힣])")
 
 
-def _unit_numbers(text: str) -> tuple[list[tuple[float, str, str]], set[str]]:
-    """([(값, 단위, 앞 구절)], {날짜}) — 앞 구절은 같은 문장에서 바로 앞 숫자 뒤부터 이 숫자 앞까지.
+def _unit_numbers(text: str) -> tuple[list[tuple[float, str, str, str]], set[str]]:
+    """([(값, 단위, 앞 구절, 뒤 구절)], {날짜})
 
+    앞 구절은 같은 문장에서 바로 앞 숫자 뒤부터 이 숫자 앞까지, 뒤 구절은 이 숫자 뒤부터 쉼표·문장 끝까지
+    (다음 숫자가 먼저 나오면 그 말은 다음 숫자의 설명이므로 빈 문자열).
     날짜(2026-11-20, 11월 20일)는 숫자 목록에 넣지 않고 따로 모음 (날짜의 20이 "20명"의 근거가 되지 않게).
+    연도를 적은 날짜는 연도까지("2026-11-20"), 월·일만 적은 날짜는 "11-20"으로 모음.
     """
     dates: set[str] = set()
 
     def take_date(match: re.Match) -> str:
         groups = match.groups()
-        dates.add(f"{int(groups[-2]):02d}-{int(groups[-1]):02d}")
+        year = f"{int(groups[0]):04d}-" if len(groups) == 3 else ""
+        dates.add(f"{year}{int(groups[-2]):02d}-{int(groups[-1]):02d}")
         return " " * len(match.group(0))       # 자리를 그대로 두어 앞 구절이 이어 붙지 않게
     text = _KOR_DATE_RE.sub(take_date, _ISO_DATE_RE.sub(take_date, text))
+    matches = list(_UNIT_NUMBER_RE.finditer(text))
     out, last = [], 0
-    for match in _UNIT_NUMBER_RE.finditer(text):
+    for i, match in enumerate(matches):
         before = _SENTENCE_END_RE.split(text[last:match.start()])[-1]
-        out.append((float(match.group(1).replace(",", "")), match.group(2) or "", before))
+        rest = text[match.end():matches[i + 1].start()] if i + 1 < len(matches) else text[match.end():]
+        end = _CLAUSE_END_RE.search(rest)
+        after = rest[:end.start()] if end else ("" if i + 1 < len(matches) else rest)
+        out.append((float(match.group(1).replace(",", "")), match.group(2) or "", before, after))
         last = match.end()
     return out, dates
 
 
 def _label_keys(phrase: str) -> list[str]:
     """구절에서 설명하는 말의 앞 두 글자: "작년 같은 요일은" → [작년, 같은, 요일] (조사가 달라도 같게 보려고 두 글자만)"""
-    return [word[:2] for word in _KOREAN_WORD_RE.findall(phrase)]
+    return [next((same for word_start, same in LABEL_SYNONYMS if word.startswith(word_start)), word[:2])
+            for word in _KOREAN_WORD_RE.findall(phrase)]
+
+
+def _frame_values(template: str) -> dict[str, set[tuple[float, str]]]:
+    """문장 틀에서 한 문장에만 나오는 '때를 알리는 말' → 그 문장에 있는 (값, 단위)"""
+    found: dict[str, list[set]] = {}
+    for sentence in _SENTENCE_GAP_RE.split(template):
+        numbers, _ = _unit_numbers(sentence)
+        pairs = {(value, unit) for value, unit, _, _ in numbers}
+        for key in set(_label_keys(sentence)) & set(FRAME_KEYS):
+            found.setdefault(key, []).append(pairs)
+    return {key: groups[0] for key, groups in found.items() if len(groups) == 1}
 
 
 def same_numbers(answer: str, template: str) -> bool:
@@ -371,21 +401,38 @@ def same_numbers(answer: str, template: str) -> bool:
     1) 값과 단위가 문장 틀에 있는 짝이어야 함 (3,133명 → "3,133명"만. "3,133회"나 "3,100명"은 안 됨)
     2) 같은 단위의 서로 다른 값은 문장 틀과 같은 순서 ("7.5분에서 7분으로"를 "7분에서 7.5분으로"로 바꾸면 안 됨)
     3) 숫자 앞의 설명이 다른 값의 설명이면 안 됨 ("작년 3,133명"인데 3,133은 예상 값인 경우)
+    4) 때를 알리는 말(지금·예상·작년 등)이 붙은 숫자는 문장 틀에서 그 말이 있는 문장의 값이어야 함 ("현재 혼잡도는 0.73"의 0.73은 증차 뒤 예상)
+    5) 문장 틀에 없는 오전·오후, "두 배·미만·이상", 한글로 쓴 숫자("삼천 명")가 있으면 안 됨
     뜻이 같아도 순서를 바꿔 쓴 답은 버려짐 → 문장 틀 답변을 그대로 씀 (틀린 답을 내보내는 것보다 안전).
     """
     wanted, wanted_dates = _unit_numbers(template)
     shown, shown_dates = _unit_numbers(answer)
-    if not shown_dates <= wanted_dates:
+    if not shown_dates <= wanted_dates | {date[-5:] for date in wanted_dates}:
         return False
-    pairs = [(value, unit) for value, unit, _ in wanted]
-    if any((value, unit) not in pairs for value, unit, _ in shown):
+    pairs = [(value, unit) for value, unit, _, _ in wanted]
+    if any((value, unit) not in pairs for value, unit, _, _ in shown):
         return False
+    # 5) 숫자의 뜻을 바꾸는 말
+    squeeze = lambda found: {re.sub(r"\s", "", word) for word in found}
+    half_days = {(m.group(1), int(m.group(2))) for m in _HOUR_RE.finditer(template) if m.group(1)}
+    if any(m.group(1) and (m.group(1), int(m.group(2))) not in half_days for m in _HOUR_RE.finditer(answer)):
+        return False
+    for pattern in (_NUMBER_MODIFIER_RE, _KOREAN_NUMBER_RE):
+        if not squeeze(pattern.findall(answer)) <= squeeze(pattern.findall(template)):
+            return False
+    # 4) 때를 알리는 말: 앞 구절에서는 숫자에 가장 가까운 말, 뒤 구절에서는 첫 말
+    frames = _frame_values(template)
+    for value, unit, before, after in shown:
+        near = ([key for key in _label_keys(before) if key in frames][-1:]
+                or [key for key in _label_keys(after) if key in frames][:1])
+        if near and (value, unit) not in frames[near[0]]:
+            return False
 
     # 단위별로: 문장 틀에서 값이 처음 나온 순서, 값마다 그 값에만 붙은 설명
     for unit in {unit for _, unit in pairs}:
         order: list[float] = []
         labels: dict[float, set[str]] = {}
-        for value, u, before in wanted:
+        for value, u, before, _ in wanted:
             if u == unit:
                 if value not in order:
                     order.append(value)
@@ -395,7 +442,7 @@ def same_numbers(answer: str, template: str) -> bool:
         own = {v: keys - set().union(*(labels[o] for o in order if o != v)) for v, keys in labels.items()}
         owner = {key: v for v, keys in own.items() for key in keys}
         seen: list[float] = []
-        for value, u, before in shown:
+        for value, u, before, _ in shown:
             if u != unit:
                 continue
             if value not in seen:
@@ -423,8 +470,10 @@ ACTION_FORBID = {
     "keep": ("증차", "감차", "단축", "늘리", "늘려", "줄이", "줄여"),
 }
 LEVELS = ("매우혼잡", "혼잡", "보통", "여유")
-# 바로 뒤에 오면 뜻이 뒤집히는 말: "감차하지 않아도", "유지보다는", "혼잡하지 않습니다", "여유가 없습니다"
-_NEGATION_AFTER = r"[^.!?\n,]{0,12}(?:않|없|말고|마세요|마십|보다|아니|어렵|불필요)"
+# 뒤에 오면 뜻이 뒤집히는 말: "감차하지 않아도", "유지보다는", "혼잡하지 않습니다", "여유가 없습니다", "증차는 보류"
+# 같은 문장 끝까지 봄 (쉼표 뒤, 멀리 떨어진 부정도 잡음). "안"·"못"은 낱말일 때만 ("방안"·"잘못"은 아님)
+_NEGATION_AFTER = (r"[^.!?\n]*?(?:않|없|말고|마세요|마십|보다|아니|아닙|아닌|어렵|불필요|보류|대신|반대"
+                   r"|(?<![가-힣])안\s|(?<![가-힣])못|거리가\s?[멀멉]|풀렸|풀립|해소됐|해소되었)")
 NOT_LEVEL_PHRASES = ("혼잡도", "혼잡 구간", "혼잡 단계")          # 단계를 말하는 것이 아닌 표현
 _CROWDED_CLAIM_RE = re.compile(r"붐비(?!는 구간)|붐빕|붐벼|붐빌")   # "가장 붐비는 구간"은 문장 틀에도 있는 표현
 CALM_CLAIMS = ("한산", "한가", "널널", "쾌적")
@@ -600,15 +649,19 @@ def _guide(adapter: DomainAdapter, slots: dict, **_) -> tuple[dict, str, list[di
         facts["origin_walk_m"] = origin["walk_m"]
         lines.append(f"📍 가장 가까운 정류장은 {origin['stop']}(약 {origin['walk_m']}m)입니다.")
 
-    for place, asked, other in ((origin, slots.get("origin"), "도착지"), (dest, slots.get("destination"), "출발지")):
-        if place.get("ambiguous"):
-            lines.append(f"ℹ️ '{asked or place['stop']}'(으)로 찾은 정류장이 멀리 떨어진 여러 곳에 있어, {other}에서 가까운 곳부터 찾아 {place['stop']}(으)로 안내합니다.")
+    same_name_notes = [
+        f"ℹ️ '{asked or place['stop']}'(으)로 찾은 정류장이 멀리 떨어진 여러 곳에 있어, {other}에서 가까운 곳부터 찾아 {place['stop']}(으)로 안내합니다."
+        for place, asked, other in ((origin, slots.get("origin"), "도착지"), (dest, slots.get("destination"), "출발지"))
+        if place.get("ambiguous")]
+    lines += same_name_notes
     walk = result.get("walk_only")
     if walk:
         facts["walk_only"] = walk
         start = "현재 위치" if origin.get("label") == "현재 위치" else origin["stop"]
-        lines = [f"🧭 {start} → {dest['stop']}",
-                 f"🚶 바로 근처입니다. 걸어서 약 {walk['walk_m']}m(약 {walk['walk_min']}분)라 버스를 탈 필요가 없습니다."]
+        # 어느 정류장으로 잡았는지 알리는 줄은 남김: 다른 곳에 있는 사용자가 "바로 근처"를 그대로 믿지 않게 (이슈 #22)
+        lines = [f"🧭 {start} → {dest['stop']}", *([history_note] if history_note else []), *same_name_notes,
+                 f"🚶 바로 근처입니다. 걸어서 약 {walk['walk_m']}m(약 {walk['walk_min']}분)라 버스를 탈 필요가 없습니다."
+                 if walk["walk_m"] else "📍 이미 도착 정류장에 있습니다. 버스를 탈 필요가 없습니다."]
         return args, "\n".join(lines), [], {**facts, "data": result}
     if not options:
         lines.append("😢 두 정류장을 잇는 경로를 찾지 못했습니다 (직행·환승 한 번 기준).")

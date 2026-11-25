@@ -243,6 +243,45 @@ def test_rewrite_meaning_rejects_negation_and_contradiction():
     assert not keeps_meaning("추천은 2안입니다.", {"recommended_no": 1})
 
 
+def test_rewrite_checks_reject_issue_21_sentences():
+    """이슈 #21: 낱말만 바꾸면 통과하던 틀린 문장"""
+    from app.core.agent import keeps_meaning, same_numbers
+    increase, decrease, keep = ({"action": "increase", "level": "혼잡"}, {"action": "decrease", "level": "여유"},
+                                {"action": "keep", "level": "보통"})
+    # 1. 부정 표현: 목록에 없던 말, 12자 밖, 쉼표 뒤
+    for facts, wrong in (
+        (increase, "증차할 단계는 아닙니다. 지금은 혼잡입니다."),
+        (decrease, "감차는 안 해도 됩니다. 지금은 여유입니다."),
+        (keep, "유지하면 안 됩니다. 혼잡도는 보통입니다."),
+        (increase, "증차할 필요는 현재로서는 전혀 없다고 봅니다. 혼잡입니다."),
+        (increase, "증차는, 필요하지 않습니다. 혼잡입니다."),
+        (increase, "증차는 보류하세요. 혼잡입니다."),
+        (increase, "증차 대신 지금 간격 그대로 두세요. 혼잡입니다."),
+        (increase, "증차에 반대합니다. 혼잡입니다."),
+        (increase, "증차는 못 합니다. 혼잡입니다."),
+        (increase, "증차를 권고합니다. 혼잡과는 거리가 멉니다."),
+        (increase, "증차를 권고합니다. 혼잡은 풀렸습니다."),
+    ):
+        assert not keeps_meaning(wrong, facts), wrong
+    # 맞는 문장은 그대로 통과 ("방안"의 "안", 다음 문장의 부정은 상관없음)
+    assert keeps_meaning("증차 방안을 권고합니다. 지금은 혼잡입니다. 최종 결정은 담당자 검토 없이 하지 않습니다.", increase)
+    assert keeps_meaning(ADVISE_TEMPLATE, increase)
+
+    # 2. 숫자의 설명을 동의어로 바꾸거나 뒤에 붙임
+    assert not same_numbers("현재 6분 간격으로 운행 중입니다.", ADVISE_TEMPLATE)                  # 6분은 권고, 지금은 6.7분
+    assert not same_numbers("현재 혼잡도는 0.73입니다.", ADVISE_TEMPLATE)                        # 0.73은 증차 뒤 예상
+    assert not same_numbers("143번은 3,065명이 탈 것으로 예상됩니다.", PREDICT_TEMPLATE)          # 3,065는 작년 값
+    assert same_numbers("현재 6.7분 간격이고 권고는 6분입니다. 혼잡도는 0.82이고 그때 예상은 0.73입니다.", ADVISE_TEMPLATE)
+    # 3. 숫자 주변에서 뜻을 바꾸는 말
+    assert not same_numbers("오후 8시 예상 승차는 3,133명입니다.", PREDICT_TEMPLATE)
+    assert not same_numbers("2025-11-20 8시 예상 승차는 3,133명입니다.", PREDICT_TEMPLATE)        # 연도가 다름
+    assert not same_numbers("예상 승차는 3,133명의 두 배입니다.", PREDICT_TEMPLATE)
+    assert not same_numbers("예상 승차는 3,133명 미만입니다.", PREDICT_TEMPLATE)
+    assert not same_numbers("예상 승차는 삼천 명 정도입니다.", PREDICT_TEMPLATE)                  # 한글로 쓴 다른 값
+    assert not same_numbers("8시간 동안 3,133명이 탑니다.", PREDICT_TEMPLATE)                    # 8시 → 8시간
+    assert same_numbers("2026-11-20 8시 예상 승차는 3,133명입니다.", PREDICT_TEMPLATE)
+
+
 # ==================================================
 # 7. 길안내·검색 정리 (이슈 #17)
 # ==================================================
@@ -259,6 +298,11 @@ def test_guide_from_location_next_to_destination_says_walk(client, bus):
                     location={"lat": dest["lat"] + 0.0005, "lng": dest["lng"]}, now=NOW)
     assert out["intent"] == "guide" and "걸어서" in out["answer"] and "찾지 못했습니다" not in out["answer"]
     assert out["numbers_verified"] is True
+    # 이슈 #22: 위치가 정류장 좌표와 같으면 "약 0m(약 0분)"이 아니라 이미 도착했다고 알림
+    out = agent.run(bus, f"여기서 {dest['name'].replace(' ', '')} 어떻게 가? {date} 8시",
+                    location={"lat": dest["lat"], "lng": dest["lng"]}, now=NOW)
+    assert out["data"]["walk_only"] == {"walk_m": 0, "walk_min": 1}
+    assert "이미 도착" in out["answer"] and "0m" not in out["answer"] and out["numbers_verified"] is True
     # 멀리서 출발하면 그대로 버스 경로를 안내
     far = client.post("/api/bus/guide", json={
         "origin": client.get(f"/api/bus/routes/{route}/geometry").json()["stops"][2]["name"],
@@ -316,6 +360,33 @@ def test_same_name_falls_back_to_a_place_that_has_a_route(client, bus):
     result = guide.find(dt.date.fromisoformat(date), 10, "농수산물센터", origin="먼출발")
     assert result["destination"]["ambiguous"] is True
     assert [o["routes"] for o in result["options"]] == [["A1"]] and abs(result["destination"]["lat"] - 37.30) < 0.01
+
+
+def test_walk_answer_keeps_same_name_and_history_notes(client, bus):
+    """이슈 #22: 걸어갈 거리 답변에서도 '같은 이름 여러 곳'·'앞에서 말씀하신 출발지' 안내가 남아야 함"""
+    from app.domains.bus.guide import BusGuide
+    _, date = sample(client)
+    north = _line("N1", ["미래빌라", "용호약국", "북쪽종점"], 37.60, 127.00, step=0.002)     # 정류장 간격 약 180m
+    south = _line("S1", ["미래빌라", "남쪽중간", "남쪽종점"], 37.40, 127.00)                 # 약 22km 남쪽의 같은 이름
+    info = pd.DataFrame([{"route": r, "route_type": "지선", "company": "", "start": "", "end": "", "interval": 5.0,
+                          "run_minutes": 20.0, "first_bus": "04:00", "last_bus": "23:59"} for r in ("N1", "S1")])
+    guide = BusGuide(bus.advisor, bus.dataset.routes, network=(pd.DataFrame(north + south), info))
+    result = guide.find(dt.date.fromisoformat(date), 10, "용호약국", origin="미래빌라")
+    assert result["walk_only"] and result["origin"]["ambiguous"] is True
+
+    bus.__dict__["guide_engine"] = guide
+    try:
+        # 재현: 다른 미래빌라에 있는 사용자에게도 "바로 근처입니다"만 답했음
+        out = agent.run(bus, f"미래빌라에서 용호약국 어떻게 가? {date} 10시", now=NOW)
+        assert out["intent"] == "guide" and "걸어서" in out["answer"] and "여러 곳" in out["answer"]
+        assert out["numbers_verified"] is True
+        # 재현: 앞 대화의 출발지를 이어 썼다는 안내가 사라졌음
+        history = [{"role": "user", "content": f"미래빌라에서 북쪽종점 어떻게 가? {date} 10시"}, {"role": "assistant", "content": "..."}]
+        out = agent.run(bus, "용호약국 어떻게 가?", history=history, now=NOW)
+        assert out["slots"].get("origin_from_history") is True
+        assert "걸어서" in out["answer"] and "앞에서 말씀하신" in out["answer"]
+    finally:
+        bus.__dict__.pop("guide_engine", None)
 
 
 def test_role_search_embeds_the_question_once(tmp_path, monkeypatch):
