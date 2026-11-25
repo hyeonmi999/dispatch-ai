@@ -155,9 +155,12 @@ cp .env.example .env          # 키 입력 (OpenAI는 선택)
 cd frontend && npm install && cd ..
 ```
 
-**발표용 환경을 그대로 재현하려면** — `requirements.txt`에는 버전이 없어 설치한 날에 따라 패키지 버전이 달라집니다. 2026-11-22에 테스트가 통과한 Windows·CUDA 12.4 환경의 버전을 `requirements.lock.windows-cu124.txt`에 남겼습니다. (macOS용은 아직 없습니다.)
+**발표용 환경을 그대로 재현하려면** — `requirements.txt`에는 버전이 없어 설치한 날에 따라 패키지 버전이 달라집니다. 2026-11-22에 테스트가 통과한 Windows·CUDA 12.4 환경의 버전을 `requirements.lock.windows-cu124.txt`에 남겼습니다. macOS(Apple Silicon)는 2026-11-24에 테스트가 통과한 환경의 버전을 `requirements.lock.macos.txt`에 남겼습니다.
 ```powershell
 pip install -r requirements.lock.windows-cu124.txt --extra-index-url https://download.pytorch.org/whl/cu124
+```
+```bash
+python3.11 -m venv .venv && .venv/bin/pip install -r requirements.lock.macos.txt    # macOS
 ```
 
 ### 3-2. 빠른 실행 — 합성 데이터만으로 (실데이터·API 키 없이)
