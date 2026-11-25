@@ -25,7 +25,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from app.config import DOCS_DIR, NOT_FOUND_ANSWER, RAG_TOP_K  # noqa: E402
-from app.core import llm as llm_module  # noqa: E402
 from app.core.rag import KnowledgeBase  # noqa: E402
 
 
@@ -210,6 +209,7 @@ def main():
         return main_retrieval(p, args)
     if not args.name:
         p.error("실제 AI 평가에는 --name이 필요합니다.")
+    from app.core import llm as llm_module  # 늦은 import: 검색 전용·형식 검사는 LLM 모듈을 올리지 않음
 
     if args.model:
         llm_module.set_local_model(args.model, args.adapter)

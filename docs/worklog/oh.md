@@ -2,6 +2,170 @@
 
 최근 기록이 위에 있습니다. 형식과 규칙은 [README.md](README.md)를 봅니다.
 
+## 2026-11-22 · 강의 녹취 기준으로 계획을 다시 짜고 S-1~S-5 진행
+
+- **계획서 Task**: `docs/plans/oh-evaluation.md` Task S-1 · S-2 · S-3 · S-4 · S-5 (새로 넣음)
+
+**한 일**
+- 「인공지능서비스사례연구」 녹취 4~12주차(실제 녹음 47개)와 교안 24·27차시를 확인해 계획서 맨 위에 "교수가 반복한 기준과 지금 상태" 표와 새 우선순위를 넣음
+- S-3: OpenAI로 나가는 내용을 코드에서 전부 찾아 `docs/decisions.md`에 표로 적음
+- S-4: 수업의 상용 권고와 다른 선택(1.7B, FAISS, 개발 서버, 컨테이너 범위, 버전)과 이유·바꾸는 조건을 `docs/decisions.md`에 적음
+- S-2: `scripts/eval_latency.py` 새 파일 (기능별 응답 시간, OpenAI 프롬프트 토큰 수, 월 운영비 추정)
+- S-5: `requirements.lock.windows-cu124.txt` (pip freeze 130개), README에 재현 설치 한 단락
+- S-1: `docs/guides/service-story.md` 초안
+- 다른 담당의 영역은 손대지 않고 `docs/requests/2026-11-22-oh.md`에 요청 6건으로 남김
+
+**바뀐 것**
+- API·DB·앱 코드: 없음 (`app/`은 이 작업에서 바꾸지 않음)
+- 새 결과 파일: `eval/results/chat_latency_1.json`, `eval/results/cost_estimate_1.json`
+
+**확인한 것**
+- 시작 전에 `git fetch`: `origin/dev`에 내 브랜치에 없는 커밋 0개, 새 PR·이슈 없음
+- `chat_latency_1`: 문장 틀 답변 10회 중앙값 예측 0.006초 · 권고 0.025초 · 규정 0.022초 · 길안내 0.183초 · 노선 정보 0.007초
+- 처음 돌렸을 때 권고 질문("배차 어떻게 해야 해?")이 규정 기능으로 가서 다른 기능의 시간을 재고 있었음 → 질문을 고치고, 질문이 다른 기능으로 가면 저장하지 않고 멈추게 함
+- 문서에 옮긴 숫자 34개를 결과 파일과 코드로 대조: 1개(권고 한 건 비용) 고침
+- `python -m pytest -q` 172개 통과
+
+**확인하지 못한 것**
+- LLM을 켠 응답 시간 (GPU 8GB 중 4.6GB를 다른 작업이 쓰는 중, OpenAI는 비용이라 돌리지 않음)
+- OpenAI 단가 (공식 가격표를 확인하지 않고 0.15 · 0.60달러/100만 토큰으로 계산. 결과 파일에 `price_checked: false`)
+- 잠금 파일로 새 가상환경에 설치되는지, macOS에서 되는지
+- service-story.md 1절(이해관계자·페인 포인트)의 근거 자료. 가정으로 씀
+- 기말 채점표·공지 (녹취에 없음), 13~14주차 강의 내용 (녹취 없음)
+
+**남은 것**
+- 요청 R-1(등급 문서가 OpenAI로 나가는 경로)의 결정을 받으면 `rag.py` 수정
+- E-6(답변 평가 버튼)은 팀 동의 뒤, E-5(화면 확인)는 브라우저 자동 조작 도구 승인 뒤
+
+---
+
+## 2026-11-22 · 법규 검색 단계만 따로 채점 (eval_rag.py --retrieval-only)
+
+- **계획서 Task**: `docs/plans/oh-evaluation.md` Task E-4
+
+**후속 정리 (계약 맞춤)**
+- `eval/rag_eval.json` A1~A12의 중복 `gold_articles` 키 제거(텍스트 치환, 재직렬화 없음)
+- `scripts/eval_rag.py`: `llm_module` import를 일반 채점 분기 안으로 이동, docstring에 hit@3의 `max(k,3)` 기준 명시
+- `docs/contracts.md` 4-1절 추가(gold_articles·검색 전용 결과 포맷)
+- pytest: 171 통과, `test_backtest.py::test_script_scores_all_methods_on_sample` 1건은 MemoryError(메모리 부족)로 실패, 이번 변경과 무관하다고 추정(미확인)
+
+**한 일**
+- `eval/rag_eval.json`: 답할 질문 A1~A12에 `gold_articles`(문서 부분일치 + 조항 접두일치) 추가. R1~R8·기존 필드는 그대로
+- `scripts/eval_rag.py`: `--retrieval-only`, `--k`(기본 `RAG_TOP_K`) 추가, `--name`은 선택(검색 모드 기본 `rag_retrieval_1`, 일반 경로는 없으면 오류). `retrieval_rank`·`retrieval_eval` 순수 함수 분리. 기존 채점 경로는 그대로
+- `tests/test_eval_rag_retrieval.py`: 순위 1·3·None, 거절형 제외, 항·호·목 접두, 제3조(/제33조(·제32조(/제32조의2( 경계, 공백 정규화, MRR, 빈 hits
+
+**바뀐 것**
+- 후속 정리: `rag_eval.json` A1~A12의 중복 `gold_articles` 키 제거(텍스트 치환, 재직렬화 없음), `eval_rag.py`의 `llm` import를 일반(judge) 분기 안으로 이동, docstring에 hit@3 = max(k,3) 기준 명시, `docs/contracts.md` 7장 추가
+- API·DB: 없음
+- 결과 파일 `eval/results/rag_retrieval_1.json`: `{"summary","rows"}`, summary에 `mode`·`k`·`n`·`hit_at_1/3/k`(+`_n`)·`mrr`
+
+**확인한 것**
+- gold 12문항(원소 13개) 모두 `load_documents()` 청크와 1건 이상 일치
+- `--retrieval-only` 실행: n=12, hit@1 10/12 · hit@3 11/12 · hit@4 12/12 · MRR@4 0.8819, Qwen 로딩 로그 없음(bge-m3만)
+- `--help` 파싱, `--name` 없이 일반 경로 실행 시 `--name 필요` 오류
+- pytest: 새 테스트 통과. 전체 실행에서 `test_forecast.py` 1건이 MemoryError로 한 번 실패했고, 단독 재실행은 통과
+
+**확인하지 못한 것**
+- LLM 채점(일반 경로)은 실행하지 않음. `--k 10` 산출물은 만들지 않음
+- gold는 청크 라벨(CHUNK_VERSION=2)에 의존. A4·A5·A6은 근거 청크가 하나뿐
+
+## 2026-11-22 · 길안내 답변에 혼잡도 시간 기준 표기 (start_hour)
+
+- **계획서 Task**: `docs/plans/oh-evaluation.md` 길안내 답변 구간 줄 항목 2개
+
+**한 일**
+- `app/core/agent.py` `_guide`: 구간의 `start_hour`가 있고 물어본 시각(`result["hour"]`)과 다르면 구간 줄 끝에 "(기점 N시대 출발 버스 기준)" 추가. None·키 없음·같은 시간대는 기존 출력 그대로
+- 문구는 `app/config.py` `GUIDE_START_HOUR_NOTE`. 챗봇 facts의 legs 키에 `start_hour` 추가(숫자 검증용)
+- `tests/test_guide.py`: 종점 근처 표기, 기점 근처 미표기, start_hour None·키 삭제 3건(parametrize 포함 4개)
+
+**바뀐 것**
+- API 응답·DB·contracts.md: 없음 (`start_hour`는 이미 나가던 필드)
+
+**확인한 것**
+- `python -m pytest -q` 163개 통과
+
+**확인하지 못한 것**
+- 실제 LLM 다듬기 경로(문장 틀 → 모델)에서 새 문구가 `same_numbers`를 통과하는지, 실제 전체 노선 데이터에서의 문구 확인
+
+## 2026-11-22 · 문장 검증기 채점 스크립트 (Task E-1)
+
+- **계획서 Task**: `docs/plans/oh-evaluation.md` Task E-1 (맞는 문장 쪽 중 실제 모델 문장 채택 비율은 남김)
+
+**한 일**
+- `scripts/eval_rewrite_guard.py` 추가: 문장 틀 12개 + 16종 변형 규칙으로 틀린 문장을 만들고 `same_numbers`·`keeps_meaning`(agent.py 채택 조건 L792 그대로)으로 채점. LLM·서버 불필요
+- 결과 `eval/results/rewrite_guard_1.json`: 맞는 문장 채택 36/36, 틀린 문장 탐지 397/437(0.908)
+
+**바뀐 것**
+- API·응답 형식·DB·`app/`: 없음 (새 파일 2개)
+
+**확인한 것**
+- 불변식 4개(개수 합, kind별 detected+missed=total, identity 채택 100%, 같은 시드 재실행 동일) 통과, `python -m pytest -q` 159개 통과
+- 놓친 것: number_delete 28/30(숫자 구절 삭제는 거의 못 막음), label_swap 6/30, modifier_add 6/30. 검증기는 고치지 않았고 이슈 #21에 올릴 후보
+
+**확인하지 못한 것**
+- 저장된 실제 모델 문장의 채택 비율, 합성 값이 아닌 실제 예측 데이터로 만든 문장틀
+
+**다음 할 일**
+- 놓친 문장(number_delete·label_swap)을 이슈 #21에 추가, 김주혜 확인
+
+## 2026-11-22 · 이슈 #21(문장 다듬기 검증의 구멍), 성훈 PR #25 리뷰
+
+- **브랜치 / PR**: `feat/oh-review-followup-2`
+- **계획서 Task**: `docs/plans/oh-assistant.md` Task 15
+
+**한 일**
+- **#21 뜻 확인**: 부정 표현을 늘리고("아닙니다·안 ·못·보류·대신·반대", "혼잡과는 거리가 멉니다·풀렸습니다") 같은 문장 끝까지 보게 함
+- **#21 숫자 확인**: 설명의 동의어("현재" = "지금"), 때를 알리는 말이 붙은 숫자가 문장 틀의 그 문장 값인지, 숫자 뒤에 붙은 설명, 날짜의 연도, "8시간", 오전·오후, "두 배·미만", 한글로 쓴 숫자를 확인
+- **성훈 PR #25 리뷰**: 최적화 이력·성능 비교 화면·길안내 혼잡도 시간 기준. CRITICAL·HIGH·MEDIUM 0, LOW 4로 승인(머지는 하지 않음). 성훈이 요청한 길안내 답변 확인을 실데이터로 함
+
+**바뀐 것**
+- API·응답 형식: 없음. `use_llm: true`일 때 `llm_rejected`가 전보다 자주 `true`가 될 수 있음
+- DB: 없음
+- 의존성·환경: 없음
+
+**확인한 것**
+- `python -m pytest -q` 142개 통과. 새 테스트(이슈에 적은 틀린 문장 20개, 맞는 문장 4개)는 고치기 전 코드에서 실패 확인
+- 지난번 gpt-4o-mini가 다시 쓴 8건을 새 검증에 다시 넣어 8건 모두 그대로 채택 (`eval/results/chat_llm_rewrite_3_recheck.json`, LLM은 다시 부르지 않음)
+- PR #25: pytest 157개, `npm run build`, `npm run test:api` 4개 통과. 실데이터(2026-11-01) 예측 노선 5개 × 위치 3곳 × 0·5·8·18·23시 75건에서 길안내 API 500 오류 0건, 챗봇 답변 75건 모두 `numbers_verified: true`. 내 #22 수정과는 `docs/lessons.md`만 겹침
+
+**확인하지 못한 것**
+- #21을 고친 뒤 실제 모델(OpenAI·로컬)로 다시 돌린 채택 비율
+- PR #25의 화면(최근 실행 기록, 배차 방식 비교, 역할 선택칸)과 MariaDB를 띄운 이력 저장
+
+**다음 할 일**
+- PR #25가 머지되면: 챗봇 길안내 답변에 혼잡도의 시간 기준(`start_hour`) 안내 한 줄 추가, `docs/lessons.md` 겹침 정리
+- #21의 근본책(문장 틀은 그대로 두고 LLM은 설명 한 줄만 붙이는 구조)을 할지 결정
+
+## 2026-11-22 · PR #20 독립 리뷰·머지, 주혜 PR #23 리뷰·머지, 이슈 #22(걸어가기 답변의 안내 줄)
+
+- **브랜치 / PR**: `feat/oh-review-followup-2`
+- **계획서 Task**: `docs/plans/oh-assistant.md` Task 14
+
+**한 일**
+- **PR #20 독립 리뷰·머지 (11-20)**: 내 PR이라 별도 리뷰 에이전트에 맡김. CRITICAL·HIGH 0, MEDIUM 4, LOW 7. 리뷰 전문을 PR 댓글로 남기고 `dev`에 머지, #16·#17 닫음. 남은 것은 #21(문장 다듬기 검증의 구멍: 부정 표현·동의어·숫자 주변 말), #22(걸어가기 답변이 안내 줄을 지움 + 정리 항목)로 등록
+- **주혜 PR #23 리뷰·머지 (11-21)**: 이슈 #19(재업로드 뒤 예전 내용 검색) 보완. CRITICAL·HIGH·MEDIUM 0, LOW 4. 승인 후 `dev`에 머지, #19 닫음. LOW 4건은 #24로 등록(주혜 담당)
+- **#22 걸어가기 답변**: 걸어갈 거리 답변에서도 "같은 이름 여러 곳"·"앞에서 말씀하신 출발지" 안내를 남김. 위치가 정류장 좌표와 같으면 "약 0m(약 0분)" 대신 "이미 도착 정류장에 있습니다"(챗봇 답변·팝업)
+
+**바뀐 것**
+- API·응답 형식: `/api/bus/guide`의 `walk_only.walk_min`이 최소 1 (전에는 0이 나올 수 있었음). 필드 구성은 그대로. 챗봇 걸어가기 답변에 안내 줄이 더 붙을 수 있음
+- DB: 없음
+- 의존성·환경: 없음
+
+**확인한 것**
+- `python -m pytest -q` 141개 통과, `npm run build` 성공
+- #22 새 테스트는 고치기 전 코드에서 실패 확인. 실데이터에서 "미래빌라에서 용호약국"(여러 곳 안내 + 248m), "효창공원역에서 서울역" 뒤 "용문시장"(이어 쓴 출발지 안내 + 230m), 용문시장 좌표에서 "여기서 용문시장"(이미 도착) 확인
+- PR #23: pytest 140개, `npm run test:api` 4개, 빌드 통과. 새 테스트 3개가 `dev`의 `rag.py`·`documents.py`에서는 모두 실패하고 PR 코드에서 통과
+
+**확인하지 못한 것**
+- 화면에서 직접 누르는 확인 (걸어가기 팝업, PR #23의 상태 조회 실패 뒤 질문 전송)
+- PR #23의 실제 LLM 답변 재평가, Node 20에서의 `npm run test:api` (Node 24에서만 실행)
+- 로컬 모델(Qwen3-1.7B) 법규 20문항 재채점과 문장 다듬기 확인: GPU를 다른 프로젝트가 계속 사용 중 (11-22 기준 8GB 중 4.9GB)
+
+**다음 할 일**
+- #21 문장 다듬기 검증의 구멍
+- #22에 남은 항목: 이웃 정류장 300m 안일 때 버스 경로 함께 제공 여부, 여러 곳인 출발지를 현재 위치로 고르거나 되묻기, 걸어가기 팝업의 지도·제목 (동작을 정한 뒤 진행)
+- GPU가 비면 로컬 모델 재채점, 김주혜 문제집으로 최종 채점
+
 ## 2026-11-20 · 주혜 PR #18 리뷰·머지, 이슈 #16(문장 다듬기 검증)·#17(길안내·검색 정리)
 
 - **브랜치 / PR**: `feat/oh-review-followup`

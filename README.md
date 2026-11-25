@@ -155,6 +155,11 @@ cp .env.example .env          # 키 입력 (OpenAI는 선택)
 cd frontend && npm install && cd ..
 ```
 
+**발표용 환경을 그대로 재현하려면** — `requirements.txt`에는 버전이 없어 설치한 날에 따라 패키지 버전이 달라집니다. 2026-11-22에 테스트가 통과한 Windows·CUDA 12.4 환경의 버전을 `requirements.lock.windows-cu124.txt`에 남겼습니다. (macOS용은 아직 없습니다.)
+```powershell
+pip install -r requirements.lock.windows-cu124.txt --extra-index-url https://download.pytorch.org/whl/cu124
+```
+
 ### 3-2. 빠른 실행 — 합성 데이터만으로 (실데이터·API 키 없이)
 ```bash
 python scripts/make_sample_data.py           # data/sample 생성 (실데이터와 같은 스키마 + 가상 노선 좌표, 60주)
@@ -328,6 +333,8 @@ python scripts/backtest.py                   # 배차 방식 성능 비교도 �
 | 평일 / 토요일 / 일·공휴일 (정류장·시간) | 4.03 / 4.14 / 3.46명 | 5.86 / 5.68 / 6.01명 | 31.2 / 27.2 / 42.4% |
 
 참고: 같은 행에서 "전주 같은 요일" 값의 MAE는 5.85명(정류장·시간) / 193명(노선·시간)입니다.
+
+**배차 담당자의 말로**: 가장 붐비는 구간에서 버스 한 대에 탄 사람 수를 평균 4명 차이로 맞히고, 다섯 시간대 중 한 곳은 혼잡 단계를 한 칸 다르게 말합니다. 그래서 증차 판단은 평균이 아니라 상한(P90)으로 합니다 → [docs/guides/prediction-error.md](docs/guides/prediction-error.md)
 
 2026-11-13 재학습: 트리 수 상한을 2,000 → 10,000으로 올리고(2,797에서 멈춤) 10/26~11/01 주를 검증 구간에 더했습니다.
 같은 검증 구간(~10/25)으로 비교하면 노선·시간 MAE는 81.9 → 81.3명으로, 상한을 올린 효과는 1% 미만입니다.

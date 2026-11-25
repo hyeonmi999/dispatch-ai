@@ -3,6 +3,40 @@
 최근 기록이 위에 있습니다. 형식과 규칙은 [README.md](README.md)를 봅니다.
 작업을 끝낼 때마다 이 줄 바로 아래에 새 기록을 추가합니다.
 
+## 2026-11-24 · 요청 R-5(macOS 잠금 파일) · R-2(예측 오차를 담당자의 말로) · PR #25 리뷰 LOW 4 · PR #26·#27 리뷰
+
+- **브랜치 / PR**: `feat/park-r2-r5` · (PR 전)
+- **계획서 Task**: 오정훈 요청 `docs/requests/2026-11-22-oh.md`(PR #27) R-2·R-5, PR #25 리뷰 LOW 4
+
+**한 일**
+- PR #26·#27 리뷰 후 승인 (#26: LOW 2, #27: MEDIUM 1·LOW 1. MEDIUM은 `service-story.md` 비교 표가 서비스 기본 설정(감차 허용 8.57%)이 아닌 행(8.31%)을 쓰고 인가대수 초과 열이 없는 것)
+- R-5: `requirements.lock.macos.txt` (macOS 26 · arm64 · Python 3.11.15, `pip freeze` 128개)
+- R-2: `scripts/explain_prediction_error.py` → `eval/results/prediction_error_1.json`, 설명 문서 `docs/guides/prediction-error.md`, README 검증 결과에 한 줄과 링크
+- LOW 4: 직전 실행과 날짜·시간대·가중치·결과 요약이 같으면 `optimization_run`에 새 줄을 만들지 않고 직전 `run_id`를 돌려줌 (`repository.same_optimization_run`)
+
+**바뀐 것** (남이 영향받는 부분)
+- API·응답 형식: 형식은 같음. `POST /api/bus/optimize`가 같은 조건을 연달아 부르면 같은 `run_id`를 돌려줌 (`docs/contracts.md` 2번)
+- DB: 없음
+- 의존성·환경: 새 파일 `requirements.lock.macos.txt` (`requirements.txt`·설치 스크립트는 그대로)
+
+**확인한 것**
+- R-5: 빈 가상환경에 잠금 파일로 설치 → `pip check` 충돌 없음 → `pytest` 157개 통과. 설치된 최상위 패키지 중 `requirements.txt`에 없는 것은 uvicorn[standard]의 부속(httptools·uvloop·watchfiles)과 tzdata뿐
+- R-2 (평가 구간 9/30~11/01, 3,103개 시간대 — 성능 비교와 같은 수, 실제 붐빔 641곳도 같음): 가장 붐비는 구간 기준 버스 한 대 오차 평균 3.9명(중앙값 2.9, 90%는 8.3명 이하), 혼잡 단계가 틀린 시간대 20.5%(두 칸 이상 0.9%). 실제 붐빔 641곳 중 평균 예측은 203곳을 놓치고 상한(P90)은 110곳. 평일은 404곳 중 26곳, 일·공휴일은 162곳 중 57곳
+- LOW 4: MariaDB에서 같은 조건 2번 → 같은 `run_id`, 시간대를 바꾸면 새 줄, 다시 처음 조건 → 새 줄. 테스트 1개 추가, `pytest` 158개 통과
+
+**확인하지 못한 것**
+- 잠금 파일은 Apple Silicon에서만 확인 (Intel Mac 미확인). `setup.sh`가 잠금 파일을 쓰게 바꾸지는 않음 (요청서대로 그 뒤에 정할 일)
+- 주말·휴일 오차가 큰 원인은 따로 확인하지 않음 (문서에 추측이라고 적음)
+- PR #27이 병합되면 README의 "macOS용은 아직 없습니다" 문구를 이 파일로 바꿔야 함
+
+**다음 할 일**
+- PR #26·#27 병합 뒤: PR #25 리뷰 LOW 2·3 (자정을 넘는 환승, 첫차가 아직 오지 않은 정류장)
+- R-3 재학습 권고 흐름: 계획부터. R-6은 팀 논의
+
+**팀원이 알아야 할 것**
+- 오정훈: R-2·R-5 끝. `service-story.md` 2절 표에 쓸 수 있는 문장과 숫자는 `docs/guides/prediction-error.md` 맨 위 "한 줄로"
+- 김주혜: 발표에서 "예측이 얼마나 맞나"는 `prediction-error.md`의 표를 쓰면 됩니다
+
 ## 2026-11-22 · 헤더 '문서 열람 역할' 선택칸 색 수정
 
 - **브랜치 / PR**: `feat/park-next` · #25 (작은 화면 수정이라 같은 PR에 따로 커밋)

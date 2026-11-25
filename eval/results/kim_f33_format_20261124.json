@@ -1,0 +1,15 @@
+{
+  "scope": "초기 tools형식15문항의 구성 검사. 현재 최종 expect_tools문항과 별도.",
+  "count": 15,
+  "per_tool": {
+    "predict": 2,
+    "advise": 2,
+    "optimize": 2,
+    "simulate": 2,
+    "ask": 2
+  },
+  "out_of_scope": 5,
+  "dataset_sha256": "6fa685e51ac58f8db2de8444a62a6b2b6079a222358c7a0fd4154baa64d61aef",
+  "schema": "tools / slots / intent / history",
+  "unchanged_after_first_run": true
+}

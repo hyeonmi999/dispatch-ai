@@ -1,0 +1,71 @@
+{
+ "summary": {
+  "name": "cost_estimate_1",
+  "date": "2026-11-22",
+  "model": "gpt-4o-mini",
+  "mean_krw_per_question": 0.175,
+  "monthly_krw": {
+   "적음": 525,
+   "보통": 2625,
+   "많음": 10500
+  }
+ },
+ "assumptions": {
+  "price_in_usd_per_1m": 0.15,
+  "price_out_usd_per_1m": 0.6,
+  "krw_per_usd": 1400.0,
+  "price_checked": false,
+  "daily_questions": {
+   "적음": 100,
+   "보통": 500,
+   "많음": 2000
+  },
+  "days_per_month": 30,
+  "mix": "다섯 기능을 같은 비율로 묻는다고 가정",
+  "all_questions_use_llm": "모든 질문에 use_llm=True·llm=openai 를 쓴다고 가정 (실제 기본값은 use_llm=False 라 0원)",
+  "output_tokens": "실제 값이 아님. 다듬기는 문장 틀 답변의 토큰 수, 규정 답변은 저장된 OpenAI 답변 중앙값",
+  "not_included": "로컬 모델의 전기·장비, 서버, 사람 인건비"
+ },
+ "per_question": [
+  {
+   "intent": "predict",
+   "llm_calls": 1,
+   "input_tokens": 473,
+   "output_tokens_estimated": 72,
+   "usd": 0.000114,
+   "krw": 0.16
+  },
+  {
+   "intent": "advise",
+   "llm_calls": 1,
+   "input_tokens": 612,
+   "output_tokens_estimated": 127,
+   "usd": 0.000168,
+   "krw": 0.235
+  },
+  {
+   "intent": "ask",
+   "llm_calls": 1,
+   "input_tokens": 2025,
+   "output_tokens_estimated": 65,
+   "usd": 0.000343,
+   "krw": 0.48
+  },
+  {
+   "intent": "guide",
+   "llm_calls": 0,
+   "input_tokens": 0,
+   "output_tokens_estimated": 0,
+   "usd": 0.0,
+   "krw": 0.0
+  },
+  {
+   "intent": "route_info",
+   "llm_calls": 0,
+   "input_tokens": 0,
+   "output_tokens_estimated": 0,
+   "usd": 0.0,
+   "krw": 0.0
+  }
+ ]
+}

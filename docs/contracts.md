@@ -12,7 +12,7 @@
 | `POST /api/bus/chat` | 오정훈 | 채팅 화면 | 구현됨 (예측·권고·규정·길안내·노선 정보·시뮬레이션·최적화) |
 | `POST /api/bus/guide` · `GET /api/bus/stops/search` | 오정훈 | 챗봇, 길안내 팝업 | 구현됨 |
 | `GET /api/bus/routes/{route}/info` | 오정훈 | 챗봇 | 구현됨 |
-| `eval/agent_eval.json` 형식 | 김주혜 | 챗봇 채점 | 초안. 김주혜 확인 필요 |
+| `eval/agent_eval.json` 형식 | 김주혜 | 챗봇 채점 | 기본15문항 작성·실제채점. expect_tools와 기존tools 지원 |
 | `/api/bus/documents` | 김주혜 | 문서 관리 화면 | 구현됨 (PR #6). 아래 5번은 구현에 맞춰 고침 |
 | `role` 값 (열람 역할) | 김주혜 | 챗봇, 법규 질의응답 | 구현됨 (PR #6). `/ask`와 `/chat` 모두 적용 |
 
@@ -67,7 +67,7 @@
 - 챗봇과 API는 같은 메서드(`BusAdapter.optimize`)를 부릅니다. 챗봇은 "7시부터 9시", "출근 시간"(7~9시), "퇴근 시간"(17~19시)을 `hours`로 바꿉니다.
 - 이력 테이블 `optimization_run`에는 요청(`date`, `hours`, `weights`)과 `plan`, `kpi`, `binding`, `solve_seconds`를 저장합니다.
 - **API로 부를 때마다 이력에 한 줄 저장**하고 `run_id`(저장한 id)·`db_saved`를 돌려줍니다. DB가 꺼져 있으면 결과는 그대로이고 `run_id: null`, `db_saved: false`입니다. 챗봇이 메서드로 부른 최적화는 저장하지 않습니다.
-- 최적화 화면은 날짜·시간대를 바꿀 때마다 API를 부르므로, 화면을 쓴 만큼 이력이 쌓입니다.
+- 최적화 화면은 날짜·시간대를 바꿀 때마다 API를 부르므로 화면을 쓴 만큼 이력이 쌓입니다. 단 **직전 실행과 날짜·시간대·가중치·결과 요약(`status`, 과밀 전후, 운행 증감)이 모두 같으면 새 줄을 만들지 않고 직전 `run_id`를 돌려줍니다** (같은 조건을 연달아 부른 경우만. 사이에 다른 조건이 있었으면 새 줄).
 
 ### 2-1. `GET /api/bus/optimize/runs?limit=20` — 최적화 실행 이력
 
@@ -161,7 +161,7 @@
 - 정류장 이름은 일부만 적어도 됩니다 ("종로3가역" → "종로3가역.탑골공원"). 없는 이름이면 422.
 - `origin.far`가 `true`면 걸어갈 거리(500m) 안에 정류장이 없어 가장 가까운 정류장에서 타는 경로입니다. 이때 걷는 시간은 `total_min`에 넣지 않습니다.
 - 요청한 날짜가 예측 범위 밖이면 범위 안의 가장 가까운 같은 요일로 계산하고, 응답의 `date`에 계산한 날짜를, `requested_date`에 원래 요청한 날짜를 넣습니다. 길은 날짜와 상관없이 같고 혼잡도·배차간격만 그날 기준입니다.
-- `walk_only`: 출발지(정류장 또는 현재 위치)가 도착지에서 300m 안이면 `{"walk_m": 45, "walk_min": 1}`이고, 이때 `options`는 빈 목록·`recommendation`은 `null`입니다. 그 밖에는 `null`.
+- `walk_only`: 출발지(정류장 또는 현재 위치)가 도착지에서 300m 안이면 `{"walk_m": 45, "walk_min": 1}`이고, 이때 `options`는 빈 목록·`recommendation`은 `null`입니다. 그 밖에는 `null`. `walk_min`은 최소 1이고, 위치가 정류장 좌표와 같으면 `walk_m`이 0입니다(화면은 "이미 도착 정류장에 있습니다"로 표시).
 - `origin.ambiguous`·`destination.ambiguous`: 같은 이름의 정류장이 1.5km 넘게 떨어진 여러 곳에 있으면 `true`. 상대편(출발지·도착지)에서 가까운 곳부터 최대 3곳을 찾아보고, 경로가 있는 첫 번째 곳으로 안내합니다. 어디에도 경로가 없으면 가장 가까운 곳 기준으로 답합니다.
 - `kind`: `direct` · `transfer`. `recommendation.reason`: `fastest` · `less_crowded`(조금 더 걸리지만 덜 붐빔).
 - 소요 시간은 운행시간에서 어림한 값이고, 혼잡도는 F-03의 예측값입니다.
@@ -182,7 +182,7 @@
 - 챗봇은 "160번 버스 노선 알려줘", "143번 첫차 몇 시야?", "143번 어디서 어디까지 가?" 같은 질문에 이 기능을 부릅니다.
 - `GET /api/bus/meta`의 `routes[]`와 같은 값을 씁니다 (`adapter._route_row`).
 
-## 4. `eval/agent_eval.json` — 챗봇 채점 문제집 (F-33) · 초안
+## 4. `eval/agent_eval.json` — 챗봇 채점 문제집 (F-33)
 
 ```
 [{"id": "G1", "q": "160번 10월 28일 오후 3시에 혼잡해?", "tools": ["predict"],
@@ -194,10 +194,27 @@
 
 - `tools`: 불러야 하는 기능 이름 목록(위 3번의 `tools[].name`과 같은 값). 아무것도 부르면 안 되는 문항은 빈 목록.
 - 이어 묻기 문항은 `history`(이전 대화)를, 현재 위치를 쓰는 길안내 문항은 `location`을 함께 적습니다.
-- 형식 예시와 채점 방법은 `eval/agent_eval.sample.json`(오정훈이 만든 15문항)과 `scripts/eval_agent.py`를 보면 됩니다. 채점: `python scripts/eval_agent.py --name agent_1`
-- `slots`·`intent`는 선택. 적으면 그 값도 채점합니다.
+- 형식 예시와 채점 방법은 `eval/agent_eval.sample.json`(기존 연습용 예시)과 `scripts/eval_agent.py`를 보면 됩니다. 채점: `python scripts/eval_agent.py --name agent_1`
+- `slots`·`intent`는 선택. 적으면 그 값도 채점합니다. 기본15문항에는 계산질문의 노선·날짜·시간/시간대·간격과 G9 노선번호의 정답값을 지정합니다.
 - 날짜는 "내일" 같은 말 대신 `10월 28일`처럼 적습니다 (채점하는 날에 따라 답이 달라지지 않게).
 - 채점: 응답의 `tools[].name` 목록이 `tools`와 같으면 정답. 합격 기준 90%.
+- Step5 기본세트는15문항(5개 기능별2문항·범위밖5문항)입니다. tools의 순서와 intent·slots를 모두 지정한 문항은 해당 값까지 일치해야 합니다.
+- expect_tools도 지원합니다. ["none"]은 실제 호출[]와 intent=out_of_scope를 요구하며 clarify는 오답입니다. 기존 tools:[]는 기존처럼 intent를 따로 적어 되묻기·범위밖을 구분합니다.
+- 두 도구 필드를 동시에 적으면 정규화한 목록이 일치해야 합니다. 알 수 없는 도구·혼합 none·필드 누락·중복id는 실행 전에 거부합니다.
+- must는 그룹마다 한 단어 이상, forbid는 금지어 부재를 검사합니다. 빈 목록은 검사하지 않으며 note는 메모입니다. 현재 기본15문항은 키워드 조건을 비워두고 기능 선택만 검사합니다.
+- --check-only는 모델을 실행하지 않고 형식을 검사합니다. 결과의 scoring_version=agent-eval-v2와 dataset_sha256으로 기준·문항을 식별합니다.
+- tool_execution_errors는 선택한 기능의 실제 실행 오류 수이며 기능 선택 점수와 별개입니다.
+- 기능 호출 자체가 오류를 반환해도 올바른 기능을 선택했다면 현재 채점기는 정답으로 셉니다. 결과의 got_tools[].ok도 별도로 확인해야 합니다.
+- 실제 챗봇/예측/규정 코드를 문제집에 맞춰 고치지 않습니다. 오답은 담당자 검토 자료로 남깁니다.
+
+## 4-1. `eval/rag_eval.json` `gold_articles` · 검색 전용 결과 (E-4)
+
+- 정답형(`type=="answer"`) 항목에만 `gold_articles: [{"document": str, "article": str|null}]`. 키는 항목당 한 번. 거절형은 없음.
+- 일치: 공백 정규화 후 `document`는 부분 문자열, `article`은 접두 일치(`null`이면 문서만). 여러 개면 하나만 맞아도 hit. 형식: PDF `"제N조(제목) ① 제2호 마목"`, 보도자료 `"본문 N"`.
+- `python scripts/eval_rag.py --retrieval-only [--k 4] [--name rag_retrieval_1]` → `eval/results/<name>.json` = `{"summary","rows"}`. LLM을 로드하지 않음. 검색은 `max(k,3)`개라 hit@3은 k<3이어도 상위 3개 기준.
+- `summary`: `name, mode("retrieval_only"), embedding, role, k, n, hit_at_1/3/k(소수 4자리), hit_at_1/3/k_n("a/b"), mrr, seconds`
+- `rows[]`: `id, q, gold_articles, rank(상위 k 안 첫 일치, 없으면 null), hit_at_1/3/k(bool), retrieved(["문서 조항"]), scores(retrieved와 같은 길이)`
+- 읽는 쪽은 `summary.mode`로 분기. `mode`가 없으면 기존 judge 결과(`answer_correct` 등). 두 키 집합은 섞지 않음. 오류는 결과 파일 없이 `p.error`(종료 코드 2).
 
 ## 5. `/api/bus/documents` — 법규 문서 관리 (F-36)
 

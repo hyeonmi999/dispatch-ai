@@ -384,6 +384,53 @@ def test_guide_reads_congestion_of_bus_that_left_terminal_earlier(client):
     assert "기점을 떠난 시간대" in near_end["assumption"]
 
 
+def test_chat_guide_marks_start_hour_when_bus_left_terminal_earlier(client):
+    routes, date = meta(client)
+    stops = stops_of(client, routes[0])
+    origin, dest = stops[-6]["name"].replace(" ", ""), stops[-2]["name"].replace(" ", "")
+    body = client.post("/api/bus/chat", json={"message": f"{origin}에서 {dest} 어떻게 가? {date} 12시"}).json()
+    assert body["intent"] == "guide", body
+    hour = body["data"]["options"][0]["legs"][0]["start_hour"]
+    assert hour is not None and hour != 12
+    assert "기점 " in body["answer"] and "시대 출발 버스 기준" in body["answer"]
+    assert f"기점 {hour}시대 출발 버스 기준" in body["answer"]
+    assert body["numbers_verified"] is True
+
+
+def test_chat_guide_no_start_hour_note_near_terminal(client):
+    routes, date = meta(client)
+    stops = stops_of(client, routes[0])
+    origin, dest = stops[1]["name"].replace(" ", ""), stops[4]["name"].replace(" ", "")
+    body = client.post("/api/bus/chat", json={"message": f"{origin}에서 {dest} 어떻게 가? {date} 12시"}).json()
+    assert body["intent"] == "guide", body
+    assert body["data"]["options"][0]["legs"][0]["start_hour"] == 12
+    assert "출발 버스 기준" not in body["answer"]
+
+
+@pytest.mark.parametrize("mode", ["none", "missing"])
+def test_chat_guide_start_hour_none_has_no_note(client, monkeypatch, mode):
+    from app.core.registry import registry
+    adapter = registry.get("bus")
+    routes, date = meta(client)
+    stops = stops_of(client, routes[0])
+    original = adapter.guide
+
+    def patched(args):
+        result = original(args)
+        for option in result["options"]:
+            for leg in option["legs"]:
+                if mode == "none":
+                    leg["start_hour"] = None
+                else:
+                    leg.pop("start_hour", None)
+        return result
+
+    monkeypatch.setattr(adapter, "guide", patched)
+    slots = {"origin": stops[-6]["name"], "destination": stops[-2]["name"], "date": date, "hour": 12}
+    _, answer, _, _ = agent._guide(adapter, slots)
+    assert "출발 버스 기준" not in answer
+
+
 def test_guide_second_leg_is_boarded_later(client, monkeypatch):
     from app.core.registry import registry
     guide = registry.get("bus").guide_engine
