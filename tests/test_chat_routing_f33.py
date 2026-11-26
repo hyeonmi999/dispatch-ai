@@ -81,6 +81,23 @@ def test_review_regressions_in_dispatch_expressions(message, expected):
     assert classify(message, True) == expected
 
 
+@pytest.mark.parametrize("message, expected", [
+    # PR #32 리뷰: '차' 앞이 한글이면 제외하도록 고치면서 '배차'의 '차'까지 막혀 분류 없음이 됐던 문장
+    ("배차를 더 넣어야 해 143번 8시", "advise"),
+    ("143번 배차 더 넣어", "advise"),
+    ("143번 8시 배차 좀 빼도 돼?", "advise"),
+    # '배차'를 살려도 다른 낱말 안의 '차'는 그대로 제외
+    ("143번 첫차 빼고 몇 시에 와?", "route_info"),
+    ("150번 주차 빼고 정류장 몇 개야?", "route_info"),
+    ("143번 버스 빼곡해?", None),
+    # 시간 낱말 '새벽'도 아침·저녁과 같게 봄 (PR #32 리뷰 LOW 1)
+    ("143번 새벽 추천해줘", "advise"),
+    ("143번 담당자에게 줄 점심 도시락 메뉴 추천해줘", None),
+])
+def test_dispatch_word_keeps_vehicle_expression(message, expected):
+    assert classify(message, True) == expected
+
+
 def test_recommend_without_route_is_not_dispatch():
     assert classify("2026-10-31 부산 여행 숙소 추천해줘", False) is None
     assert classify("내일 8시 맛집 추천해줘", False) is None
