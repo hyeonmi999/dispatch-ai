@@ -37,6 +37,7 @@ from app.config import (
     RAG_DOCUMENT_SUFFIXES,
     RAG_ROLE_OVERFETCH,
     RAG_SCORE_THRESHOLD,
+    RAG_SEARCH_UNIT_LIMIT,
     RAG_TOP_K,
     ROLE_GRADES,
     VECTORSTORE_DIR,
@@ -112,6 +113,7 @@ def split_long(text: str, size: int = 800, overlap: int = 100) -> list[str]:
     if len(text) <= size:
         return [text]
     from langchain_text_splitters import RecursiveCharacterTextSplitter
+    overlap = min(overlap, size // 2)         # 작은 크기로 나눌 때 겹침이 크기를 넘지 않게 (900·700자에서는 그대로 100)
     splitter = RecursiveCharacterTextSplitter(chunk_size=size, chunk_overlap=overlap, separators=["\n", ". ", " ", ""])
     return splitter.split_text(text)
 
@@ -124,6 +126,7 @@ def split_long(text: str, size: int = 800, overlap: int = 100) -> list[str]:
 # 그래서 항 → 호 → 목 순서로 잘게 나누고, 각 조각 앞에 상위 문장(리드 문)을 붙여 문맥을 유지합니다.
 CHUNK_VERSION = 2
 CHUNK_LIMIT = 900
+CRUMB_PREFIX = "(상위 문장) "
 CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
 GANADA = "가나다라마바사아자차카타파하"
 
@@ -152,21 +155,45 @@ def _split_markers(text: str, kind: str):
     return lead, parts
 
 
-def split_hierarchy(text: str, levels=("hang", "ho", "mok"), crumbs=(), labels=()) -> list[tuple]:
-    """→ [(labels, 상위 리드 문장들, 본문)]"""
-    if len(text) <= CHUNK_LIMIT:
+def split_hierarchy(text: str, levels=("hang", "ho", "mok"), crumbs=(), labels=(), limit: int = CHUNK_LIMIT) -> list[tuple]:
+    """→ [(labels, 상위 리드 문장들, 본문)]. limit보다 긴 글만 더 나눔 (조각은 CHUNK_LIMIT, 검색용 세부 글은 더 작게)"""
+    if len(text) <= limit:
         return [(labels, crumbs, text)]
     if not levels:
-        return [(labels, crumbs, part) for part in split_long(text, size=CHUNK_LIMIT)]
+        return [(labels, crumbs, part) for part in split_long(text, size=limit)]
     found = _split_markers(text, levels[0])
     if found is None:
-        return split_hierarchy(text, levels[1:], crumbs, labels)
+        return split_hierarchy(text, levels[1:], crumbs, labels, limit)
     lead, parts = found
     sub_crumbs = crumbs + ((lead[:250],) if lead else ())
     out = []
     for lab, seg in parts:
-        out += split_hierarchy(seg, levels[1:], sub_crumbs, labels + (lab,))
+        out += split_hierarchy(seg, levels[1:], sub_crumbs, labels + (lab,), limit)
     return out
+
+
+# ------------------------------------------------
+# 검색용 세부 글 (조각은 그대로, 임베딩만 더 잘게)
+# ------------------------------------------------
+# 정답 문장이 큰 조각(여러 항·호가 든 900자 가까운 조각) 안에 있으면, 같은 문장만 따로 조각이 된 다른 조항보다
+# 유사도가 낮게 나와 순위가 밀렸음 (40문항의 A14: 법 제10조 12위, A24: 시행규칙 제32조 ② 7위).
+# 조각을 더 잘게 자르면 LLM에 넘기는 근거와 출처 표기가 함께 바뀌므로, 조각은 그대로 두고
+# 조각 하나를 "조각 전체 + 항·호·목 단위의 세부 글" 여러 개로 임베딩해 그중 가장 높은 점수를 조각의 점수로 씁니다.
+# 세부 글에는 윗문장을 붙이지 않습니다 (붙이면 이웃 목과 글이 비슷해져 다시 묻힘. 붙인 변형은 채점에서 더 낮았음).
+
+def search_units(text: str, limit: int) -> list[str]:
+    """조각 하나를 검색에 쓸 글 여러 개로. 첫 글은 항상 조각 전체, limit이 0이면 그것만"""
+    if limit <= 0:
+        return [text]
+    head, _, body = text.partition("\n")
+    if body.startswith(CRUMB_PREFIX):
+        body = body.partition("\n")[2]
+    units = [text]
+    for labels, _, part in split_hierarchy(body, limit=limit):
+        unit = f"{head} {' '.join(labels)}".rstrip() + f"\n{part}"
+        if unit not in units:
+            units.append(unit)
+    return units
 
 
 def load_pdf_articles(path: Path) -> list[dict]:
@@ -212,7 +239,7 @@ def load_pdf_articles(path: Path) -> list[dict]:
             label = f"{art['article']} {' '.join(labels)}".strip()
             context = " … ".join(crumbs)
             chunks.append({
-                "text": f"[{title}] {label}\n" + (f"(상위 문장) {context}\n" if context else "") + part,
+                "text": f"[{title}] {label}\n" + (f"{CRUMB_PREFIX}{context}\n" if context else "") + part,
                 "metadata": {"document": title, "article": label, "page": art["page"],
                              "part": i, "file": path.name, "url": ""},
             })
@@ -334,7 +361,6 @@ class KnowledgeBase:
         self._guard_external_embedding(embedding)
         from langchain_community.vectorstores import FAISS
         from langchain_community.vectorstores.utils import DistanceStrategy
-        from langchain_core.documents import Document
 
         fingerprint = docs_fingerprint(self.docs_dir)
         chunks = load_documents(self.docs_dir)
@@ -342,30 +368,44 @@ class KnowledgeBase:
             raise FileNotFoundError(f"인덱싱할 문서가 없습니다: {self.docs_dir}")
 
         t0 = time.time()
-        documents = [Document(page_content=c["text"], metadata=c["metadata"]) for c in chunks]
-        store = FAISS.from_documents(
-            documents, get_embedder(embedding), distance_strategy=DistanceStrategy.MAX_INNER_PRODUCT,
+        # 조각 하나가 검색용 글 여러 개를 가짐. 저장하는 글은 모두 조각 전체(근거로 넘길 글)이고, 벡터만 글마다 다름
+        limit = RAG_SEARCH_UNIT_LIMIT.get(embedding, 0)
+        units = [(i, unit) for i, c in enumerate(chunks) for unit in search_units(c["text"], limit)]
+        embedder = get_embedder(embedding)
+        vectors = embedder.embed_documents([unit for _, unit in units])
+        store = FAISS.from_embeddings(
+            [(chunks[i]["text"], vector) for (i, _), vector in zip(units, vectors)], embedder,
+            metadatas=[{**chunks[i]["metadata"], "chunk": i} for i, _ in units],
+            distance_strategy=DistanceStrategy.MAX_INNER_PRODUCT,
         )
         out = self.index_dir(embedding)
         out.mkdir(parents=True, exist_ok=True)
         store.save_local(str(out))
         manifest = {
             "embedding": embedding,
-            "chunks": len(documents),
+            "chunks": len(chunks),
+            "vectors": len(units),
+            "search_unit_limit": limit,
             "files": sorted({c["metadata"]["file"] for c in chunks}),
             "fingerprint": fingerprint,
             "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         }
         (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"✅ [{self.domain}/{embedding}] FAISS 인덱스 생성: {len(documents)} chunks ({time.time() - t0:.0f}s)")
+        print(f"✅ [{self.domain}/{embedding}] FAISS 인덱스 생성: {len(chunks)} chunks, {len(units)} vectors ({time.time() - t0:.0f}s)")
         return store
 
-    def index_needs_rebuild(self, embedding: str) -> bool:
+    def _index_is_fresh(self, embedding: str, fingerprint: str) -> bool:
+        """저장된 색인이 지금 문서와 지금 검색 설정으로 만든 것인지.
+        세부 글 설정이 없는 예전 색인은 0(조각 전체만)으로 만든 것으로 봄 → 설정이 0인 임베딩은 다시 만들지 않음"""
         manifest = self.index_dir(embedding) / "manifest.json"
-        return not manifest.exists() or (
-            json.loads(manifest.read_text(encoding="utf-8")).get("fingerprint")
-            != docs_fingerprint(self.docs_dir)
-        )
+        if not manifest.exists():
+            return False
+        saved = json.loads(manifest.read_text(encoding="utf-8"))
+        return (saved.get("fingerprint") == fingerprint
+                and saved.get("search_unit_limit", 0) == RAG_SEARCH_UNIT_LIMIT.get(embedding, 0))
+
+    def index_needs_rebuild(self, embedding: str) -> bool:
+        return not self._index_is_fresh(embedding, docs_fingerprint(self.docs_dir))
 
     def get_store(self, embedding: str):
         """인덱스가 없거나 docs가 바뀌었으면 다시 만들고, 있으면 로드합니다."""
@@ -374,15 +414,13 @@ class KnowledgeBase:
 
         with self._lock:
             fingerprint = docs_fingerprint(self.docs_dir)
+            limit = RAG_SEARCH_UNIT_LIMIT.get(embedding, 0)
             cached = self._stores.get(embedding)
-            if cached is not None and cached[0] == fingerprint:
+            if cached is not None and cached[0] == (fingerprint, limit):
                 return cached[1]
 
             out = self.index_dir(embedding)
-            manifest = out / "manifest.json"
-            fresh = manifest.exists() and json.loads(manifest.read_text(encoding="utf-8")).get("fingerprint") == fingerprint
-
-            if fresh:
+            if self._index_is_fresh(embedding, fingerprint):
                 # index.pkl은 이 프로젝트에서 직접 생성한 파일만 로드합니다 (pickle 역직렬화)
                 store = FAISS.load_local(
                     str(out), get_embedder(embedding), allow_dangerous_deserialization=True,
@@ -393,7 +431,7 @@ class KnowledgeBase:
                     store = self.build(embedding)
                 except FileNotFoundError:
                     store = None
-            self._stores[embedding] = (fingerprint, store)
+            self._stores[embedding] = ((fingerprint, limit), store)
             return store
 
     # ------------------------------------------------
@@ -412,8 +450,14 @@ class KnowledgeBase:
         fetch = min(k * RAG_ROLE_OVERFETCH, total)
         vector = get_embedder(embedding).embed_query(query)      # 후보를 늘려 다시 찾아도 질문은 한 번만 임베딩
         while True:
-            hits = []
+            hits, seen = [], set()
             for doc, score in store.similarity_search_with_score_by_vector(vector, k=fetch):
+                # 조각 하나가 검색용 글 여러 개를 가지므로 처음 나온 것(가장 높은 점수)만 씀. 예전 색인에는 번호가 없음
+                chunk = doc.metadata.get("chunk")
+                if chunk is not None:
+                    if chunk in seen:
+                        continue
+                    seen.add(chunk)
                 # 기존 인덱스에도 파일명이 있으므로 최신 목록의 등급을 우선 적용합니다.
                 record = records.get(doc.metadata.get("file"), {})
                 grade = record.get("grade", "공개")
