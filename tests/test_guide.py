@@ -5,7 +5,7 @@ import pytest
 
 from app.core import agent
 from app.core.agent import classify, extract_places
-from app.domains.bus.guide import distance_m
+from app.domains.bus.guide import GuideError, distance_m
 
 
 def meta(client):
@@ -514,3 +514,63 @@ def test_first_bus_counted_in_next_hour_is_not_dropped(client, monkeypatch):
     monkeypatch.setitem(guide.route_meta, route, {"first_bus": f"{first_hour - 1:02d}:50", "last_bus": "23:00"})
     leg = guide._leg({"board": board, "alight": alight}, date, (first_hour - 1) * 60 + 55)
     assert leg["start_hour"] == first_hour and leg["first_bus_at"] is None
+
+
+# ==================================================
+# 막차가 지난 노선 (오정훈, 계획서 oh-evaluation.md Task E-9)
+# ==================================================
+# 예측하지 않는 노선의 운행 여부를 "기점 막차의 시(時)"로만 봐서, 기점 막차 23:00인 노선이
+# 23시 30분에 기점 근처 정류장에서도 평소 배차간격으로 안내됐음 (실데이터 171·103번, PR #33 리뷰)
+
+def _t1_leg(guide, board_index, alight_index):
+    line = guide.by_route["T1"]
+    return {"board": line[board_index], "alight": line[alight_index]}
+
+
+def test_route_is_dropped_after_last_bus_passed_the_stop(client, monkeypatch):
+    guide = _timed_guide(client)
+    _, date = meta(client)
+    day = dt.date.fromisoformat(date)
+    monkeypatch.setitem(guide.route_meta, "T1", {**guide.route_meta["T1"], "last_bus": "23:10"})
+    # 정류장1은 기점에서 3분(막차 시간표) → 막차가 23:13에 지남. 23시 30분에는 탈 버스가 없음
+    assert guide.last_bus_arrival(guide.by_route["T1"][1]) == 23 * 60 + 13
+    assert guide.find(day, 23, "시간표정류장9", origin="시간표정류장1")["options"] == []
+    # 같은 시(時)라도 막차 전이면 그대로 안내 (22시 30분)
+    assert guide.find(day, 22, "시간표정류장9", origin="시간표정류장1")["options"]
+
+
+def test_last_bus_still_coming_at_a_far_stop_is_kept(client, monkeypatch):
+    # 기점 막차 23:55 → 정류장10에는 00:25에 닿음. 00:20에는 아직 탈 수 있음 (전에는 '0시'라는 이유로 빠졌음)
+    guide = _timed_guide(client)
+    _, date = meta(client)
+    day = dt.date.fromisoformat(date)
+    monkeypatch.setitem(guide.route_meta, "T1", {**guide.route_meta["T1"], "last_bus": "23:55"})
+    leg = _t1_leg(guide, 10, 11)
+    assert guide.last_bus_arrival(leg["board"]) == 24 * 60 + 25
+    assert guide._leg(leg, day, 24 * 60 + 20)["route"] == "T1"
+    with pytest.raises(GuideError):
+        guide._leg(leg, day, 24 * 60 + 30)
+
+
+def test_night_bus_runs_across_midnight(client, monkeypatch):
+    # 밤에 첫차가 뜨고 새벽에 끝나는 심야버스: 첫차 23:50, 막차 03:45
+    guide = _timed_guide(client)
+    _, date = meta(client)
+    day = dt.date.fromisoformat(date)
+    monkeypatch.setitem(guide.route_meta, "T1", {**guide.route_meta["T1"], "first_bus": "23:50", "last_bus": "03:45"})
+    leg = _t1_leg(guide, 1, 9)
+    assert guide._leg(leg, day, 1 * 60)["first_bus_at"] is None          # 01:00 운행 중
+    assert guide._leg(leg, day, 3 * 60 + 40)["route"] == "T1"            # 막차가 정류장1을 지나기 전
+    with pytest.raises(GuideError):
+        guide._leg(leg, day, 12 * 60)                                    # 낮에는 운행하지 않음
+    with pytest.raises(GuideError):
+        guide._leg(leg, day, 4 * 60)                                     # 막차가 지난 새벽
+    assert guide._leg(leg, day, 23 * 60 + 20)["first_bus_at"].startswith("23:5")  # 첫차를 기다려 탐 (PR #33 동작 그대로)
+
+
+def test_unknown_last_bus_time_keeps_the_route(client, monkeypatch):
+    guide = _timed_guide(client)
+    _, date = meta(client)
+    monkeypatch.setitem(guide.route_meta, "T1", {**guide.route_meta["T1"], "last_bus": None})
+    assert guide.last_bus_arrival(guide.by_route["T1"][1]) is None
+    assert guide.find(dt.date.fromisoformat(date), 23, "시간표정류장9", origin="시간표정류장1")["options"]
