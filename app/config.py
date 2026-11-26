@@ -197,6 +197,7 @@ GUIDE_SEARCH_LIMIT_MAX = 20    # 정류장 검색 결과 최대 개수
 GUIDE_DATE_FALLBACK_WEEKS = 8  # 요청한 날이 예측 범위 밖이면 같은 요일로 몇 주까지 거슬러 찾을지
 GUIDE_START_HOUR_NOTE = "(기점 {hour}시대 출발 버스 기준)"   # 혼잡도 시간대가 물어본 시각과 다를 때 구간 줄 끝에 붙이는 문구
 GUIDE_CLOCK_MINUTE = 30        # 'N시에 출발'을 N시 30분에 출발하는 것으로 봄 (시간대의 가운데). 탈 정류장에 닿는 시각 계산용
+GUIDE_FIRST_BUS_WAIT_MAX_MIN = 60   # 첫차가 아직 오지 않은 정류장: 이 시간(분) 안에 첫차가 오면 기다려 타는 것으로 안내, 더 뒤면 그 노선은 뺌
 ROUTE_INFO_KEY_STOPS = 8       # 노선 정보에 보여 줄 주요 정류장 수
 
 # 학기 중/방학 구분 (서울 초중고 대략 기준, 계절성 피처)
