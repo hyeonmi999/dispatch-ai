@@ -447,3 +447,70 @@ def test_guide_second_leg_is_boarded_later(client, monkeypatch):
 
     # 8시 30분 + 걷기 2분 → 탐. 그 뒤 대기 5분 + 탑승 20분 + 갈아타며 걷기 1분
     assert seen == [8 * 60 + 30 + 2, 8 * 60 + 30 + 2 + 25 + 1]
+
+
+# ==================================================
+# 9. 자정을 넘는 환승 · 첫차를 기다리는 정류장 (PR #25 리뷰 LOW 2 · 3)
+# ==================================================
+
+def test_leg_after_midnight_reads_next_day(client, monkeypatch):
+    import pandas as pd
+    from app.core.registry import registry
+    from app.domains.bus.guide import GuideError
+    adapter = registry.get("bus")
+    guide = adapter.guide_engine
+    guide._build()
+    route = adapter.dataset.routes[0]
+    board, alight = guide.by_route[route][0], guide.by_route[route][3]
+    date = client.get("/api/bus/meta").json()["dates"]["max_forecast_date"]     # 예측 범위 마지막 날
+    day_before = dt.date.fromisoformat(date) - dt.timedelta(days=1)
+    seen = []
+    original = adapter.advisor.analyze_day
+
+    def spy(r, d):
+        seen.append(pd.Timestamp(d).date())
+        return original(r, d)
+
+    monkeypatch.setattr(adapter.advisor, "analyze_day", spy)
+    # 기점에서 0시 40분에 떠나는 버스 → 다음 날 0시대 값 (예전에는 그날 23시로 묶음)
+    try:
+        guide._leg({"board": board, "alight": alight}, day_before, 24 * 60 + 40)
+    except GuideError:
+        pass                                   # 0시대에 출발이 없으면 그 구간은 빠짐
+    assert seen[-1] == dt.date.fromisoformat(date)
+    # 다음 날이 예측 범위 밖이면 500이 아니라 그 경로만 빠짐
+    with pytest.raises(GuideError):
+        guide._leg({"board": board, "alight": alight}, dt.date.fromisoformat(date), 24 * 60 + 40)
+
+
+def test_guide_waits_for_first_bus_when_it_comes_soon(client):
+    guide = _timed_guide(client)
+    _, date = meta(client)
+    day = dt.date.fromisoformat(date)
+    # T1 첫차는 기점 04:00, 네 번째 정류장에는 첫차 시간표로 6분 뒤 → 3시 30분에 오면 36분 기다려 04:06 첫차를 탐
+    option = guide.find(day, 3, "시간표정류장9", origin="시간표정류장3")["options"][0]
+    leg = option["legs"][0]
+    assert leg["first_bus_at"] == "04:06"
+    assert leg["wait_min"] == 36
+    assert option["total_min"] == leg["walk_min"] + 36 + leg["ride_min"]
+    # 첫차가 한 시간보다 더 뒤면 예전처럼 그 노선은 빠짐
+    assert guide.find(day, 2, "시간표정류장9", origin="시간표정류장3")["options"] == []
+    # 첫차가 이미 지나간 시각이면 평소처럼 배차간격의 절반을 기다림
+    normal = guide.find(day, 14, "시간표정류장9", origin="시간표정류장3")["options"][0]["legs"][0]
+    assert normal["first_bus_at"] is None and normal["wait_min"] == 5.0
+
+
+def test_first_bus_counted_in_next_hour_is_not_dropped(client, monkeypatch):
+    from app.core.registry import registry
+    adapter = registry.get("bus")
+    guide = adapter.guide_engine
+    guide._build()
+    route = adapter.dataset.routes[0]
+    board, alight = guide.by_route[route][0], guide.by_route[route][3]
+    _, date = meta(client)
+    hourly = adapter.advisor.analyze_day(route, date)["hourly"]
+    first_hour = int(hourly.loc[hourly["trips"] > 0, "hour"].min())
+    # 첫차가 기점을 (첫 출발 시간대 - 1)시 50분에 떠나는데, 자료에는 그 출발이 다음 시간대로 잡힌 경우
+    monkeypatch.setitem(guide.route_meta, route, {"first_bus": f"{first_hour - 1:02d}:50", "last_bus": "23:00"})
+    leg = guide._leg({"board": board, "alight": alight}, date, (first_hour - 1) * 60 + 55)
+    assert leg["start_hour"] == first_hour and leg["first_bus_at"] is None

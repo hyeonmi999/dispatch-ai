@@ -160,13 +160,18 @@ class BusAdvisor(Advisor):
         그보다 앞 시간대의 값을 읽어야 함. minutes_from_start(기점 → 이 정류장 소요 분)를 모르면
         운행시간 × (순번 - 1) ÷ (마지막 순번 - 1)로 어림. 전날 출발이면 0시, 다음 날로 넘어가면 23시로 묶음.
         """
+        start = self.departure_minute(route, daytype, seq, clock_minute, minutes_from_start)
+        return int(min(max(start // 60, 0), HOURS_PER_DAY - 1))
+
+    def departure_minute(self, route: str, daytype: str, seq: int, clock_minute: float,
+                         minutes_from_start: float | None = None) -> float:
+        """departure_hour와 같은 계산의 묶기 전 값: 기점을 떠난 시각(그날 0시부터 분). 음수면 전날, 1440 이상이면 다음 날"""
         if minutes_from_start is None:
             run = self.ds.route_info_for(route, daytype).get("run_minutes")
             last = max((s for _, s in self.stop_names(route)), default=0)
             ok = run is not None and pd.notna(run) and last > 1
             minutes_from_start = float(run) * (seq - 1) / (last - 1) if ok else 0.0
-        start = clock_minute - max(minutes_from_start, 0.0)
-        return int(min(max(start // 60, 0), HOURS_PER_DAY - 1))
+        return clock_minute - max(minutes_from_start, 0.0)
 
     # ==================================================
     # 2. 시간대 권고 수치

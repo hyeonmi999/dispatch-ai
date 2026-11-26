@@ -40,6 +40,7 @@ from app.config import (
     GUIDE_DEFAULT_KMH,
     GUIDE_DEFAULT_MIN_PER_STOP,
     GUIDE_EARLY_HOUR,
+    GUIDE_FIRST_BUS_WAIT_MAX_MIN,
     GUIDE_MAX_OPTIONS,
     GUIDE_NEAR_STOPS,
     GUIDE_PEAK_FACTOR,
@@ -91,6 +92,24 @@ def _hour_of(clock: str | None) -> int | None:
         return int(str(clock).split(":")[0])
     except (TypeError, ValueError):
         return None
+
+
+MINUTES_PER_DAY = 24 * 60
+
+
+def _minute_of(clock: str | None) -> int | None:
+    """'04:20' → 260 (그날 0시부터 분). 읽을 수 없으면 None"""
+    try:
+        h, m = str(clock).split(":")[:2]
+        return int(h) * 60 + int(m)
+    except (TypeError, ValueError):
+        return None
+
+
+def _clock_of(minute: float) -> str:
+    """260 → '04:20'"""
+    minute = int(round(minute)) % MINUTES_PER_DAY
+    return f"{minute // 60:02d}:{minute % 60:02d}"
 
 
 class BusGuide:
@@ -392,13 +411,39 @@ class BusGuide:
             return 0.0
         return self.ride_minutes(first, board, hour)[0]
 
+    def first_bus_arrival(self, board: dict) -> float | None:
+        """그 노선 첫차가 이 정류장에 닿는 시각(그날 0시부터 분) = 기점 첫차 시각 + 첫차 시간표의 기점 → 정류장 소요.
+        첫차 시각을 모르는 노선(전체 노선 파일이 없을 때 등)은 None"""
+        start = _minute_of(self.route_meta.get(board["route"], {}).get("first_bus"))
+        if start is None:
+            return None
+        offset = self.minutes_from_start(board, start // 60)
+        return start + (offset or 0.0)
+
+    def _day(self, route: str, date) -> dict:
+        try:
+            return self.advisor.analyze_day(route, date)
+        except GuideError:
+            raise
+        except ValueError as e:            # 예측 범위 밖의 날 (자정을 넘긴 구간이 다음 날로 가는 경우 등)
+            raise GuideError(str(e)) from e
+
     def _leg(self, leg: dict, date, clock_minute: float) -> dict:
         """탈 구간 하나의 혼잡도 · 배차간격 · 대략의 탑승 시간
 
-        clock_minute: 탈 정류장에 닿는 시각 (그날 0시부터 분). 예측 노선은 그 시각에 오는 버스의 기점 출발 시간대 값을 읽음
+        clock_minute: 탈 정류장에 닿는 시각 (그날 0시부터 분, 자정을 넘기면 1440 이상).
+        예측 노선은 그 시각에 오는 버스의 기점 출발 시간대 값을 읽음.
+        첫차가 아직 오지 않았으면 GUIDE_FIRST_BUS_WAIT_MAX_MIN 안에 오는 경우만 첫차를 기다려 탐 (first_bus_at).
         """
         board, alight = leg["board"], leg["alight"]
         route = board["route"]
+        first_at = self.first_bus_arrival(board)
+        wait_first = None
+        day_clock = clock_minute % MINUTES_PER_DAY
+        # 첫차가 곧 올 때만 기다림. 더 뒤면 아래의 운행 여부 판단에 맡김 (밤에 첫차가 뜨는 심야버스는 새벽에도 운행 중)
+        if first_at is not None and 0 < first_at - day_clock <= GUIDE_FIRST_BUS_WAIT_MAX_MIN:
+            wait_first = first_at - day_clock
+            clock_minute += wait_first
         hour = int(clock_minute // 60) % 24          # 승객이 타는 시계 시각의 시간대
         start_hour = None
         stops = alight["seq"] - board["seq"]
@@ -406,10 +451,21 @@ class BusGuide:
 
         if route in self.routes:
             # 이 서비스가 예측하는 노선: 그 시간대 운행횟수와 구간 혼잡도
-            day = self.advisor.analyze_day(route, date)
-            start_hour = self.advisor.departure_hour(route, day["daytype"], board["seq"], clock_minute,
-                                                     self.minutes_from_start(board, hour))
-            hrow = day["hourly"][day["hourly"]["hour"] == start_hour]
+            from_start = self.minutes_from_start(board, hour)
+            day = self._day(route, date)
+            if self.advisor.departure_minute(route, day["daytype"], board["seq"], clock_minute, from_start) >= MINUTES_PER_DAY:
+                # 자정을 넘겨 기점을 떠난 버스 → 다음 날 값을 읽음 (그날 23시로 묶지 않음)
+                date, clock_minute = pd.Timestamp(date) + pd.Timedelta(days=1), clock_minute - MINUTES_PER_DAY
+                day = self._day(route, date)
+            start_hour = self.advisor.departure_hour(route, day["daytype"], board["seq"], clock_minute, from_start)
+            hourly = day["hourly"]
+            running = hourly.loc[hourly["trips"] > 0, "hour"]
+            if (first_at is not None and clock_minute % MINUTES_PER_DAY >= first_at
+                    and not running.empty and start_hour < running.min()):
+                # 첫차가 이미 이 정류장에 닿은 시각인데 그 버스가 떠난 시간대에 자료상 출발이 없음
+                # (예: 기점 03:57 첫차가 자료에는 4시대 출발로 잡힘) → 자료의 첫 출발 시간대 값을 읽음
+                start_hour = int(running.min())
+            hrow = hourly[hourly["hour"] == start_hour]
             if hrow.empty or not (hrow["trips"].iloc[0] > 0):
                 raise GuideError(f"{route}번은 {hour}시에 이 정류장을 지나는 버스의 운행 데이터가 없습니다")
             interval = 60.0 / float(hrow["trips"].iloc[0])
@@ -450,7 +506,8 @@ class BusGuide:
             "walk_min": math.ceil(walk_m / GUIDE_WALK_M_PER_MIN) + math.ceil(exit_walk_m / GUIDE_WALK_M_PER_MIN),
             "exit_walk_m": round(exit_walk_m),
             "interval_min": round(interval, 1),
-            "wait_min": round(interval / 2, 1),
+            "wait_min": round(wait_first if wait_first is not None else interval / 2, 1),
+            "first_bus_at": _clock_of(clock_minute) if wait_first is not None else None,
             "ride_min": max(round(ride), 1),
             "distance_km": round(km, 1) if km is not None else None,
             "congestion": _num(c, 3) if has_c else None,
