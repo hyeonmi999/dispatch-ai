@@ -374,3 +374,108 @@ def test_fingerprint_reads_file_list_once(tmp_path, monkeypatch):
     monkeypatch.setattr(rag, "document_files", files)
     rag.docs_fingerprint(root)
     assert calls == [root]
+
+
+# ==================================================
+# 외부 전송 차단 (오정훈, 이슈 #28 — 정책: docs/requests/2026-11-24-kim.md R-1)
+# ==================================================
+
+def test_non_public_evidence_is_not_sent_to_external_llm(tmp_path, monkeypatch):
+    from app.config import EXTERNAL_BLOCK_NOTE
+
+    client, contexts = _role_client(tmp_path, monkeypatch)
+    request = {"question": "문서검증표지", "top_k": 3, "llm": "openai", "use_llm": True}
+    for role, expected in (("staff", {"a-internal", "c-public"}), ("admin", {"a-internal", "b-restricted", "c-public"})):
+        body = client.post("/api/bus/ask", json={**request, "role": role}).json()
+        assert contexts == []                                    # 외부 LLM 호출 0회
+        assert body["found"] is True and body["answer"] is None and body["llm"] is None
+        assert {s["document"] for s in body["sources"]} == expected     # 볼 수 있는 근거 조항은 그대로
+        assert body["note"] == EXTERNAL_BLOCK_NOTE
+        assert all("grade" not in s for s in body["sources"])    # 등급은 응답에 넣지 않음
+
+    # 시민은 공개 문서만 근거가 되므로 명시적으로 고른 OpenAI가 그대로 불림
+    body = client.post("/api/bus/ask", json={**request, "role": "citizen"}).json()
+    assert len(contexts) == 1 and "c-public" in contexts[0]
+    assert "a-internal" not in contexts[0] and "b-restricted" not in contexts[0]
+    assert body["answer"] and body["note"] is None
+
+    # 로컬 모델을 고르면 등급 문서가 근거여도 막지 않음 (외부로 나가지 않으므로)
+    body = client.post("/api/bus/ask", json={**request, "llm": "qwen", "role": "admin"}).json()
+    assert len(contexts) == 2 and "b-restricted" in contexts[1] and body["answer"]
+
+
+def test_external_embedding_is_refused_before_any_request(tmp_path, monkeypatch):
+    from app.config import EXTERNAL_EMBEDDING_BLOCK_MESSAGE
+    from app.core.llm import LLMConfigError
+
+    client, root, kb = document_client(tmp_path, monkeypatch)
+    calls = []
+
+    class Counting(TestEmbeddings):
+        def embed_documents(self, texts):
+            calls.append(("documents", len(texts)))
+            return super().embed_documents(texts)
+
+        def embed_query(self, text):
+            calls.append(("query", text))
+            return super().embed_query(text)
+
+    monkeypatch.setattr(rag, "get_embedder", lambda _: Counting())
+    endpoint = "/api/bus/documents"
+    fields = {"title": "운영 지침", "type": "내부자료", "grade": "공개"}
+    assert client.post(endpoint, data=fields, files={"file": ("ops.txt", "문서검증표지 운영", "text/plain")}).status_code == 201
+
+    # 전부 공개 문서면 명시적으로 고른 OpenAI 임베딩은 예전처럼 동작
+    assert kb.search("문서검증표지", "openai", 1)
+    assert calls
+
+    # 공개 → 내부로 바꾸면 예전 OpenAI 색인이 남아 있어도 질문을 보내기 전에 거부
+    assert client.put(f"{endpoint}/ops.txt", json={**fields, "active": True, "grade": "내부"}).status_code == 200
+    calls.clear()
+    for action in (lambda: kb.search("문서검증표지", "openai", 1, role="admin"),
+                   lambda: kb.ask("문서검증표지", embedding="openai", use_llm=False, role="admin"),
+                   lambda: kb.build("openai")):
+        with pytest.raises(LLMConfigError) as error:
+            action()
+        assert str(error.value) == EXTERNAL_EMBEDDING_BLOCK_MESSAGE
+        assert "운영 지침" not in str(error.value) and "ops.txt" not in str(error.value)   # 문서 이름을 드러내지 않음
+    assert calls == []                                           # 외부 임베딩 호출 0회
+
+    # 비활성으로 돌려도 색인에는 남으므로 계속 거부. 로컬(bge) 검색은 역할대로 동작
+    assert client.put(f"{endpoint}/ops.txt", json={**fields, "active": False, "grade": "내부"}).status_code == 200
+    with pytest.raises(LLMConfigError):
+        kb.search("문서검증표지", "openai", 1)
+    assert client.put(f"{endpoint}/ops.txt", json={**fields, "active": True, "grade": "내부"}).status_code == 200
+    assert kb.search("문서검증표지", "bge", 1, role="citizen") == []
+    assert [h["document"] for h in kb.search("문서검증표지", "bge", 1, role="staff")] == ["운영 지침"]
+
+
+def test_unknown_grade_is_not_treated_as_public(tmp_path):
+    import json
+
+    root = tmp_path / "bus"
+    root.mkdir()
+    (root / "law.txt").write_text("기본 법령", encoding="utf-8")
+    assert rag.has_non_public_documents(root) is False            # 등급이 없는 기본 문서는 공개
+    (root / "documents.json").write_text(json.dumps({"law.txt": {"grade": "대외비"}}, ensure_ascii=False), encoding="utf-8")
+    assert read_document_manifest(root) == {"law.txt": {"grade": "대외비"}}
+    assert rag.has_non_public_documents(root) is True             # 모르는 등급 값은 공개로 보지 않음
+
+
+def test_chat_tells_why_only_evidence_came_back():
+    from app.config import EXTERNAL_BLOCK_NOTE
+    from app.core import agent
+
+    class Knowledge:
+        def ask(self, *args, **kwargs):
+            return {"found": True, "answer": None, "note": EXTERNAL_BLOCK_NOTE,
+                    "sources": [{"id": 1, "document": "운영 지침", "article": "제1조", "page": None, "url": None,
+                                 "score": 0.9, "snippet": "…"}]}
+
+    class Adapter:
+        knowledge_base = Knowledge()
+
+    _, answer, sources, _ = agent._ask(Adapter(), "문서검증표지", "openai", "bge", True, role="staff")
+    assert EXTERNAL_BLOCK_NOTE in answer and len(sources) == 1
+    _, answer, _, _ = agent._ask(Adapter(), "문서검증표지", "qwen", "bge", False, role="staff")
+    assert EXTERNAL_BLOCK_NOTE not in answer                     # use_llm=False의 근거만 응답에는 붙이지 않음
