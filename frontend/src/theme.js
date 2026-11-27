@@ -30,19 +30,15 @@ export const design = ref(loadDesign())
 
 // 무채색 시안(c)의 포인트색 후보 (팀 비교용). 쓰임별로 나눔:
 //   accent = 글자·테두리 (흰 바탕 대비 4.5:1 이상), line = 그래프 선 (3:1 이상), fill = 눌린 버튼·선택 탭 바탕, on = fill 위 글자
-//   파스텔 색은 흰 바탕에서 글자로 쓰면 안 보여서(1.5~2.2:1) 낮에는 같은 색상의 진한 색을 글자·선에 씀. 야간에는 파스텔 그대로
-//   grayBaseline: 포인트색이 보라 계열이면 '작년 같은 요일' 선을 회색 점선으로 (보라 점선과 겹치지 않게)
-const solid = (accent, hover, pressed, on) => ({ accent, hover, pressed, fill: accent, on, line: accent })
-const pastel = (fill, text, line, hover) => ({ accent: text, hover, pressed: text, fill, on: '#18181B', line })
-const pastelNight = (fill) => ({ accent: fill, hover: fill, pressed: fill, fill, on: '#0A0A0A', line: fill })
+//   색마다 낮·야간을 따로 맞춤: 연한 색(연두)은 낮 글자에 진한 색을, 진한 색(숲색·남색)은 야간에 밝힌 색을 씀.
+//   그래프 선은 '실제' 선(낮 검정·야간 흰색)과 헷갈리지 않게 낮에는 흰 바탕 대비 3~4:1의 밝은 쪽, 야간에는 검정 바탕 대비 5~7:1의 채도 높은 쪽을 씀
+//   grayBaseline: 포인트색이 보라에 가까우면 '작년 같은 요일' 선을 회색 점선으로
+const tone = (fill, on, accent, line, hover = line) => ({ fill, on, accent, line, hover, pressed: accent })
 export const ACCENTS = {
-  blue: { label: '파랑', day: solid('#2563EB', '#3B82F6', '#1D4ED8', '#FFFFFF'), night: solid('#60A5FA', '#93C5FD', '#3B82F6', '#0A0A0A') },
-  indigo: { label: '인디고', day: solid('#4F46E5', '#6366F1', '#4338CA', '#FFFFFF'), night: solid('#818CF8', '#A5B4FC', '#6366F1', '#0A0A0A'), grayBaseline: true },
-  olive: { label: '올리브 #637545', day: solid('#637545', '#738653', '#4F5E37', '#FFFFFF'), night: solid('#9DB07D', '#B0C192', '#87996A', '#0A0A0A') },
-  green: { label: '연두 #B7D894', day: pastel('#B7D894', '#518020', '#66A128', '#66A128'), night: pastelNight('#B7D894') },
-  beige: { label: '베이지 #DED6C1', day: pastel('#DED6C1', '#87723A', '#A98E49', '#A98E49'), night: pastelNight('#DED6C1') },
-  taupe: { label: '토프 #B7B09E', day: pastel('#B7B09E', '#7F7456', '#9E9170', '#9E9170'), night: pastelNight('#B7B09E') },
-  mist: { label: '하늘회색 #AEC4D4', day: pastel('#AEC4D4', '#457AA1', '#6597BD', '#6597BD'), night: pastelNight('#AEC4D4') },
+  green: { label: '연두 #B7D894', day: tone('#B7D894', '#18181B', '#4C771E', '#66A128'), night: tone('#B7D894', '#0A0A0A', '#B7D894', '#7DB442') },
+  teal: { label: '청록 #34908B', day: tone('#34908B', '#18181B', '#2B7773', '#34908B'), night: tone('#40B1AB', '#0A0A0A', '#40B1AB', '#35938E') },
+  forest: { label: '숲색 #2B5748', day: tone('#2B5748', '#FFFFFF', '#2B5748', '#448A72'), night: tone('#5CAF92', '#0A0A0A', '#5CAF92', '#49937A') },
+  navy: { label: '남색 #121358', day: tone('#121358', '#FFFFFF', '#121358', '#6D6FE1'), night: tone('#9899EA', '#0A0A0A', '#9899EA', '#797BE4'), grayBaseline: true },
 }
 const ACCENT_KEY = 'dispatch-accent'
 function loadAccent() {
@@ -50,9 +46,9 @@ function loadAccent() {
     const q = new URLSearchParams(window.location.search).get('accent')
     if (q && ACCENTS[q]) return q
     const saved = localStorage.getItem(ACCENT_KEY)
-    return ACCENTS[saved] ? saved : 'blue'
+    return ACCENTS[saved] ? saved : 'green'
   } catch {
-    return 'blue'
+    return 'green'
   }
 }
 export const accent = ref(loadAccent())
@@ -125,7 +121,7 @@ export const palette = computed(() => {
   const night = theme.value === 'night'
   if (design.value === 'c') {
     const base = night ? NIGHT_C : DAY_C
-    const pick = ACCENTS[accent.value] ?? ACCENTS.blue
+    const pick = ACCENTS[accent.value] ?? ACCENTS.green
     const a = pick[night ? 'night' : 'day']
     const baseline = pick.grayBaseline ? (night ? '#A1A1AA' : '#71717A') : base.baseline
     return { ...base, accent: a.accent, accentHover: a.hover, accentPressed: a.pressed, accentLine: a.line, baseline }
