@@ -28,11 +28,11 @@ import time
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from app.config import GUIDE_START_HOUR_NOTE, NOT_FOUND_ANSWER, RAG_TOP_K
+from app.config import CHAT_NOTE_MARK, CHAT_NOTE_MAX, GUIDE_START_HOUR_NOTE, NOT_FOUND_ANSWER, RAG_TOP_K
 from app.core import llm as llm_module
 from app.core.domain import DomainAdapter, InvalidRequest
 from app.core.llm import LLMConfigError
-from app.core.prompts import CHAT_SYSTEM_MESSAGE
+from app.core.prompts import CHAT_NOTE_SYSTEM_MESSAGE
 
 logger = logging.getLogger(__name__)
 
@@ -793,20 +793,41 @@ HANDLERS = {"predict": _predict, "advise": _advise, "ask": _ask, "guide": _guide
             "simulate": _simulate, "optimize": _optimize}
 
 
-def _rewrite(llm: str, message: str, template: str, facts: dict) -> str | None:
-    """문장 틀 답변을 LLM이 자연스럽게 다시 씀. 숫자나 결론이 문장 틀 답변과 달라지면 None (문장 틀 답변을 그대로 씀)"""
+# --- LLM이 덧붙이는 한 줄의 확인 (이슈 #21) ---
+# 예전에는 LLM이 문장 틀 답변을 통째로 다시 쓰고 same_numbers·keeps_meaning이 틀린 문장을 걸렀음. 금지어 방식이라
+# "증차는 시기상조입니다"·"3,133명에 못 미칩니다"처럼 낱말만 바꾼 틀린 문장이 계속 통과했음 (변형 18개 중 14개).
+# 지금은 숫자·권고·혼잡 단계가 든 답변을 문장 틀 그대로 내보내고, LLM의 한 줄에는 그런 말이 **아예 없어야** 함.
+# 틀린 말을 골라내는 대신 판단·수량을 말할 수 있는 낱말을 통째로 막으므로, 맞는 말도 걸리지만 틀린 결론은 실을 수 없음.
+_NOTE_FORBID_RE = re.compile(
+    r"\d|[두세네몇]\s?배|절반|[일이삼사오육칠팔구십백천만]+\s?(?:명|회|대|분|시|퍼센트)"      # 숫자
+    r"|증차|감차|유지|단축|늘[리려릴어]|줄[이여일어]|배차\s?간격|간격|권고|권장|추천"            # 권고
+    r"|여유|보통|혼잡|붐[비빕벼빌]|한산|한가|널널|쾌적"                                          # 혼잡 단계
+    r"|버스|차량|운행|승객|승차|대수"                                                            # 수량의 대상
+    r"|많|적[다습은게어지]|높|낮|증가|감소|급증|급감|부족|충분|초과|미만|이상|이하|최대|최소|넘[습는어]|미치"   # 많고 적음
+    r"|전망|예상|예측|것입니다|겁니다|필요\s?없|않아도|안\s해도"                                # 전망·결론
+    r"|[一-鿿぀-ヿ]")                                                          # 한자·일본어 글자가 섞인 문장 (작은 모델이 가끔 냄)
+_NOTE_ENDS = (".", "요", "다", "!", "?")
+
+
+def safe_note(note: str) -> bool:
+    """LLM이 덧붙인 한 줄에 숫자·권고·혼잡·수량·전망을 말하는 낱말이 없으면 True"""
+    note = note.strip()
+    return (bool(note) and len(note) <= CHAT_NOTE_MAX and "\n" not in note and "�" not in note
+            and note.endswith(_NOTE_ENDS) and not _NOTE_FORBID_RE.search(note))
+
+
+def _note(llm: str, message: str, template: str, facts: dict) -> str | None:
+    """문장 틀 답변 아래에 붙일 한 줄을 LLM이 씀. 확인을 통과하지 못하면 None (문장 틀 답변만 내보냄)"""
     shown = {k: v for k, v in facts.items() if k != "data"}
     user = f"[기능 결과]{chr(10)}{json.dumps(shown, ensure_ascii=False)}{chr(10)}{chr(10)}[기본 답변]{chr(10)}{template}{chr(10)}{chr(10)}[질문]{chr(10)}{message}"
     try:
-        answer = llm_module.generate(llm, CHAT_SYSTEM_MESSAGE, user).strip()
+        answer = llm_module.generate(llm, CHAT_NOTE_SYSTEM_MESSAGE, user).strip()
     except LLMConfigError:
         raise
     except Exception as error:      # 모델 로드 실패·메모리 부족 등: 문장 틀 답변으로 계속
         logger.warning("챗봇 LLM 문장 작성 실패, 문장 틀 답변 사용: %s", error)
         return None
-    # "�": 모델이 글자를 깨뜨려 낸 자리 (예: "가장 � boom하는 구간")
-    ok = bool(answer) and "�" not in answer and same_numbers(answer, template) and keeps_meaning(answer, shown)
-    return answer if ok else None
+    return answer if safe_note(answer) else None
 
 
 # ==================================================
@@ -952,12 +973,13 @@ def run(adapter: DomainAdapter, message: str, history: list[dict] | None = None,
 
     data = facts.get("data")          # 길안내 결과 전체 (화면이 지도에 그림)
     evidence = {k: v for k, v in facts.items() if k != "data"}
-    # 문장 틀 답변이 기본. use_llm이면 LLM이 다시 쓰되, 숫자가 달라지면 버리고 문장 틀 답변을 씀
-    if use_llm and intent in ("predict", "advise"):   # 길안내·노선 정보는 줄 단위 목록이라 다시 쓰지 않음
-        rewritten = _rewrite(llm, message, answer, evidence)
-        if rewritten:
-            return done(intent, rewritten, tools, sources, verified=True, used_llm=llm, data=data)
-        return done(intent, answer, tools, sources, verified=verify_numbers(answer, evidence, slots), rejected=True, data=data)
+    # 답변은 항상 문장 틀 그대로. use_llm이면 그 아래에 LLM이 쓴 확인 사항 한 줄만 붙이고, 확인을 못 넘으면 붙이지 않음
+    verified = verify_numbers(answer, evidence, slots)
+    if use_llm and intent in ("predict", "advise"):   # 길안내·노선 정보는 줄 단위 목록이라 붙이지 않음
+        note = _note(llm, message, answer, evidence)
+        if note:
+            return done(intent, f"{answer}\n{CHAT_NOTE_MARK} {note}", tools, sources, verified=verified, used_llm=llm, data=data)
+        return done(intent, answer, tools, sources, verified=verified, rejected=True, data=data)
     return done(intent, answer, tools, sources, verified=verify_numbers(answer, evidence, slots), data=data)
 
 
