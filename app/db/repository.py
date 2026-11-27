@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.config import LIST_LIMIT_MAX
 from app.db import database as db
-from app.db.database import AdvisoryBatch, AdvisoryLog, ChatLog, OptimizationRun, PredictionLog, QALog
+from app.db.database import AdvisoryBatch, AdvisoryLog, ChatLog, OptimizationRun, PredictionLog, QALog, RetrainReview
 
 
 async def _add(row):
@@ -266,3 +266,38 @@ async def review_advisory(advisory_id: int, status: str, reviewer: str, note: st
         row.reviewed_at = dt.datetime.now()
         await session.commit()
         return True
+
+
+# ==================================================
+# 재학습 권고에 대한 담당자 결정 (요청 R-3)
+# ==================================================
+
+def _review_dict(r: RetrainReview) -> dict:
+    return {"status": r.status, "reviewer": r.reviewer, "note": r.note or "",
+            "reviewed_at": f"{r.reviewed_at:%Y-%m-%d %H:%M:%S}" if r.reviewed_at else None}
+
+
+async def get_retrain_reviews(domain: str, check_ids: list[str]) -> dict[str, dict]:
+    """점검 id → 결정. DB가 꺼져 있으면 빈 dict (서버가 뜬 뒤에 꺼졌으면 예외를 그대로 올림)"""
+    if not db.state["available"] or not check_ids:
+        return {}
+    async with db.SessionLocal() as session:
+        query = select(RetrainReview).where(RetrainReview.domain == domain, RetrainReview.check_id.in_(check_ids))
+        rows = (await session.execute(query)).scalars().all()
+    return {r.check_id: _review_dict(r) for r in rows}
+
+
+async def save_retrain_review(domain: str, check_id: str, verdict: str, status: str, reviewer: str, note: str) -> dict | None:
+    """결정을 남김 (같은 점검이면 고침). DB가 꺼져 있으면 None"""
+    if not db.state["available"]:
+        return None
+    async with db.SessionLocal() as session:
+        query = select(RetrainReview).where(RetrainReview.domain == domain, RetrainReview.check_id == check_id)
+        row = (await session.execute(query)).scalars().first()
+        if row is None:
+            row = RetrainReview(domain=domain, check_id=check_id)
+            session.add(row)
+        row.verdict, row.status, row.reviewer, row.note = verdict, status, reviewer, note
+        row.reviewed_at = dt.datetime.now()
+        await session.commit()
+        return _review_dict(row)
