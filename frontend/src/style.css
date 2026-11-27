@@ -83,3 +83,76 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   flex: none; max-height: 76px; overflow-y: auto; margin-top: 4px; padding-top: 4px;
   border-top: 1px solid var(--line); font-size: 12px; line-height: 1.5; color: var(--ink2);
 }
+
+/* ==================================================
+   새 디자인 시안 (.skin-b) — 기존 화면과 비교용. theme.js의 DAY_B / NIGHT_B와 같은 값
+   방향: 흰 바탕 + 교통 파랑 강조색, 혼잡 단계는 초록·노랑·주황·빨강, 둥근 모서리와 옅은 그림자의 카드형 패널.
+   배치·기능·글꼴은 그대로이고 색·모양·상단 막대만 바뀜. 컴포넌트의 scoped 스타일보다 앞서도록 html을 붙임
+   ================================================== */
+.skin-b.day {
+  --ground: #eef2f7; --panel: #ffffff; --panel2: #f1f5f9; --line: #dce3ec;
+  --ink: #0f172a; --ink2: #334155; --ink3: #5b6b82; --accent: #2563eb; --on: #ffffff;
+  --c0: #16a34a; --c1: #eab308; --c2: #f97316; --c3: #dc2626; --c4: #cbd5e1;
+  --r143: #0f766e; --r272: #7c3aed; --r160: #be185d; --r150: #1e3a8a; --r271: #4d7c0f;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+.skin-b.night {
+  --ground: #0b1220; --panel: #111a2e; --panel2: #1a2540; --line: #2a3654;
+  --ink: #e6edf7; --ink2: #b4c0d4; --ink3: #93a1b8; --accent: #60a5fa; --on: #0b1220;
+  --c0: #34d399; --c1: #fbbf24; --c2: #fb923c; --c3: #f87171; --c4: #475569;
+  --r143: #5eead4; --r272: #c4b5fd; --r160: #f472b6; --r150: #93c5fd; --r271: #a3e635;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+/* 상단 막대: 항상 검은 막대 → 화면 테마를 따르는 밝은 막대 + 아래 선 */
+html.skin-b .bar { background: var(--panel); color: var(--ink); border-bottom: 1px solid var(--line); box-shadow: var(--shadow); position: relative; z-index: 2; }
+html.skin-b .brand p { color: var(--ink3); }
+html.skin-b .tab { color: var(--ink2); border-top-color: transparent; }
+html.skin-b .tab:hover { color: var(--ink); }
+html.skin-b .tab.on { color: var(--accent); border-bottom-color: var(--accent); }
+html.skin-b .tab small { color: var(--ink3); }
+html.skin-b .bstat { color: var(--ink2); background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; }
+html.skin-b .bbtn { color: var(--ink); border-color: var(--line); border-radius: 8px; background: var(--panel); }
+html.skin-b .bbtn:hover { border-color: var(--accent); color: var(--accent); }
+html.skin-b .bbtn[aria-pressed='true'] { background: var(--accent); border-color: var(--accent); color: var(--on); }
+html.skin-b .document-role select { color: var(--ink); background: var(--panel); border-color: var(--line); border-radius: 8px; }
+html.skin-b .document-role select:hover { border-color: var(--accent); }
+html.skin-b .document-role select:focus-visible { outline-color: var(--accent); }
+html.skin-b .document-role option { color: var(--ink); background: var(--panel); }
+
+/* 도구 줄 */
+html.skin-b .tools { border-bottom: 0; background: transparent; padding: 10px 16px 4px; }
+html.skin-b .ibtn, html.skin-b .tbtn { border-radius: 8px; background: var(--panel); }
+html.skin-b .ibtn:hover, html.skin-b .tbtn:hover { border-color: var(--accent); color: var(--accent); background: var(--panel); }
+html.skin-b .segb { border-radius: 8px; background: var(--panel); }
+html.skin-b .segb button.on { background: var(--accent); color: var(--on); }
+html.skin-b .flag { border-radius: 999px; padding: 1px 8px; }
+html.skin-b .hr { color: var(--accent); }
+
+/* 패널: 각진 테두리 상자 → 둥근 카드 + 옅은 그림자, 제목줄은 패널과 같은 바탕 */
+html.skin-b .panel { border-radius: 12px; border-color: var(--line); box-shadow: var(--shadow); overflow: hidden; }
+html.skin-b .moving .panel { border-color: var(--accent); box-shadow: 0 12px 28px rgba(15, 23, 42, 0.22); }
+html.skin-b .ph { background: var(--panel); height: 36px; padding-left: 4px; }
+html.skin-b .ph h2 { font-size: 13px; }
+html.skin-b .x { border-radius: 6px; }
+html.skin-b .x:hover { background: var(--panel2); }
+html.skin-b .ghost div { border-radius: 12px; }
+
+/* 작은 부품 */
+html.skin-b .rno { border-radius: 6px; border-width: 1.5px; padding: 0 6px; }
+html.skin-b .chip { border-radius: 50%; }
+html.skin-b .act { border-radius: 999px; padding: 1px 8px; }
+html.skin-b .notice { border-radius: 8px; }
+html.skin-b .notice.warn { background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+html.skin-b .meter { border-radius: 999px; overflow: hidden; }
+html.skin-b .opt, html.skin-b .sum { border-radius: 10px; }
+html.skin-b .opt.on { border-color: var(--accent); }
+html.skin-b .sum { border-color: var(--line); }
+html.skin-b .sum .tag { background: var(--accent); color: var(--on); border-radius: 999px; padding: 1px 8px; }
+html.skin-b .rt.on { box-shadow: inset 3px 0 0 var(--accent); }
+html.skin-b .leaflet-tooltip { border-color: var(--line); border-radius: 8px; box-shadow: var(--shadow); }
+html.skin-b .leaflet-bar { border-radius: 8px; overflow: hidden; border-color: var(--line); }
+html.skin-b .leaflet-bar a { border-radius: 0 !important; }
+html.skin-b :focus-visible { outline-offset: 2px; border-radius: 4px; }
+html.skin-b button, html.skin-b .panel { transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
+@media (prefers-reduced-motion: reduce) { html.skin-b button, html.skin-b .panel { transition: none; } }

@@ -10,7 +10,7 @@
 import { computed } from 'vue'
 import { NConfigProvider, NMessageProvider, darkTheme, koKR, dateKoKR } from 'naive-ui'
 import Dashboard from './components/Dashboard.vue'
-import { FONT_MONO, FONT_SANS, isNight, palette } from './theme'
+import { FONT_MONO, FONT_SANS, design, isNight, palette } from './theme'
 
 const themeOverrides = computed(() => {
   const p = palette.value
@@ -22,8 +22,8 @@ const themeOverrides = computed(() => {
       primaryColorSuppl: p.accentHover,
       fontFamily: FONT_SANS,
       fontFamilyMono: FONT_MONO,
-      borderRadius: '2px',
-      borderRadiusSmall: '2px',
+      borderRadius: design.value === 'b' ? '8px' : '2px',
+      borderRadiusSmall: design.value === 'b' ? '6px' : '2px',
       borderColor: p.line,
       dividerColor: p.line,
       textColorBase: p.ink,

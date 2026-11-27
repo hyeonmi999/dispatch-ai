@@ -36,6 +36,7 @@
           </div>
         </n-popover>
         <button class="bbtn" @click="toggleTheme">{{ isNight ? '주간 화면' : '야간 화면' }}</button>
+        <button class="bbtn" :aria-pressed="design === 'b'" title="디자인 시안 비교: 기존 화면과 새 시안을 바꿔 봅니다" @click="toggleDesign">디자인: {{ design === 'b' ? '새 시안' : '기존' }}</button>
       </div>
     </header>
 
@@ -199,7 +200,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NDatePicker, NPopover, NSelect, NSlider, NSpin, useMessage } from 'naive-ui'
 import { api, errorMessage, fmtCongestion, levelClass } from '../api'
 import { PRESETS, TITLES, loadSaved, makeLayout, resolve, saveLayout } from '../layout'
-import { isNight, toggleTheme } from '../theme'
+import { design, isNight, toggleDesign, toggleTheme } from '../theme'
 import DocumentAdminPanel from './DocumentAdminPanel.vue'
 import AdvicePanel from './AdvicePanel.vue'
 import AppLogo from './AppLogo.vue'
