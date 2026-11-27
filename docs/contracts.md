@@ -116,13 +116,13 @@
 |---|---|
 | `message` | 2~500자 |
 | `history` | 최대 10건, 오래된 것부터. 이어 묻기("그럼 4시는?")에 사용. 생략 가능 |
-| `use_llm` | `false`(기본)면 정해진 문장 틀로 답함. `true`면 규정 답변은 LLM이 요약하고, 예측·권고 답변은 LLM이 문장을 다듬음. 다듬은 문장의 숫자(값·단위·순서·설명)나 결론(권고 방향·혼잡 단계)이 문장 틀 답변과 다르면 버리고 문장 틀 답변을 씀(`llm_rejected: true`) |
+| `use_llm` | `false`(기본)면 정해진 문장 틀로 답함. `true`면 규정 답변은 LLM이 요약함. **예측·권고 답변은 문장 틀 그대로이고, 그 아래에 LLM이 쓴 확인 사항 한 줄(`💬 …`)만 붙음** (2026-11-27, 이슈 #21. 전에는 LLM이 답변을 통째로 다시 썼음). 그 한 줄에 숫자·권고·혼잡 단계·많고 적음·전망을 말하는 낱말이 있으면 붙이지 않고 `llm_rejected: true`. 숫자가 든 문장은 LLM이 쓰지 않으므로 `numbers_verified`는 문장 틀 기준 |
 | `location` | 현재 위치. 길안내 질문에서 출발 정류장을 말하지 않았을 때만 씀. 응답의 `slots`·`tools`에는 좌표가 들어 있지만, 대화 기록(`chat_log`)에는 좌표를 빼고 `slots.location_used: true`만 남김 |
 | `role` | 문서 열람 역할 `citizen`(기본) · `staff` · `admin`. 규정 검색에 전달 (6번) |
 | `intent` | `predict` · `advise` · `ask` · `guide` · `route_info` · `simulate` · `optimize` · `clarify`(빠진 값 되묻기) · `out_of_scope` |
 | `tools[].name` | 실제로 부른 기능: `predict`(F-02) · `advise`(F-04) · `ask`(F-05) · `guide`(F-28) · `route_info`(F-29) · `simulate`(F-12) · `optimize`(F-13). 되묻기·범위 밖은 빈 목록 |
 | `slots.from_here` | `true`면 "여기서 ○○ 어떻게 가?"처럼 현재 위치에서 출발하는 질문인데 `location`이 없었다는 뜻. 화면은 위치를 얻어 같은 질문을 다시 보냄 |
-| `llm_rejected` | `true`면 LLM이 쓴 문장을 버리고 문장 틀로 답함. 버리는 경우: 숫자가 기능 결과와 다름 / 권고 방향이 바뀜(유지 → 감차 등) / 혼잡 단계가 다름 |
+| `llm_rejected` | `true`면 LLM이 덧붙인 한 줄을 버리고 문장 틀 답변만 보냄 (금지된 낱말이 있거나, 한 줄이 아니거나, LLM이 실패함). 답변의 숫자·권고는 어느 경우에도 문장 틀 그대로 |
 | `data` | 길안내 답변일 때만 `/api/bus/guide` 응답 전체. 화면이 '지도로 보기' 팝업에 씀 |
 | `tools[].ok` | `false`면 기능이 오류를 돌려줌 (없는 노선, 예측 범위 밖 날짜). `answer`에 이유가 들어감 |
 | `numbers_verified` | 답변 속 숫자가 모두 기능 결과에 있으면 `true`. 숫자를 대조하지 않는 답(규정·되묻기·범위 밖)은 `null` |
