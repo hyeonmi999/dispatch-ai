@@ -28,7 +28,7 @@
             <span v-if="t.numbers_verified === true" class="tag ok">숫자 검증 통과</span>
             <span v-if="t.numbers_verified === false" class="tag bad">숫자 검증 실패</span>
             <span v-if="(t.tools ?? []).length" class="tag">담당자 검토 필요</span>
-            <span v-if="t.llm_rejected" class="tag">LLM 문장 버림 · 문장 틀 사용</span>
+            <span v-if="t.llm_rejected" class="tag">LLM 한 줄 버림 · 문장 틀만 표시</span>
             <button v-if="canGoto(t)" class="link" @click="emit('goto', gotoTarget(t))">이 노선·시간 보기</button>
             <button v-if="t.data?.options" class="mapbtn" @click="openGuide(t)"><BusIcon :size="13" /> 지도로 보기</button>
             <button v-if="isRouteInfo(t)" class="link" @click="emit('select-route', t.slots.route)">대시보드에서 이 노선 보기</button>
