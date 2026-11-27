@@ -24,13 +24,13 @@ sys.path.insert(0, str(ROOT))
 
 import pandas as pd  # noqa: E402
 
-from app.config import BUS_CAPACITY, BUS_TUNE_END, CONGESTION_HIGH, EVAL_RESULTS_DIR, MODELS_DIR  # noqa: E402
+from app.config import BUS_CAPACITY, BUS_TUNE_END, CONGESTION_HIGH, EVAL_RESULTS_DIR, GUIDE_PEAK_HOURS, MODELS_DIR  # noqa: E402
 from app.domains.bus.advisor import BusAdvisor, congestion_level  # noqa: E402
 from app.domains.bus.calibration import load_ratios, ratio_for  # noqa: E402
 from app.domains.bus.data import BusDataset  # noqa: E402
 from app.domains.bus.forecaster import BusForecaster  # noqa: E402
 
-PEAK_HOURS = (7, 8, 9, 17, 18, 19)     # 출퇴근 시간대 (길안내의 GUIDE_PEAK_HOURS와 같은 구분)
+PEAK_HOURS = GUIDE_PEAK_HOURS          # 출퇴근 시간대 (길안내와 같은 구분, app/config.py)
 LEVEL_ORDER = {"여유": 0, "보통": 1, "혼잡": 2, "매우혼잡": 3}
 
 

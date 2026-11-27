@@ -212,6 +212,7 @@ GUIDE_SEARCH_LIMIT_MAX = 20    # 정류장 검색 결과 최대 개수
 GUIDE_DATE_FALLBACK_WEEKS = 8  # 요청한 날이 예측 범위 밖이면 같은 요일로 몇 주까지 거슬러 찾을지
 GUIDE_START_HOUR_NOTE = "(기점 {hour}시대 출발 버스 기준)"   # 혼잡도 시간대가 물어본 시각과 다를 때 구간 줄 끝에 붙이는 문구
 GUIDE_CLOCK_MINUTE = 30        # 'N시에 출발'을 N시 30분에 출발하는 것으로 봄 (시간대의 가운데). 탈 정류장에 닿는 시각 계산용
+GUIDE_FIRST_BUS_WAIT_MAX_MIN = 60   # 첫차가 아직 오지 않은 정류장: 이 시간(분) 안에 첫차가 오면 기다려 타는 것으로 안내, 더 뒤면 그 노선은 뺌
 ROUTE_INFO_KEY_STOPS = 8       # 노선 정보에 보여 줄 주요 정류장 수
 
 # 학기 중/방학 구분 (서울 초중고 대략 기준, 계절성 피처)
@@ -232,3 +233,11 @@ ROLE_GRADES = {
     "staff": {"공개", "내부"},
     "admin": {"공개", "내부", "제한"},
 }
+# 외부 전송 정책 (이슈 #28): 이 등급의 문서만 외부 서비스(OpenAI)로 보낼 수 있음. 볼 권한과 외부 전송 허용은 별개
+DOCUMENT_PUBLIC_GRADE = "공개"
+EXTERNAL_LLM = "openai"
+EXTERNAL_EMBEDDING = "openai"
+EXTERNAL_BLOCK_NOTE = "공개 등급이 아닌 문서가 근거에 있어 외부 LLM을 부르지 않고 근거 조항만 돌려줍니다."
+EXTERNAL_EMBEDDING_BLOCK_MESSAGE = (
+    "공개 등급이 아닌 문서가 등록되어 있어 OpenAI 임베딩을 쓸 수 없습니다. embedding은 bge(로컬)를 사용하세요."
+)

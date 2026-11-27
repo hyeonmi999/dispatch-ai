@@ -25,6 +25,11 @@ from pathlib import Path
 
 from app.config import (
     BGE_EMBEDDING_MODEL_NAME,
+    DOCUMENT_PUBLIC_GRADE,
+    EXTERNAL_BLOCK_NOTE,
+    EXTERNAL_EMBEDDING,
+    EXTERNAL_EMBEDDING_BLOCK_MESSAGE,
+    EXTERNAL_LLM,
     HF_CACHE_DIR,
     NOT_FOUND_ANSWER,
     OPENAI_API_KEY,
@@ -287,6 +292,14 @@ def docs_fingerprint(docs_dir: Path) -> str:
 # 3. KnowledgeBase (도메인 공통)
 # ==================================================
 
+def has_non_public_documents(docs_dir: Path) -> bool:
+    """등록된 문서 중 공개 등급이 아닌 것이 있는지 (이슈 #28).
+    색인에는 비활성 문서도 들어가므로 비활성도 셈. 저장된 색인이 아니라 지금의 문서 목록을 봄.
+    등급이 없는 문서(기본 법령)는 공개로 보고, 모르는 등급 값은 공개로 보지 않음"""
+    return any(record.get("grade", DOCUMENT_PUBLIC_GRADE) != DOCUMENT_PUBLIC_GRADE
+               for record in document_records(docs_dir).values())
+
+
 class KnowledgeBase:
     def __init__(self, domain: str, docs_dir: Path):
         self.domain = domain
@@ -312,7 +325,13 @@ class KnowledgeBase:
     # 인덱스 생성 / 로드
     # ------------------------------------------------
 
+    def _guard_external_embedding(self, embedding: str) -> None:
+        """공개가 아닌 문서가 하나라도 있으면 외부 임베딩을 요청 전에 거부 (색인 생성·질문 검색 모두)"""
+        if embedding == EXTERNAL_EMBEDDING and has_non_public_documents(self.docs_dir):
+            raise LLMConfigError(EXTERNAL_EMBEDDING_BLOCK_MESSAGE)
+
     def build(self, embedding: str):
+        self._guard_external_embedding(embedding)
         from langchain_community.vectorstores import FAISS
         from langchain_community.vectorstores.utils import DistanceStrategy
         from langchain_core.documents import Document
@@ -383,6 +402,7 @@ class KnowledgeBase:
 
     def search(self, query: str, embedding: str, k: int = RAG_TOP_K,
                role: DocumentRole = "citizen") -> list[dict]:
+        self._guard_external_embedding(embedding)       # 등급을 바꾼 뒤 예전 색인이 남아 있어도 질문을 보내기 전에 막음
         store = self.get_store(embedding)
         if store is None:
             return []
@@ -398,7 +418,7 @@ class KnowledgeBase:
                 record = records.get(doc.metadata.get("file"), {})
                 grade = record.get("grade", "공개")
                 if record.get("active") is not False and grade in allowed:
-                    hits.append((doc, score))
+                    hits.append((doc, score, grade))
                     if len(hits) == k:
                         break
             # 볼 수 없는 등급의 조각이 앞을 차지하면 허용된 조각이 모자람 → 더 가져와서 다시 거름
@@ -413,8 +433,9 @@ class KnowledgeBase:
                 "url": doc.metadata.get("url") or None,
                 "score": round(float(score), 4),
                 "text": doc.page_content,
+                "grade": grade,                         # 지금 문서 목록의 등급 (외부 전송 판단에 씀, 응답에는 넣지 않음)
             }
-            for doc, score in hits
+            for doc, score, grade in hits
         ]
 
     def ask(self, question: str, llm: str = "qwen", embedding: str = "bge",
@@ -450,6 +471,10 @@ class KnowledgeBase:
         # 2) LLM 없이 근거 조항만 필요한 경우 (예: 권고 카드에 빠르게 첨부)
         if not use_llm:
             return self._result(question, None, True, sources, None, embedding, t0)
+
+        # 2-1) 근거에 공개가 아닌 문서가 있으면 외부 LLM을 부르지 않음 (이슈 #28). 로컬 모델로 바꿔 부르지도 않음
+        if llm == EXTERNAL_LLM and any(h.get("grade") != DOCUMENT_PUBLIC_GRADE for h in relevant):
+            return self._result(question, None, True, sources, None, embedding, t0, note=EXTERNAL_BLOCK_NOTE)
 
         context = "\n\n".join(f"[{s['id']}] {h['text']}" for s, h in zip(sources, relevant))
         user = f"[근거]\n{context}\n\n[질문]\n{question.strip()}"
