@@ -85,7 +85,48 @@
           <span class="lbl">화면</span>
           <div class="segb" role="group" aria-label="화면 구성">
             <button v-for="p in PRESETS" :key="p.id" :class="{ on: preset === p.id }" :aria-pressed="preset === p.id" @click="applyPreset(p.id)">{{ p.name }}</button>
+            <button v-for="t in customTabs" :key="t.id" class="mine" :class="{ on: preset === t.id }" :aria-pressed="preset === t.id"
+                    :title="`내가 만든 화면: ${t.name}`" @click="applyCustomTab(t)">{{ t.name }}</button>
           </div>
+          <!-- 내 화면 탭 만들기·관리 (Task P-6): 이 브라우저에만 저장 -->
+          <n-popover v-model:show="tabMenuOpen" trigger="click" placement="bottom-end">
+            <template #trigger>
+              <button class="tbtn add" aria-label="내 화면 탭 만들기·관리" title="지금 화면으로 내 탭 만들기">＋</button>
+            </template>
+            <form class="tab-menu" @submit.prevent="createCustomTab">
+              <p class="tm-h">지금 화면으로 새 탭 만들기</p>
+              <label class="tm-name">이름
+                <input v-model.trim="newTabName" :maxlength="CUSTOM_TAB_NAME_MAX" placeholder="예) 아침 점검" />
+              </label>
+              <fieldset class="tm-panels">
+                <legend>넣을 패널 <small>(켜진 패널은 지금 자리 그대로)</small></legend>
+                <label v-for="id in panelIds" :key="id"><input v-model="newTabPanels" type="checkbox" :value="id" />{{ TITLES[id] }}</label>
+              </fieldset>
+              <p v-if="tabError" class="tm-err" role="alert">{{ tabError }}</p>
+              <button type="submit" class="tbtn tm-save" :disabled="customTabs.length >= CUSTOM_TAB_MAX">
+                {{ customTabs.length >= CUSTOM_TAB_MAX ? `최대 ${CUSTOM_TAB_MAX}개까지` : '저장' }}
+              </button>
+              <template v-if="customTabs.length">
+                <p class="tm-h">내 탭 {{ customTabs.length }}/{{ CUSTOM_TAB_MAX }}</p>
+                <ul class="tm-list">
+                  <li v-for="(t, i) in customTabs" :key="t.id" :class="{ cur: preset === t.id }">
+                    <span class="tm-order">
+                      <button type="button" class="tm-arrow" :disabled="i === 0" :aria-label="`${t.name} 탭을 앞으로`" @click="moveCustomTab(t, -1)">▲</button>
+                      <button type="button" class="tm-arrow" :disabled="i === customTabs.length - 1" :aria-label="`${t.name} 탭을 뒤로`" @click="moveCustomTab(t, 1)">▼</button>
+                    </span>
+                    <input v-if="renamingId === t.id" v-model="renameValue" class="tm-rename" :maxlength="CUSTOM_TAB_NAME_MAX"
+                           :aria-label="`${t.name} 탭의 새 이름`" @keydown.enter.prevent="finishRename(t)" @keydown.esc.prevent="renamingId = null"
+                           @blur="finishRename(t)" />
+                    <span v-else class="tm-tname">{{ t.name }}</span>
+                    <button v-if="renamingId !== t.id" type="button" class="tm-link" @click="startRename(t)">이름</button>
+                    <button type="button" class="tm-link" @click="overwriteCustomTab(t)">지금 화면으로</button>
+                    <button type="button" class="tm-link del" @click="deleteCustomTab(t)">삭제</button>
+                  </li>
+                </ul>
+              </template>
+              <p class="tm-note">이 브라우저에만 저장됩니다. 내 탭을 연 채로 패널을 옮기거나 켜고 끄면 그 탭에 바로 저장됩니다.</p>
+            </form>
+          </n-popover>
           <n-popover trigger="click" placement="bottom-end">
             <template #trigger><button class="tbtn">패널 {{ visibleCount }}/{{ panelIds.length }}</button></template>
             <div class="panel-menu">
@@ -202,7 +243,10 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NDatePicker, NPopover, NSelect, NSlider, NSpin, useMessage } from 'naive-ui'
 import { api, errorMessage, fmtCongestion, levelClass } from '../api'
-import { PRESETS, TITLES, loadSaved, makeLayout, resolve, saveLayout } from '../layout'
+import {
+  CUSTOM_TAB_MAX, CUSTOM_TAB_NAME_MAX, PRESETS, TITLES, fillLayout, layoutWith, loadCustomTabs, loadSaved, makeLayout, placePanel,
+  resolve, saveCustomTabs, saveLayout,
+} from '../layout'
 import { isNight, toggleTheme } from '../theme'
 import DocumentAdminPanel from './DocumentAdminPanel.vue'
 import AdvicePanel from './AdvicePanel.vue'
@@ -256,10 +300,16 @@ const preset = ref(saved ? saved.preset : 'ops')
 const visibleCount = computed(() => panelIds.value.filter((id) => layout.value[id].on).length)
 const historyTick = ref(0)
 
+// 배치를 바꾸면(끌기·크기·패널 켜고 끄기) 내 탭을 연 상태에서는 그 탭에 바로 저장 (Task P-6 자동 저장)
 function commitLayout(next) {
   layout.value = next
-  preset.value = null
-  saveLayout(next, null)
+  const mine = customTabs.value.find((t) => t.id === preset.value)
+  if (mine) {
+    persistTabs(customTabs.value.map((t) => (t.id === mine.id ? { ...t, layout: next } : t)))
+  } else {
+    preset.value = null
+  }
+  saveLayout(next, preset.value)
 }
 function applyPreset(id) {
   layout.value = resolve(makeLayout(id))
@@ -267,9 +317,96 @@ function applyPreset(id) {
   saveLayout(layout.value, id)
 }
 function togglePanel(id) {
-  const on = !layout.value[id].on
-  // 새로 켠 패널은 맨 아래에 넣은 뒤 빈자리로 올림
-  commitLayout(resolve({ ...layout.value, [id]: { ...layout.value[id], on, y: on ? 999 : layout.value[id].y } }))
+  // 새로 켠 패널은 위에서부터 첫 빈칸에, 끈 패널의 자리는 나머지가 채움
+  commitLayout(layout.value[id].on
+    ? resolve({ ...layout.value, [id]: { ...layout.value[id], on: false } })
+    : placePanel(layout.value, id))
+}
+
+// 내가 만든 화면 탭 (Task P-6)
+const customTabs = ref(loadCustomTabs())
+const tabMenuOpen = ref(false)
+const newTabName = ref('')
+const newTabPanels = ref([])
+const tabError = ref('')
+watch(tabMenuOpen, (open) => {
+  renamingId.value = null
+  if (!open) return
+  newTabName.value = ''
+  tabError.value = ''
+  newTabPanels.value = panelIds.value.filter((id) => layout.value[id].on)   // 처음에는 지금 켜진 패널
+})
+function persistTabs(list) {
+  customTabs.value = list
+  if (!saveCustomTabs(list)) message.warning('브라우저 저장소를 쓸 수 없어 이번 화면에만 적용됩니다')
+}
+function showTab(id, next) {
+  layout.value = next
+  preset.value = id
+  saveLayout(next, id)
+}
+function nameProblem(name, exceptId = null) {
+  const taken = [...PRESETS.map((p) => p.name), ...customTabs.value.filter((t) => t.id !== exceptId).map((t) => t.name)]
+  return !name ? '탭 이름을 적어 주세요' : taken.includes(name) ? '같은 이름의 탭이 있습니다' : ''
+}
+function createCustomTab() {
+  const name = newTabName.value.slice(0, CUSTOM_TAB_NAME_MAX)
+  tabError.value = nameProblem(name)
+    || (!newTabPanels.value.length ? '패널을 하나 이상 골라 주세요' : '')
+    || (customTabs.value.length >= CUSTOM_TAB_MAX ? `내 탭은 ${CUSTOM_TAB_MAX}개까지입니다. 하나를 지운 뒤 다시 만드세요` : '')
+  if (tabError.value) return
+  const next = layoutWith(layout.value, newTabPanels.value)
+  const tab = { id: `u-${Date.now().toString(36)}`, name, layout: next }
+  persistTabs([...customTabs.value, tab])
+  showTab(tab.id, next)
+  tabMenuOpen.value = false
+  message.success(`'${name}' 탭을 저장했습니다`)
+}
+function applyCustomTab(tab) {
+  showTab(tab.id, resolve(fillLayout(tab.layout)))
+}
+function overwriteCustomTab(tab) {
+  const next = resolve(layout.value)
+  persistTabs(customTabs.value.map((t) => (t.id === tab.id ? { ...t, layout: next } : t)))
+  showTab(tab.id, next)
+  message.success(`'${tab.name}' 탭을 지금 화면으로 바꿨습니다`)
+}
+// 이름 바꾸기 (같은 팝업 안에서)
+const renamingId = ref(null)
+const renameValue = ref('')
+function startRename(tab) {
+  renamingId.value = tab.id
+  renameValue.value = tab.name
+  tabError.value = ''
+}
+function finishRename(tab) {
+  if (renamingId.value !== tab.id) return
+  const name = renameValue.value.trim().slice(0, CUSTOM_TAB_NAME_MAX)
+  if (name === tab.name) {
+    renamingId.value = null
+    return
+  }
+  tabError.value = nameProblem(name, tab.id)
+  if (tabError.value) return
+  persistTabs(customTabs.value.map((t) => (t.id === tab.id ? { ...t, name } : t)))
+  renamingId.value = null
+}
+// 순서 바꾸기: 위·아래로 한 칸
+function moveCustomTab(tab, step) {
+  const list = [...customTabs.value]
+  const i = list.findIndex((t) => t.id === tab.id)
+  const j = i + step
+  if (i < 0 || j < 0 || j >= list.length) return
+  ;[list[i], list[j]] = [list[j], list[i]]
+  persistTabs(list)
+}
+function deleteCustomTab(tab) {
+  persistTabs(customTabs.value.filter((t) => t.id !== tab.id))
+  if (preset.value === tab.id) {
+    preset.value = null
+    saveLayout(layout.value, null)
+  }
+  message.success(`'${tab.name}' 탭을 지웠습니다`)
 }
 
 const meta = ref(null)
@@ -488,6 +625,33 @@ onBeforeUnmount(() => clearInterval(timer))
 .segb button:last-child { border-right: 0; }
 .segb button:hover { background: var(--panel2); }
 .segb button.on { background: var(--ink); color: var(--panel); font-weight: 600; }
+.segb button.mine { color: var(--accent); }
+.segb button.mine.on { color: var(--panel); }
+.tbtn.add { font-size: 15px; line-height: 1; padding: 4px 9px; }
+.tab-menu { display: grid; gap: 8px; width: min(320px, 80vw); font-size: 12px; }
+.tm-h { margin: 0; font-weight: 600; }
+.tm-name { display: grid; gap: 3px; }
+.tm-name input { font: inherit; border: 1px solid var(--line); border-radius: 2px; padding: 5px 8px; background: var(--panel); color: var(--ink); min-height: 30px; }
+.tm-name input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tm-panels { border: 1px solid var(--line); border-radius: 2px; margin: 0; padding: 6px 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; }
+.tm-panels legend { padding: 0 4px; color: var(--ink3); }
+.tm-panels legend small { font-size: 10px; }
+.tm-panels label { display: flex; align-items: center; gap: 5px; min-height: 26px; }
+.tm-err { margin: 0; color: var(--c3); }
+.tm-save { justify-self: start; background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.tm-save:hover:not(:disabled) { background: var(--ink2); }
+.tm-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.tm-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tm-list li { gap: 6px; }
+.tm-list li.cur .tm-tname { color: var(--accent); }
+.tm-tname { font-weight: 500; margin-right: auto; }
+.tm-order { display: inline-flex; flex-direction: column; }
+.tm-arrow { font-size: 9px; line-height: 1; padding: 1px 4px; color: var(--ink2); }
+.tm-arrow:disabled { opacity: 0.3; cursor: not-allowed; }
+.tm-rename { font: inherit; flex: 1; min-width: 0; border: 1px solid var(--accent); border-radius: 2px; padding: 3px 6px; background: var(--panel); color: var(--ink); }
+.tm-link { font-size: 11px; color: var(--ink2); text-decoration: underline; min-height: 26px; }
+.tm-link.del { color: var(--c3); }
+.tm-note { margin: 0; color: var(--ink3); font-size: 11px; }
 .panel-menu { display: flex; flex-direction: column; min-width: 150px; }
 .panel-menu label { display: flex; align-items: center; gap: 8px; padding: 5px 4px; font-size: 13px; cursor: pointer; }
 .panel-menu input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; }
@@ -508,6 +672,8 @@ onBeforeUnmount(() => clearInterval(timer))
   .bar-right { margin-left: 0; }
   .seg-g { margin-left: 0; }
   .ibtn, .tbtn, .bbtn, .segb button, .document-role select { min-height: 44px; min-width: 44px; }
+  .tm-link, .tm-panels label, .tm-name input, .tm-rename { min-height: 44px; }
+  .tm-arrow { min-height: 22px; min-width: 44px; }
   .rt { padding: 12px 8px; }
 }
 </style>

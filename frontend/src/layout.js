@@ -72,15 +72,19 @@ export function resolve(layout, active = null) {
   return out
 }
 
+// 나중에 추가된 패널은 저장된 배치에 없으므로 꺼진 상태로 채움 (쓰던 배치는 그대로 유지)
+export function fillLayout(saved) {
+  const blank = makeLayout(null)
+  const out = {}
+  for (const id of Object.keys(TITLES)) out[id] = saved?.[id] ? { ...saved[id] } : { ...blank[id], y: 999, on: false }
+  return out
+}
+
 export function loadSaved() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) || 'null')
     if (!s?.layout) return null
-    // 나중에 추가된 패널은 저장된 배치에 없으므로 꺼진 상태로 채움 (쓰던 배치는 그대로 유지)
-    const blank = makeLayout(null)
-    for (const id of Object.keys(TITLES)) {
-      if (!s.layout[id]) s.layout[id] = { ...blank[id], y: 999, on: false }
-    }
+    s.layout = fillLayout(s.layout)
     return s
   } catch {
     /* 저장소를 못 쓰면 기본 배치 */
@@ -94,4 +98,65 @@ export function saveLayout(layout, preset) {
   } catch {
     /* 저장소를 못 써도 현재 화면에는 적용됨 */
   }
+}
+
+// ==================================================
+// 사용자가 만든 화면 탭 (Task P-6): 이 브라우저에만 저장 (개인 화면 설정이라 DB를 쓰지 않음)
+// ==================================================
+const CUSTOM_KEY = 'dispatch-custom-tabs-v1'
+export const CUSTOM_TAB_MAX = 5
+export const CUSTOM_TAB_NAME_MAX = 10
+
+export function loadCustomTabs() {
+  try {
+    const list = JSON.parse(localStorage.getItem(CUSTOM_KEY) || '[]')
+    if (!Array.isArray(list)) return []
+    return list
+      .filter((t) => t && typeof t.id === 'string' && typeof t.name === 'string' && t.layout)
+      .slice(0, CUSTOM_TAB_MAX)
+      .map((t) => ({ id: t.id, name: t.name.slice(0, CUSTOM_TAB_NAME_MAX), layout: fillLayout(t.layout) }))
+  } catch {
+    return []        // 저장소를 못 쓰면 사용자 탭 없이 시작
+  }
+}
+
+// 저장에 실패하면 false (이번 화면에는 그대로 쓸 수 있음)
+export function saveCustomTabs(list) {
+  try {
+    localStorage.setItem(CUSTOM_KEY, JSON.stringify(list))
+    return true
+  } catch {
+    return false
+  }
+}
+
+// 새로 켜는 패널의 자리: 위에서부터, 같은 줄이면 왼쪽부터 다른 켜진 패널과 겹치지 않는 첫 빈칸 (맨 아래에 쌓지 않음)
+export function findSpot(layout, id) {
+  const it = layout[id]
+  const w = Math.min(it.w, COLS)
+  const others = Object.entries(layout).filter(([k, v]) => k !== id && v.on).map(([, v]) => v)
+  const bottom = others.reduce((m, o) => Math.max(m, o.y + o.h), 0)
+  for (let y = 0; y <= bottom; y += 1) {
+    for (let x = 0; x + w <= COLS; x += 1) {
+      if (!others.some((o) => overlaps({ x, y, w, h: it.h }, o))) return { x, y, w }
+    }
+  }
+  return { x: 0, y: bottom, w }
+}
+
+// 패널 하나를 켜서 빈칸에 넣은 배치
+export function placePanel(layout, id) {
+  const next = { ...layout, [id]: { ...layout[id], on: true } }
+  next[id] = { ...next[id], ...findSpot(next, id) }
+  return resolve(next, id)
+}
+
+// 지금 배치에서 고른 패널만 켠 배치: 이미 켜진 패널은 그 자리, 새로 고른 패널은 빈칸부터 채움
+export function layoutWith(layout, panels) {
+  const keep = new Set(panels)
+  let next = {}
+  for (const [id, it] of Object.entries(layout)) next[id] = { ...it, on: it.on && keep.has(id) }
+  next = resolve(next)
+  for (const id of panels) if (next[id] && !next[id].on) next = placePanel(next, id)
+  return next
 }
