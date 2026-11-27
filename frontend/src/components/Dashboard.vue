@@ -109,7 +109,7 @@
                 <label v-for="id in panelIds" :key="id"><input v-model="newTabPanels" type="checkbox" :value="id" />{{ TITLES[id] }}</label>
               </fieldset>
               <p v-if="tabError" class="tm-err" role="alert">{{ tabError }}</p>
-              <button type="submit" class="tbtn tm-save" :disabled="customTabs.length >= CUSTOM_TAB_MAX">
+              <button type="submit" class="tm-save" :disabled="customTabs.length >= CUSTOM_TAB_MAX">
                 {{ customTabs.length >= CUSTOM_TAB_MAX ? `최대 ${CUSTOM_TAB_MAX}개까지` : '저장' }}
               </button>
               <template v-if="customTabs.length">
@@ -644,8 +644,11 @@ onBeforeUnmount(() => clearInterval(timer))
 .tm-panels legend small { font-size: 10px; }
 .tm-panels label { display: flex; align-items: center; gap: 5px; min-height: 26px; }
 .tm-err { margin: 0; color: var(--c3); }
-.tm-save { justify-self: start; background: var(--ink); color: var(--panel); border-color: var(--ink); }
-.tm-save:hover:not(:disabled) { background: var(--ink2); }
+/* 공통 .tbtn을 쓰지 않음: 디자인 시안의 .tbtn 규칙(바탕을 패널색으로)이 덮어써 글자가 바탕과 같은 색이 됐음 */
+.tm-save { justify-self: start; font-size: 12px; padding: 4px 14px; min-height: 30px; border: 1px solid var(--ink); border-radius: 4px; background: var(--ink); color: var(--panel); }
+.tm-save:hover:not(:disabled) { background: var(--ink2); border-color: var(--ink2); }
+.tm-save:disabled { opacity: 0.45; cursor: not-allowed; }
+.tm-save:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tm-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .tm-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .tm-list li { gap: 6px; }
@@ -678,7 +681,7 @@ onBeforeUnmount(() => clearInterval(timer))
   .bar-right { margin-left: 0; }
   .seg-g { margin-left: 0; }
   .ibtn, .tbtn, .bbtn, .segb button, .document-role select { min-height: 44px; min-width: 44px; }
-  .tm-link, .tm-panels label, .tm-name input, .tm-rename { min-height: 44px; }
+  .tm-link, .tm-panels label, .tm-name input, .tm-rename, .tm-save { min-height: 44px; }
   .tm-arrow { min-height: 22px; min-width: 44px; }
   .rt { padding: 12px 8px; }
 }
