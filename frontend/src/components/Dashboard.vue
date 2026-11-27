@@ -36,7 +36,12 @@
           </div>
         </n-popover>
         <button class="bbtn" @click="toggleTheme">{{ isNight ? '주간 화면' : '야간 화면' }}</button>
-        <button class="bbtn" :aria-pressed="design === 'b'" title="디자인 시안 비교: 기존 화면과 새 시안을 바꿔 봅니다" @click="toggleDesign">디자인: {{ design === 'b' ? '새 시안' : '기존' }}</button>
+        <button class="bbtn" :aria-pressed="design !== 'a'" title="디자인 시안 비교: 기존 → 새 시안 → 새 시안(무채색 바탕)" @click="toggleDesign">디자인: {{ { a: '기존', b: '새 시안', c: '무채색' }[design] }}</button>
+        <label v-if="design === 'c'" class="accent-pick">포인트
+          <select :value="accent" @change="setAccent($event.target.value)">
+            <option v-for="(a, key) in ACCENTS" :key="key" :value="key">{{ a.label }}</option>
+          </select>
+        </label>
       </div>
     </header>
 
@@ -204,7 +209,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NDatePicker, NPopover, NSelect, NSlider, NSpin, useMessage } from 'naive-ui'
 import { api, errorMessage, fmtCongestion, levelClass } from '../api'
 import { PRESETS, TITLES, loadSaved, makeLayout, resolve, saveLayout } from '../layout'
-import { design, isNight, toggleDesign, toggleTheme } from '../theme'
+import { ACCENTS, accent, design, isNight, setAccent, toggleDesign, toggleTheme } from '../theme'
 import DocumentAdminPanel from './DocumentAdminPanel.vue'
 import AdvicePanel from './AdvicePanel.vue'
 import AppLogo from './AppLogo.vue'

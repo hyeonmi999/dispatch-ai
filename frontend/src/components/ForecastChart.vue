@@ -63,8 +63,8 @@ const option = computed(() => {
         name: '모델 예측',
         type: 'line',
         data: byHour.value.map((h) => h.pred ?? null),
-        lineStyle: { width: 2.5, color: p.accent },
-        itemStyle: { color: p.accent },
+        lineStyle: { width: 2.5, color: p.accentLine ?? p.accent },     // 시안 c의 파스텔 포인트색은 선용 색이 따로 있음
+        itemStyle: { color: p.accentLine ?? p.accent },
         showSymbol: false,
         // 선택 시간 표시선은 항상 값이 있는 예측 계열에 붙임 (향후 예측 날짜는 실제값이 없음)
         markLine: {
