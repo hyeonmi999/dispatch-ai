@@ -6,11 +6,13 @@
   겹침: 꼭짓점의 TOPIS_LINK_MIN_SHARE 이상이 경로에서 TOPIS_LINK_NEAR_M 안 + 링크 방향이 근처 경로 방향과 60° 안
         (왕복 경로라 같은 도로의 반대 방향 링크를 거르려고 방향을 봄)
   결과: data/interim/topis/route_links.parquet (route, link_id, length_m, share, path_index, road_name)
+        data/interim/topis/route_link_segments.parquet (route, link_id, seq, share): 링크를 정류장 구간에 나눈 표 (지도 소통 띠)
         data/interim/topis/route_links_summary.json (노선별 링크 수, 링크 길이 합 ÷ 경로 길이)
   꼭짓점은 data/interim/topis/link_vertices.parquet에 모아 두고 다음 실행 때 건너뜀 (중간에 멈춰도 이어 받음)
 
 키 필요: .env의 SEOUL_OPEN_API_KEY (서울 열린데이터광장 일반 인증키). 링크 수천 개를 한 번씩 부릅니다.
 사용: python scripts/build_topis_links.py [--limit 100]   (--limit은 시험용: 앞의 링크 N개만 받음)
+      python scripts/build_topis_links.py --segments-only  (키 없이: 받아 둔 꼭짓점·링크 표로 구간 표만 다시 만듦)
 """
 
 import argparse
@@ -29,10 +31,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.config import (  # noqa: E402
     INTERIM_DIR, TOPIS_DIR, TOPIS_LINK_MIN_SHARE, TOPIS_LINK_NEAR_M, TOPIS_LINKS, TOPIS_MAX_CONCURRENCY, TOPIS_ROUTE_LINKS,
+    TOPIS_ROUTE_SEGMENTS,
 )
 from app.domains.bus.data import BusDataset  # noqa: E402
 from app.domains.bus.topis import TopisClient, TopisError  # noqa: E402
-from app.domains.bus.traffic import path_xy  # noqa: E402
+from app.domains.bus.traffic import assign_segments, path_xy  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("build_topis_links")
@@ -108,6 +111,23 @@ def match_route(xy: np.ndarray, vertices: pd.DataFrame, links: pd.DataFrame) -> 
     return out.merge(links[["link_id", "length_m", "road_name"]], on="link_id", how="left").sort_values("path_index")
 
 
+def build_segments(ds: BusDataset, table: pd.DataFrame, vertices: pd.DataFrame) -> pd.DataFrame:
+    """노선 링크를 정류장 구간(geo segments, 상·하행 모두)에 나눔 → route_link_segments.parquet"""
+    vg = {k: g.sort_values("ver_seq")[["x", "y"]].to_numpy(dtype=float) for k, g in vertices.groupby("link_id")}
+    frames = []
+    for route in ds.routes:
+        geo = ds.geo(route)
+        mine = table[table["route"] == route] if not table.empty else table
+        if not geo or mine.empty:
+            continue
+        segments = [(int(s["seq"]), path_xy(s["coords"])) for s in geo.get("segments", []) if s.get("coords")]
+        out = assign_segments(segments, {i: vg[i] for i in mine["link_id"] if i in vg})
+        out.insert(0, "route", route)
+        frames.append(out)
+        log.info("%s번: 정류장 구간 %d개 중 %d개에 링크가 걸침", route, len(segments), out["seq"].nunique())
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=["route", "link_id", "seq", "share"])
+
+
 def path_length(xy: np.ndarray) -> float:
     return float(np.hypot(*np.diff(xy, axis=0).T).sum()) if len(xy) > 1 else 0.0
 
@@ -115,7 +135,18 @@ def path_length(xy: np.ndarray) -> float:
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--limit", type=int, default=None, help="시험용: 앞의 링크 N개만 받음")
+    ap.add_argument("--segments-only", action="store_true", help="키 없이: 받아 둔 꼭짓점·링크 표로 구간 표만 다시 만듦")
     args = ap.parse_args()
+
+    if args.segments_only:
+        if not VERTICES.exists() or not (OUT_DIR / TOPIS_ROUTE_LINKS).exists():
+            raise SystemExit("[실패] link_vertices.parquet 또는 route_links.parquet가 없습니다. 먼저 키를 넣고 이 스크립트를 실행하세요")
+        vertices = pd.read_parquet(VERTICES).astype({"link_id": str, "ver_seq": int, "x": float, "y": float})
+        table = pd.read_parquet(OUT_DIR / TOPIS_ROUTE_LINKS)
+        table["link_id"] = table["link_id"].astype(str)
+        build_segments(BusDataset(), table, vertices).to_parquet(OUT_DIR / TOPIS_ROUTE_SEGMENTS, index=False)
+        log.info("→ %s", OUT_DIR / TOPIS_ROUTE_SEGMENTS)
+        return
 
     links_path = OUT_DIR / TOPIS_LINKS
     if not links_path.exists():
@@ -152,10 +183,11 @@ def main():
 
     table = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     table.to_parquet(OUT_DIR / TOPIS_ROUTE_LINKS, index=False)
+    build_segments(ds, table, vertices).to_parquet(OUT_DIR / TOPIS_ROUTE_SEGMENTS, index=False)
     (OUT_DIR / "route_links_summary.json").write_text(
         json.dumps({"links_fetched": int(vertices["link_id"].nunique()), "routes": summary}, ensure_ascii=False, indent=2),
         encoding="utf-8")
-    log.info("→ %s", OUT_DIR / TOPIS_ROUTE_LINKS)
+    log.info("→ %s, %s", OUT_DIR / TOPIS_ROUTE_LINKS, OUT_DIR / TOPIS_ROUTE_SEGMENTS)
 
 
 if __name__ == "__main__":

@@ -16,5 +16,5 @@ if (-not (Test-Path $VenvPython)) {
     exit 1
 }
 
-& $VenvPython scripts\build_topis_links.py
+& $VenvPython scripts\build_topis_links.py @args
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

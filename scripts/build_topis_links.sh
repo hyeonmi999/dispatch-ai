@@ -12,4 +12,4 @@ cd "$(dirname "$0")/.."
 
 [ -x .venv/bin/python ] || { echo "[실패] .venv가 없습니다. 먼저  bash scripts/setup.sh  를 실행하세요." >&2; exit 1; }
 
-.venv/bin/python scripts/build_topis_links.py
+.venv/bin/python scripts/build_topis_links.py "$@"
