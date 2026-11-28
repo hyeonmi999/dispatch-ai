@@ -4,7 +4,7 @@
       <div class="brand">
         <AppLogo />
         <div>
-          <h1>통합 배차 AI 플랫폼</h1>
+          <h1>통합 배차 AI Agent</h1>
           <p>1차 스프린트 · 버스 배차 최적화 도우미 · Oh!gimbak</p>
         </div>
       </div>

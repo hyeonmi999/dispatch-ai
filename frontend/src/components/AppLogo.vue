@@ -1,6 +1,6 @@
 <template>
   <!-- 한 곳에서 세 갈래로 배차. 색칠한 첫 갈래가 현재 구현된 버스 -->
-  <svg :width="size" :height="size" viewBox="0 0 32 32" role="img" aria-label="통합 배차 AI 플랫폼 로고" class="logo">
+  <svg :width="size" :height="size" viewBox="0 0 32 32" role="img" aria-label="통합 배차 AI Agent 로고" class="logo">
     <path class="line" d="M13 16H26" />
     <path class="line" d="M13 16L21 24H26" />
     <path class="line accent" d="M6 16H13L21 8H26" />
