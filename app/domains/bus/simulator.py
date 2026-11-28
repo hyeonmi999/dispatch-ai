@@ -9,6 +9,7 @@
 #   3) 지금과 바꾼 뒤의 최대 혼잡도 비교
 #   4) 필요한 버스 대수: 이 시간대만 바꾸고 나머지는 지금대로 둘 때, 도로 위 버스가 가장 많은 순간
 #      (최근 왕복 운행시간 동안 기점을 출발한 버스 수. 배차 최적화의 인가대수 제약과 같은 계산)
+#      운행시간은 출발 시각별 표(3주 전까지의 실측, 이슈 #42)가 있으면 그 값, 없으면 노선 기본정보의 고정값
 #      인가대수를 넘으면 막지는 않고 넘는다고 알려 줍니다.
 #
 # 시간은 버스가 기점을 출발하는 시각 기준이고, 운행횟수는 기점 출발 횟수입니다.
@@ -17,7 +18,7 @@
 
 from app.core.domain import InvalidRequest
 from app.domains.bus.advisor import BusAdvisor, congestion_level, departures_by_hour
-from app.domains.bus.fleet import peak_on_road
+from app.domains.bus.fleet import peak_on_road, run_at
 
 ASSUMPTION = "그 시각에 기점을 출발하는 버스 기준. 승객 수는 그대로라고 가정 (배차가 잦아져 늘어나는 승객은 반영하지 않음)"
 DAYTYPE_LABELS = {"weekday": "평일", "saturday": "토요일", "holiday": "공휴일"}
@@ -26,13 +27,14 @@ DAYTYPE_LABELS = {"weekday": "평일", "saturday": "토요일", "holiday": "공�
 def fleet_need(state: dict, hour: int, new_trips: float) -> dict:
     """hour 시의 출발 횟수만 new_trips로 바꿨을 때 필요한 버스 대수와 인가대수"""
     info = state["info"]
-    run_minutes = int(round(float(info.get("run_minutes") or 0)))
+    # 출발 시각별 운행시간 표가 있으면 그 값(이슈 #42), 없으면 노선 기본정보의 고정 운행시간
+    run = state.get("run") or int(round(float(info.get("run_minutes") or 0)))
     authorized = int(info.get("buses") or 0)
     current = departures_by_hour(state["day"])
     changed = current.copy()
     changed[hour] = new_trips
-    before, after = peak_on_road(current, run_minutes, hour), peak_on_road(changed, run_minutes, hour)
-    known = authorized > 0 and run_minutes > 0
+    before, after = peak_on_road(current, run, hour), peak_on_road(changed, run, hour)
+    known = authorized > 0 and run_at(run, hour) > 0
     return {
         "buses_needed_before": before,
         "buses_needed": after,
