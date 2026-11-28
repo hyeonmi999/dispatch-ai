@@ -409,3 +409,80 @@ class BusDriftReviewRequest(BaseModel):
     status: Literal["approved", "held", "rejected"] = Field(..., description="승인 / 보류 / 반려")
     reviewer: str = Field("", max_length=50)
     note: str = Field("", max_length=500)
+
+
+# ==================================================
+# 실시간 사고·정체 알림 (이슈 #42 방법 2, Task P-9)
+# ==================================================
+
+class BusTrafficStop(BaseModel):
+    seq: int = Field(..., description="노선 정류장 순번")
+    name: str
+
+
+class BusTrafficIncident(BaseModel):
+    acc_id: str
+    type: str = Field(..., description="돌발 종류 코드 (A01 교통사고, A02 차량고장, A04 공사 …)")
+    type_name: str
+    dtype_name: str = Field(..., description="세부 종류 이름 (추돌사고 등). 이름을 모르면 코드")
+    info: str = Field(..., description="TOPIS 돌발 내용")
+    start: str | None = Field(None, description="발생 시각 (KST ISO)")
+    expected_clear: str | None = Field(None, description="해제 예정 시각 (KST ISO)")
+    lat: float
+    lng: float
+    distance_m: int | None = Field(None, description="노선 경로까지 거리(m)")
+    near_stop: BusTrafficStop | None = None
+    long_term: bool = Field(..., description="해제 예정이 TOPIS_LONG_TERM_DAYS보다 먼 돌발 (장기 공사 등)")
+
+
+class BusTrafficRun(BaseModel):
+    hour: int = Field(..., description="받은 시각의 시간대 (평소 속도를 고른 시간대)")
+    links_total: int = Field(..., description="노선 링크 수")
+    links_used: int = Field(..., description="지금·평소 값을 모두 받은 링크 수")
+    coverage: float = Field(..., description="받은 링크 길이 ÷ 노선 링크 길이")
+    live_minutes: float | None = Field(None, description="받은 링크의 지금 차량 통행시간 합(분)")
+    usual_minutes: float | None = Field(None, description="같은 링크의 평소 차량 통행시간 합(분)")
+    extra_minutes: float | None = Field(None, description="한 바퀴 추가 시간(분, 0 이상). 받은 비율이 낮으면 null")
+    usual_run: int | None = Field(None, description="평소 한 바퀴(분): P-7 시간대별 표(지금 계획이 가정한 값) 또는 고정 운행시간")
+    est_run: int | None = Field(None, description="평소 + 추가 시간(분)")
+    buses_usual: int | None = Field(None, description="평소 한 바퀴로 센 도로 위 버스 대수")
+    buses_est: int | None = Field(None, description="추가 시간을 더해 센 도로 위 버스 대수")
+    authorized: int | None = Field(None, description="인가대수")
+    fleet_short: bool = Field(False, description="True면 '인가대수 부족 가능'")
+    basis: str | None = Field(None, description="운행횟수·운행시간을 어디서 가져왔는지")
+
+
+class BusTrafficRoute(BaseModel):
+    route: str
+    incidents: list[BusTrafficIncident] = Field(..., description="경로 위의 진행 중인 돌발 (가까운 순)")
+    long_term: list[BusTrafficIncident] = Field(..., description="경로 위의 장기 공사 등 (평소 운행시간에 이미 들어 있음)")
+    traffic: BusTrafficRun | None = Field(None, description="정체 추정. 링크·평소 속도 표가 없으면 null")
+    messages: list[str] = Field(..., description="화면에 보여 줄 알림 문장. 알릴 것이 없으면 빈 목록")
+
+
+class BusTrafficReady(BaseModel):
+    route_links: bool = Field(..., description="노선 ↔ 링크 표가 있음")
+    link_speed: bool = Field(..., description="평소 링크 속도 표가 있음")
+    api_key: bool = Field(..., description="SEOUL_OPEN_API_KEY가 있음 (값은 보내지 않음)")
+
+
+class BusTrafficResponse(BaseModel):
+    source: Literal["live", "replay"] = Field(..., description="live 실시간 / replay 받아 둔 기록")
+    fetched_at: str = Field(..., description="TOPIS에서 받은 시각 (KST ISO). replay면 기록의 시각")
+    snapshot: str | None = Field(None, description="기록 이름 (YYYYMMDD_HHMMSS)")
+    daytype: str
+    routes: list[BusTrafficRoute]
+    warnings: list[str]
+    ready: BusTrafficReady
+    needs_review: bool = Field(True, description="배차는 자동으로 바꾸지 않음. 항상 true")
+
+
+class BusTrafficSnapshot(BaseModel):
+    name: str
+    fetched_at: str | None
+    incidents: int = Field(..., description="서울 전체 돌발 수")
+    links: int = Field(..., description="소통 정보를 받은 링크 수")
+
+
+class BusTrafficSnapshotList(BaseModel):
+    items: list[BusTrafficSnapshot]
