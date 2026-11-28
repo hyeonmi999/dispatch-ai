@@ -1,4 +1,4 @@
-# 통합 배차 AI 플랫폼 (Dispatch AI)
+# 통합 배차 AI Agent (Dispatch AI)
 
 > AI서비스사례연구 기말 프로젝트 · 조 **Oh!gimbak**
 >
