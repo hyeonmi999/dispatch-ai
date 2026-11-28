@@ -1,5 +1,5 @@
 # ==================================================
-# 통합 배차 AI 플랫폼 (Dispatch AI) - FastAPI 서버 (Oh!gimbak)
+# 통합 배차 AI Agent (Dispatch AI) - FastAPI 서버 (Oh!gimbak)
 # ==================================================
 # 도메인 공통 아키텍처 + 1차 스프린트(버스 배차 최적화 도우미)
 #
@@ -34,7 +34,7 @@ register_all(registry)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("-" * 60)
-    print(f"통합 배차 AI 플랫폼 시작 | 실행 장치: {get_device()}")
+    print(f"통합 배차 AI Agent 시작 | 실행 장치: {get_device()}")
     print("-" * 60)
     for adapter in registry.all():
         adapter.startup()
@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="통합 배차 AI 플랫폼 API",
+    title="통합 배차 AI Agent API",
     description=(
         "도메인 공통 구조 (수요 예측 + 규정 RAG + 배차 권고). "
         "1차 스프린트: 버스 배차 최적화 도우미 (서울 시내버스). "

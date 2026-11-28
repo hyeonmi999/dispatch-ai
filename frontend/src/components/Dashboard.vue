@@ -4,7 +4,7 @@
       <div class="brand">
         <AppLogo />
         <div>
-          <h1>통합 배차 AI 플랫폼</h1>
+          <h1>통합 배차 AI Agent</h1>
           <p>1차 스프린트 · 버스 배차 최적화 도우미 · Oh!gimbak</p>
         </div>
       </div>
@@ -36,6 +36,31 @@
           </div>
         </n-popover>
         <button class="bbtn" @click="toggleTheme">{{ isNight ? '주간 화면' : '야간 화면' }}</button>
+        <div class="accent-pick">
+          <n-popover v-model:show="accentOpen" trigger="click" placement="bottom-end">
+            <template #trigger>
+              <button class="accent-btn" aria-haspopup="dialog" :aria-expanded="accentOpen" :title="`포인트색 바꾸기 (지금: ${accentInfo.label})`">
+                <span class="accent-label">포인트색</span>
+                <span class="swatch" :style="{ '--sw': accentInfo[isNight ? 'night' : 'day'].fill }" aria-hidden="true"></span>
+                <span class="sr-only">지금 {{ accentInfo.label }}, 눌러서 바꾸기</span>
+              </button>
+            </template>
+            <div class="accent-pop" role="dialog" aria-label="포인트색 고르기">
+              <p class="ap-title">포인트색</p>
+              <div class="ap-grid" role="radiogroup" aria-label="미리 정한 색">
+                <button v-for="(a, key) in ACCENTS" :key="key" class="swatch" role="radio" :aria-checked="accent === key"
+                        :title="a.label" :aria-label="a.label" :style="{ '--sw': a[isNight ? 'night' : 'day'].fill }" @click="setAccent(key)"></button>
+              </div>
+              <label class="ap-custom">
+                <input type="color" :value="accentInfo.day.fill" @input="setAccent($event.target.value)" />
+                직접 고르기
+              </label>
+              <p class="ap-now">지금: {{ accentInfo.label }}</p>
+              <p v-if="accentInfo.warn" class="ap-warn">{{ accentInfo.warn }}</p>
+              <p class="ap-note">글자가 잘 보이도록 낮·야간에 맞춰 진하기를 자동으로 조절합니다. 이 브라우저에만 저장됩니다.</p>
+            </div>
+          </n-popover>
+        </div>
       </div>
     </header>
 
@@ -247,7 +272,7 @@ import {
   CUSTOM_TAB_MAX, CUSTOM_TAB_NAME_MAX, PRESETS, TITLES, fillLayout, layoutWith, loadCustomTabs, loadSaved, makeLayout, placePanel,
   resolve, saveCustomTabs, saveLayout,
 } from '../layout'
-import { isNight, toggleTheme } from '../theme'
+import { ACCENTS, accent, accentInfo, isNight, setAccent, toggleTheme } from '../theme'
 import DocumentAdminPanel from './DocumentAdminPanel.vue'
 import AdvicePanel from './AdvicePanel.vue'
 import AppLogo from './AppLogo.vue'
@@ -265,6 +290,8 @@ import PanelGrid from './PanelGrid.vue'
 import StatusPanel from './StatusPanel.vue'
 import StopChart from './StopChart.vue'
 import WhatIfPanel from './WhatIfPanel.vue'
+
+const accentOpen = ref(false)     // 포인트색 팔레트 열림
 
 const message = useMessage()
 
@@ -599,6 +626,27 @@ onBeforeUnmount(() => clearInterval(timer))
 .tab.on { color: #fff; font-weight: 600; border-bottom-color: #ff8a4c; }
 .tab small { font-size: 10px; margin-left: 6px; color: #a6aaa5; }
 .bar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; padding: 6px 0; flex-wrap: wrap; }
+/* 포인트색: 오른쪽 위 버튼 줄(야간 화면 옆)의 동그라미 하나 → 누르면 팔레트. 동그라미는 지금 테마에서 실제로 칠해지는 색 */
+.accent-pick { display: flex; align-items: center; }
+.accent-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 30px; padding: 2px 4px 2px 8px; border-radius: 999px; border: 1px solid transparent; }
+.accent-btn:hover { border-color: var(--line); }
+.accent-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.accent-label { font-size: 12px; color: var(--ink2); white-space: nowrap; }
+.swatch { width: 22px; height: 22px; border-radius: 50%; background: var(--sw); border: 1px solid var(--line);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35); padding: 0; cursor: pointer; flex: none; }
+.accent-pop { width: 232px; font-size: 12px; }
+.ap-title { margin: 0 0 8px; font-weight: 600; }
+.ap-grid { display: grid; grid-template-columns: repeat(6, 26px); gap: 10px; margin-bottom: 10px; }
+.ap-grid .swatch { width: 26px; height: 26px; }
+.ap-grid .swatch:hover { transform: scale(1.08); }
+.ap-grid .swatch[aria-checked='true'] { outline: 2px solid var(--ink); outline-offset: 2px; }
+.ap-grid .swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ap-custom { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.ap-custom input { width: 34px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; }
+.ap-now { margin: 8px 0 0; color: var(--ink2); }
+.ap-warn { margin: 4px 0 0; color: var(--c3); }
+.ap-note { margin: 6px 0 0; font-size: 11px; color: var(--ink3); line-height: 1.45; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .bstat { font-size: 11px; color: #c5c8c3; white-space: nowrap; }
 .bbtn { font-size: 12px; color: #e4e6e1; border: 1px solid #4c5358; padding: 4px 10px; border-radius: 2px; min-height: 30px; white-space: nowrap; }
 .bbtn:hover { border-color: #9aa09e; }
@@ -673,6 +721,9 @@ onBeforeUnmount(() => clearInterval(timer))
 
 @media (max-width: 820px) {
   .bar-right { margin-left: 0; }
+  .accent-btn { min-height: 44px; }
+  .ap-grid { grid-template-columns: repeat(6, 30px); }
+  .ap-grid .swatch { width: 30px; height: 30px; }
   .seg-g { margin-left: 0; }
   .ibtn, .tbtn, .bbtn, .segb button, .document-role select { min-height: 44px; min-width: 44px; }
   .tm-link, .tm-panels label, .tm-name input, .tm-rename, .tm-save { min-height: 44px; }
