@@ -569,6 +569,22 @@ def test_night_bus_runs_across_midnight(client, monkeypatch):
     assert guide._leg(leg, day, 23 * 60 + 20)["first_bus_at"].startswith("23:5")  # 첫차를 기다려 탐 (PR #33 동작 그대로)
 
 
+def test_night_bus_first_arrival_after_midnight_is_waited_for(client, monkeypatch):
+    # 기점 첫차 23:50 → 정류장10에는 자정을 넘겨 00:20에 닿음 (first_bus_arrival이 1440 이상).
+    # 00:05에 물으면 15분 뒤 첫차를 기다려 타야 함. 전에는 대기로 못 잡아 "운행 없음"으로 빠졌음 (PR #37 리뷰 MEDIUM)
+    guide = _timed_guide(client)
+    _, date = meta(client)
+    day = dt.date.fromisoformat(date)
+    monkeypatch.setitem(guide.route_meta, "T1", {**guide.route_meta["T1"], "first_bus": "23:50", "last_bus": "03:45"})
+    leg = _t1_leg(guide, 10, 11)
+    assert guide.first_bus_arrival(leg["board"]) == 24 * 60 + 20
+    out = guide._leg(leg, day, 24 * 60 + 5)
+    assert out["wait_min"] == 15 and out["first_bus_at"] == "00:20"
+    # 첫차가 GUIDE_FIRST_BUS_WAIT_MAX_MIN(60분)보다 늦게 오면 기다리지 않고 그대로 운행 없음
+    with pytest.raises(GuideError):
+        guide._leg(leg, day, 23 * 60 + 10)
+
+
 def test_unknown_last_bus_time_keeps_the_route(client, monkeypatch):
     guide = _timed_guide(client)
     _, date = meta(client)
