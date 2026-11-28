@@ -1,0 +1,120 @@
+{
+  "id": "replay_2026-10-26_2026-11-01",
+  "kind": "replay",
+  "kind_label": "다시 돌려 봄",
+  "window": {
+    "start": "2026-10-26",
+    "end": "2026-11-01",
+    "days": 7
+  },
+  "model_version": "xgb-bus-real-202611130102",
+  "reference_mae": 3.897,
+  "metrics": {
+    "rows": 77063,
+    "stop_hour_mae": 3.913,
+    "baseline_mae": 5.472,
+    "model_mae_on_baseline_rows": 3.926,
+    "route_hour_cells": 795,
+    "p90_coverage_pct": 88.2,
+    "mae_ratio": 1.004
+  },
+  "by_daytype": {
+    "holiday": {
+      "rows": 10889,
+      "stop_hour_mae": 3.166,
+      "baseline_mae": 4.674,
+      "model_mae_on_baseline_rows": 3.172,
+      "route_hour_cells": 113,
+      "p90_coverage_pct": 84.1
+    },
+    "saturday": {
+      "rows": 10999,
+      "stop_hour_mae": 4.071,
+      "baseline_mae": 5.711,
+      "model_mae_on_baseline_rows": 4.086,
+      "route_hour_cells": 113,
+      "p90_coverage_pct": 73.5
+    },
+    "weekday": {
+      "rows": 55175,
+      "stop_hour_mae": 4.029,
+      "baseline_mae": 5.578,
+      "model_mae_on_baseline_rows": 4.04,
+      "route_hour_cells": 569,
+      "p90_coverage_pct": 91.9
+    }
+  },
+  "by_route": {
+    "143": {
+      "rows": 15455,
+      "stop_hour_mae": 4.353,
+      "baseline_mae": 6.19,
+      "model_mae_on_baseline_rows": 4.367,
+      "route_hour_cells": 160,
+      "p90_coverage_pct": 86.9
+    },
+    "150": {
+      "rows": 16313,
+      "stop_hour_mae": 3.793,
+      "baseline_mae": 5.297,
+      "model_mae_on_baseline_rows": 3.808,
+      "route_hour_cells": 168,
+      "p90_coverage_pct": 92.3
+    },
+    "160": {
+      "rows": 16036,
+      "stop_hour_mae": 4.01,
+      "baseline_mae": 5.49,
+      "model_mae_on_baseline_rows": 4.024,
+      "route_hour_cells": 161,
+      "p90_coverage_pct": 86.3
+    },
+    "271": {
+      "rows": 16456,
+      "stop_hour_mae": 3.453,
+      "baseline_mae": 4.86,
+      "model_mae_on_baseline_rows": 3.456,
+      "route_hour_cells": 155,
+      "p90_coverage_pct": 87.7
+    },
+    "272": {
+      "rows": 12803,
+      "stop_hour_mae": 4.006,
+      "baseline_mae": 5.588,
+      "model_mae_on_baseline_rows": 4.025,
+      "route_hour_cells": 151,
+      "p90_coverage_pct": 87.4
+    }
+  },
+  "checks": [
+    {
+      "name": "mae_ratio",
+      "label": "오차가 평가 때의 1.2배 이하",
+      "value": 1.004,
+      "limit": 1.2,
+      "failed": false
+    },
+    {
+      "name": "vs_baseline",
+      "label": "작년 같은 요일보다 나음",
+      "value": 3.926,
+      "limit": 5.472,
+      "failed": false
+    },
+    {
+      "name": "p90_coverage",
+      "label": "실제가 상한(P90) 이하인 비율 85% 이상",
+      "value": 88.2,
+      "limit": 85.0,
+      "failed": false
+    }
+  ],
+  "verdict": "ok",
+  "recommend": false,
+  "reasons": [
+    "세 기준을 모두 통과했습니다. 지금 모델을 그대로 써도 됩니다."
+  ],
+  "next_steps": [],
+  "caution": "평가 구간의 예측을 주별로 다시 채점한 값입니다. 승객 수 입력은 실제 운영과 같이 3주 이상 지난 값만 썼지만, 날씨·운행횟수는 실제값을 써서 실제 예측보다 오차가 조금 작게 나옵니다. 기준 MAE도 같은 구간에서 나온 값입니다.",
+  "needs_review": true
+}

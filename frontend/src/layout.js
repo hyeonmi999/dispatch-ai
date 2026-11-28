@@ -17,23 +17,24 @@ export const TITLES = {
   metrics: '모델 성능',
   history: '권고 이력',
   backtest: '배차 방식 비교',
+  drift: '모델 점검',
   documents: '법규 문서 관리',
 }
 
 // 켤 때의 기본 크기 / 줄일 수 있는 최소 크기 [열, 행]
 const DEFAULT_SIZE = {
   routes: [3, 7], map: [6, 9], forecast: [3, 6], stops: [3, 6], status: [3, 8], advice: [3, 15], qa: [4, 10], metrics: [4, 9], history: [3, 8],
-  optimize: [6, 11], whatif: [3, 11], documents: [6, 12], chat: [4, 12], backtest: [6, 9],
+  optimize: [6, 11], whatif: [3, 11], documents: [6, 12], chat: [4, 12], backtest: [6, 9], drift: [6, 9],
 }
 export const MIN_SIZE = {
   routes: [2, 4], map: [3, 5], forecast: [3, 5], stops: [3, 5], status: [2, 5], advice: [3, 5], qa: [3, 5], metrics: [3, 5], history: [2, 4],
-  optimize: [4, 6], whatif: [3, 6], documents: [4, 6], chat: [3, 6], backtest: [4, 6],
+  optimize: [4, 6], whatif: [3, 6], documents: [4, 6], chat: [3, 6], backtest: [4, 6], drift: [4, 6],
 }
 
 export const PRESETS = [
   { id: 'ops', name: '관제', panels: { routes: [0, 0, 3, 7], status: [0, 7, 3, 8], map: [3, 0, 6, 9], forecast: [3, 9, 3, 6], stops: [6, 9, 3, 6], advice: [9, 0, 3, 15] } },
   { id: 'plan', name: '배차 계획', panels: { optimize: [0, 0, 6, 12], whatif: [6, 0, 3, 12], routes: [9, 0, 3, 6], status: [9, 6, 3, 8] } },
-  { id: 'ana', name: '분석', panels: { forecast: [0, 0, 6, 7], stops: [6, 0, 6, 7], metrics: [0, 7, 5, 9], routes: [5, 7, 4, 9], status: [9, 7, 3, 9], backtest: [0, 16, 6, 9] } },
+  { id: 'ana', name: '분석', panels: { forecast: [0, 0, 6, 7], stops: [6, 0, 6, 7], metrics: [0, 7, 5, 9], routes: [5, 7, 4, 9], status: [9, 7, 3, 9], backtest: [0, 16, 6, 9], drift: [6, 16, 6, 9] } },
   { id: 'demo', name: '발표', panels: { map: [0, 0, 8, 15], status: [8, 0, 4, 6], metrics: [8, 6, 4, 9] } },
   { id: 'rule', name: '규정 검토', panels: { advice: [0, 0, 5, 15], qa: [5, 0, 4, 15], history: [9, 0, 3, 15] } },
   { id: 'chat', name: '상담', panels: { chat: [0, 0, 5, 15], map: [5, 0, 7, 9], forecast: [5, 9, 4, 6], status: [9, 9, 3, 6] } },
