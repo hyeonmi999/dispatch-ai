@@ -39,6 +39,7 @@
 
 - `interval`이 `bounds` 밖이면 400입니다.
 - 챗봇이 쓰는 필드: `current`, `simulated`, `fleet.buses_needed_before`·`buses_needed`·`authorized_buses`·`over`, `peak_segment.from_name`.
+- **버스 대수(`buses_needed`)의 운행시간** (2026-11-28, 이슈 #42): 시간대별 운행시간 표(`data/interim/runtime_table.parquet`)가 있으면 기점 출발 시각별 한 바퀴 운행시간(그날 − 21일까지의 최근 8주 실측 중앙값)으로, 없으면 노선 기본정보의 고정 운행시간으로 셉니다. 필드는 그대로이고 값만 달라집니다. 표를 썼으면 권고(`POST /api/bus/advise`)의 `rationale`에 "N시 출발 버스의 한 바퀴 운행시간 약 M분 …" 한 줄이 붙습니다.
 - 챗봇과 API는 같은 메서드(`BusAdapter.simulate`)를 부릅니다. 범위 밖의 간격은 챗봇에서 오류가 아니라 이유를 담은 답변으로 나옵니다.
 - 위 숫자는 형식을 보여 주는 예시입니다.
 
@@ -63,6 +64,7 @@
 
 - `action`: `increase` · `decrease` · `keep`.
 - 승객 수 상한 비율표가 없으면 503입니다 (`python scripts/calibrate_p90.py` 먼저 실행).
+- `plan[].buses_needed`·인가대수 제약의 운행시간은 1번(시뮬레이션)의 "버스 대수의 운행시간"과 같습니다.
 - 챗봇이 쓰는 필드: `kpi` 전체, `plan[].route·hour·current_trips·recommended_trips·change·action`, `binding`, `cut_notice`.
 - 챗봇과 API는 같은 메서드(`BusAdapter.optimize`)를 부릅니다. 챗봇은 "7시부터 9시", "출근 시간"(7~9시), "퇴근 시간"(17~19시)을 `hours`로 바꿉니다.
 - 이력 테이블 `optimization_run`에는 요청(`date`, `hours`, `weights`)과 `plan`, `kpi`, `binding`, `solve_seconds`를 저장합니다.
