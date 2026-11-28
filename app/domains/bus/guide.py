@@ -446,8 +446,10 @@ class BusGuide:
         wait_first = None
         day_clock = clock_minute % MINUTES_PER_DAY
         # 첫차가 곧 올 때만 기다림. 더 뒤면 아래의 운행 여부 판단에 맡김 (밤에 첫차가 뜨는 심야버스는 새벽에도 운행 중)
-        if first_at is not None and 0 < first_at - day_clock <= GUIDE_FIRST_BUS_WAIT_MAX_MIN:
-            wait_first = first_at - day_clock
+        # 첫차가 자정을 넘겨 닿는 심야버스(first_at ≥ 1440, 예: 기점 23:50 → 정류장 00:20)도 하루를 돌려 이어서 셈
+        until_first = (first_at - day_clock) % MINUTES_PER_DAY if first_at is not None else None
+        if until_first is not None and 0 < until_first <= GUIDE_FIRST_BUS_WAIT_MAX_MIN:
+            wait_first = until_first
             clock_minute += wait_first
         hour = int(clock_minute // 60) % 24          # 승객이 타는 시계 시각의 시간대
         start_hour = None
