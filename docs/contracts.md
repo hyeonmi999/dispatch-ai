@@ -95,6 +95,36 @@
 - `methods` 순서: 현행 · 규칙 · 그리디 · 최적화 · 감차 허용(`reference: true`, 참고 행). 숫자는 `eval/results/backtest.json`을 그대로 옮긴 값이고, 서버는 다시 계산하지 않습니다.
 - 결과 파일이 없으면 404(`python scripts/backtest.py`를 먼저 실행), 형식이 다르면 500.
 
+### 2-3. `GET /api/bus/drift` · `POST /api/bus/drift/{id}/review` — 예측 오차 점검과 재학습 권고 (요청 R-3)
+
+```
+GET /api/bus/drift?limit=20
+응답: {"db": {...DB 연결 상태},
+       "rules": {"mae_ratio": 1.2, "p90_coverage_min": 85.0, "min_days": 3},
+       "items": [{"id": "replay_2026-10-26_2026-11-01", "kind": "replay", "kind_label": "다시 돌려 봄",
+                  "window": {"start": "2026-10-26", "end": "2026-11-01", "days": 7},
+                  "model_version": "xgb-bus-real-202611130102", "reference_mae": 3.897,
+                  "metrics": {"rows": 77063, "stop_hour_mae": 3.913, "baseline_mae": 5.472, "model_mae_on_baseline_rows": 3.926,
+                              "route_hour_cells": 795, "p90_coverage_pct": 88.2, "mae_ratio": 1.004},
+                  "by_daytype": {"요일유형": {...metrics와 같은 모양}}, "by_route": {"노선": {...}},
+                  "checks": [{"name": "mae_ratio", "label": "오차가 평가 때의 1.2배 이하", "value": 1.004, "limit": 1.2, "failed": false}, ...],
+                  "verdict": "ok", "recommend": false, "reasons": ["세 기준을 모두 통과했습니다. ..."],
+                  "next_steps": [], "caution": "평가 구간의 예측을 주별로 다시 채점한 값입니다. ...", "needs_review": true,
+                  "review": {"status": "approved", "reviewer": "박성훈", "note": "", "reviewed_at": "2026-11-26 15:00:00"}}]}
+
+POST /api/bus/drift/{id}/review
+요청: {"status": "approved", "reviewer": "박성훈", "note": "11/02 주 실측으로 재학습"}
+응답: 위 items의 한 줄 (review가 채워짐)
+```
+
+- **누가 판정하나**: `scripts/check_drift.py`가 판정해 `eval/results/drift/<id>.json`에 남기고, 서버는 그 파일을 읽기만 합니다. `id`는 `<kind>_<첫날>_<마지막 날>`(월~일 한 주)입니다.
+  - `kind: "forward"`: 미리 만든 미래 예측(3주 앞)과 새로 받은 실측. 새 주 데이터를 받은 뒤 **다시 학습하기 전에** `python scripts/check_drift.py`
+  - `kind: "replay"`: 평가 구간(BUS_TUNE_END 다음 날 ~)의 주별 다시 채점. `python scripts/check_drift.py --replay`. 날씨·운행횟수는 실제값을 써서 실제 예측보다 오차가 조금 작습니다
+- **기준** (`app/config.py`의 `DRIFT_*`, 하나라도 걸리면 `verdict: "retrain"`, `recommend: true`): ① `metrics.mae_ratio` > 1.2 ② 작년 같은 요일보다 못함(`model_mae_on_baseline_rows` ≥ `baseline_mae`) ③ `p90_coverage_pct` < 85. 실측이 3일 미만이면 `verdict: "insufficient"`
+- **결정**: 담당자가 `approved`(승인) · `held`(보류) · `rejected`(반려)로 남기고 `retrain_review` 테이블에 기록합니다(같은 점검을 다시 결정하면 고침). 승인해도 **서버는 학습을 돌리지 않습니다**. 실행할 순서는 `next_steps`에 있습니다(권고일 때만).
+- 오류: 없는 `id` 404 · DB가 꺼져 결정을 못 남기면 503. 목록은 DB가 꺼져도 판정은 보여 주고 `review`만 `null`입니다.
+- 챗봇에서 설명할 때(오정훈): `reasons`가 판정 이유 문장, `metrics`의 숫자는 파일 그대로입니다.
+
 ## 3. `POST /api/bus/chat` — 배차 상담 챗봇 (F-25)
 
 ```

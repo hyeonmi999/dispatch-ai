@@ -25,6 +25,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from app.config import (
     DOCUMENT_LIST_LIMIT, DOCUMENT_LIST_MAX_LIMIT, MAX_DOCUMENT_BYTES,
+    DRIFT_LIST_LIMIT, DRIFT_MAE_RATIO, DRIFT_MIN_DAYS, DRIFT_P90_COVERAGE_MIN,
     GUIDE_DATE_FALLBACK_WEEKS, GUIDE_SEARCH_LIMIT_MAX, LIST_LIMIT_MAX, OPTIMIZE_RUNS_LIMIT, ROUTE_INFO_KEY_STOPS,
 )
 from app.core.domain import DomainAdapter
@@ -39,9 +40,10 @@ from app.db import database as db
 from app.db import repository as repo
 from app.domains.bus.calibration import load_ratios
 from app.domains.bus.backtest import backtest_summary
+from app.domains.bus import drift
 from app.domains.bus.optimizer import optimize
 from app.domains.bus.schemas import (
-    BusAdviseAllRequest, BusAdviseRequest, BusBacktestResponse, BusGuideRequest, BusGuideResponse, BusOptimizeRequest, BusOptimizeResponse, BusOptimizeRunList,
+    BusAdviseAllRequest, BusAdviseRequest, BusBacktestResponse, BusDriftCheck, BusDriftList, BusDriftReviewRequest, BusGuideRequest, BusGuideResponse, BusOptimizeRequest, BusOptimizeResponse, BusOptimizeRunList,
     BusPredictRequest, BusRouteInfoRequest, BusRouteInfoResponse, BusSimulateRequest, BusSimulateResponse, BusStopSearchItem,
 )
 from app.domains.bus.simulator import simulate
@@ -437,6 +439,32 @@ class BusAdapter(DomainAdapter):
                 logger.warning("최적화 이력 조회 실패: %s", e)
                 raise HTTPException(503, "DB에 연결할 수 없어 실행 기록을 불러오지 못했습니다")
             return {"db": db.state, "items": items}
+
+        @r.get("/drift", response_model=BusDriftList, summary="예측 오차 점검과 재학습 권고 (요청 R-3, 최근 기간부터)")
+        async def drift_checks(limit: int = Query(DRIFT_LIST_LIMIT, ge=1, le=LIST_LIMIT_MAX)):
+            items = drift.list_checks(limit)
+            try:
+                reviews = await repo.get_retrain_reviews("bus", [item["id"] for item in items])
+            except Exception as e:      # 서버가 뜬 뒤에 DB가 꺼진 경우: 판정은 보여 주고 결정만 비움
+                logger.warning("재학습 결정 조회 실패: %s", e)
+                reviews = {}
+            rules = {"mae_ratio": DRIFT_MAE_RATIO, "p90_coverage_min": DRIFT_P90_COVERAGE_MIN, "min_days": DRIFT_MIN_DAYS}
+            return {"db": db.state, "rules": rules,
+                    "items": [{**item, "review": reviews.get(item["id"])} for item in items]}
+
+        @r.post("/drift/{check_id}/review", response_model=BusDriftCheck, summary="재학습 권고에 대한 담당자 결정 (승인·보류·반려)")
+        async def review_drift(check_id: str, req: BusDriftReviewRequest):
+            item = drift.load_check(check_id)
+            if item is None:
+                raise HTTPException(404, f"점검 결과가 없습니다: {check_id}")
+            try:
+                review = await repo.save_retrain_review("bus", check_id, item["verdict"], req.status, req.reviewer, req.note)
+            except Exception as e:
+                logger.warning("재학습 결정 저장 실패: %s", e)
+                review = None
+            if review is None:
+                raise HTTPException(503, "DB에 연결할 수 없어 결정을 남기지 못했습니다. MariaDB를 켠 뒤 다시 시도하세요")
+            return {**item, "review": review}
 
         @r.get("/overview", summary="전체 노선 구간별 혼잡도 (지도)")
         def overview(date: dt.date = Query(...), hour: int = Query(..., ge=0, le=23)):
