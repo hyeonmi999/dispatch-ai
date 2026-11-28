@@ -10,12 +10,15 @@
 #   POST /api/bus/optimize                    전 노선 운행횟수를 인가대수 안에서 한꺼번에 권고 (실행마다 이력 저장)
 #   GET /api/bus/optimize/runs                최적화 실행 이력
 #   GET /api/bus/backtest                     배차 방식 성능 비교 (eval/results/backtest.json)
+#   GET /api/bus/traffic/alerts               실시간 사고·정체 알림 (TOPIS, 실시간 / 기록 다시 보기, needs_review)
+#   GET /api/bus/traffic/snapshots            받아 둔 실시간 기록 목록
 
 import datetime as dt
 import logging
 import subprocess
 import sys
 from functools import cached_property
+from typing import Literal
 
 import pandas as pd
 from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
@@ -27,9 +30,10 @@ from app.config import (
     DOCUMENT_LIST_LIMIT, DOCUMENT_LIST_MAX_LIMIT, MAX_DOCUMENT_BYTES,
     DRIFT_LIST_LIMIT, DRIFT_MAE_RATIO, DRIFT_MIN_DAYS, DRIFT_P90_COVERAGE_MIN,
     GUIDE_DATE_FALLBACK_WEEKS, GUIDE_SEARCH_LIMIT_MAX, LIST_LIMIT_MAX, OPTIMIZE_RUNS_LIMIT, ROUTE_INFO_KEY_STOPS,
+    TOPIS_DIR, TOPIS_SNAPSHOT_LIMIT,
 )
 from app.core.domain import DomainAdapter
-from app.domains.bus.advisor import BusAdvisor, _num, congestion_level
+from app.domains.bus.advisor import BusAdvisor, _num, congestion_level, departures_by_hour
 from app.domains.bus.data import BusDataset
 from app.core.documents import (
     Documents, DocumentFields, DocumentInfo, DocumentList, DocumentUpdate, require_document_admin,
@@ -41,10 +45,14 @@ from app.db import repository as repo
 from app.domains.bus.calibration import load_ratios
 from app.domains.bus.backtest import backtest_summary
 from app.domains.bus import drift
+from app.domains.bus.features import daytype_of
+from app.domains.bus.topis import TopisError, list_snapshots
+from app.domains.bus.traffic import TrafficAlerts, plan_from
 from app.domains.bus.optimizer import optimize
 from app.domains.bus.schemas import (
     BusAdviseAllRequest, BusAdviseRequest, BusBacktestResponse, BusDriftCheck, BusDriftList, BusDriftReviewRequest, BusGuideRequest, BusGuideResponse, BusOptimizeRequest, BusOptimizeResponse, BusOptimizeRunList,
     BusPredictRequest, BusRouteInfoRequest, BusRouteInfoResponse, BusSimulateRequest, BusSimulateResponse, BusStopSearchItem,
+    BusTrafficResponse, BusTrafficSnapshotList,
 )
 from app.domains.bus.simulator import simulate
 
@@ -292,6 +300,60 @@ class BusAdapter(DomainAdapter):
         result["domain"] = "bus"
         return result
 
+    # ------------------------------------------------
+    # 실시간 사고·정체 알림 (이슈 #42 방법 2, Task P-9). 배차는 바꾸지 않음
+    # ------------------------------------------------
+
+    @cached_property
+    def traffic(self) -> TrafficAlerts:
+        return TrafficAlerts(self.dataset.dir / TOPIS_DIR, self.dataset.geo, self._traffic_plan)
+
+    def _traffic_plan(self, route: str, date, hour: int) -> dict | None:
+        """인가대수 경고에 쓸 그날 운행횟수(24칸)·평소 한 바퀴(24칸)·인가대수. 운행시간을 모르면 None"""
+        daytype = daytype_of(pd.Timestamp(date))
+        info = self.dataset.route_info_for(route, daytype)
+        fixed = info.get("run_minutes")
+        if fixed is None or pd.isna(fixed) or float(fixed) <= 0:
+            return None
+        profile = self.dataset.run_profile(route, daytype, date, fixed)
+        run = profile[0] if profile else int(round(float(fixed)))
+        run_basis = (f"한 바퀴는 {profile[1]:%m/%d} 기준 시간대별 운행시간 표" if profile
+                     else "한 바퀴는 노선 기본정보 고정 운행시간")
+        # 그날 계획 → 없으면(예측 범위 밖 등) 같은 요일의 가장 가까운 앞 날짜 → 그래도 없으면 기본 배차간격으로 어림
+        trips = None
+        for weeks in range(GUIDE_DATE_FALLBACK_WEEKS + 1):
+            day = pd.Timestamp(date) - pd.Timedelta(weeks=weeks)
+            try:
+                trips = departures_by_hour(self.advisor.analyze_day(route, day))
+            except Exception as e:      # 자료·모델이 없으면 다음 후보
+                logger.debug("%s번 %s 운행횟수를 읽지 못함: %s", route, day.date(), e)
+                continue
+            trips_basis = ("운행횟수는 그날 계획(예측 화면과 같은 값)" if weeks == 0
+                           else f"운행횟수는 같은 요일 {day:%m/%d} 계획 (그날은 예측 범위 밖)")
+            break
+        if trips is None:
+            interval = float(info.get("interval") or 0)
+            if interval <= 0:
+                return None
+            trips = [60.0 / interval] * 24
+            trips_basis = f"운행횟수는 노선 기본정보 배차간격 {interval:g}분으로 어림"
+        return plan_from(trips, run, info.get("buses"), f"{trips_basis} · {run_basis}")
+
+    def traffic_alerts(self, mode: str = "live", routes: list[str] | None = None, snapshot: str | None = None) -> dict:
+        routes = routes or list(self.dataset.routes)
+        for route in routes:
+            self._check_route(route)
+        if mode == "replay":
+            result = self.traffic.replay(routes, snapshot)
+            if result is None:
+                raise HTTPException(404, f"받아 둔 기록이 없습니다: {snapshot}" if snapshot
+                                    else "받아 둔 기록이 없습니다. 실시간으로 한 번 받거나 scripts/record_topis.sh를 실행하세요")
+            return result
+        try:
+            return self.traffic.live(routes)
+        except TopisError as e:
+            raise HTTPException(503, e.detail)
+
     # ==================================================
     # 3. 지도 대시보드용 부가 API
     # ==================================================
@@ -485,5 +547,17 @@ class BusAdapter(DomainAdapter):
         @r.post("/guide", response_model=BusGuideResponse, summary="버스 길안내 (직행·1회 환승, 혼잡도 반영)")
         def guide_route(req: BusGuideRequest):
             return self.guide(req.model_dump())
+
+        @r.get("/traffic/alerts", response_model=BusTrafficResponse,
+               summary="실시간 사고·정체 알림 (TOPIS, needs_review). 배차는 바꾸지 않음")
+        def traffic_alerts(mode: Literal["live", "replay"] = "live",
+                           routes: str | None = Query(None, max_length=200, description="쉼표로 구분 (없으면 전체 노선)"),
+                           snapshot: str | None = Query(None, max_length=20, description="replay일 때 기록 이름 (없으면 가장 최근)")):
+            names = [x.strip() for x in routes.split(",") if x.strip()] if routes else None
+            return self.traffic_alerts(mode, names, snapshot)
+
+        @r.get("/traffic/snapshots", response_model=BusTrafficSnapshotList, summary="받아 둔 실시간 기록 (최근부터)")
+        def traffic_snapshots(limit: int = Query(TOPIS_SNAPSHOT_LIMIT, ge=1, le=LIST_LIMIT_MAX)):
+            return {"items": list_snapshots(self.traffic.snapshot_dir, limit)}
 
         return r

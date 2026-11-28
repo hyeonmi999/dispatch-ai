@@ -52,6 +52,7 @@ if all((HF_CACHE_DIR / f"models--{m}").exists() for m in ("BAAI--bge-m3", _llm_c
 # ==================================================
 
 DATA_GO_KR_API_KEY = os.getenv("DATA_GO_KR_API_KEY", "")
+SEOUL_OPEN_API_KEY = os.getenv("SEOUL_OPEN_API_KEY", "")   # 서울 열린데이터광장 일반 인증키 (TOPIS 실시간 돌발·소통, Task P-9)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 HF_TOKEN = os.getenv("HF_TOKEN") or None
 ASYNC_DB_URL = os.getenv("ASYNC_DB_URL", "")
@@ -174,6 +175,34 @@ BUS_RUNTIME_MIN_DAYS = 3         # 중앙값에 쓴 날이 이보다 적으면 �
 BUS_RUNTIME_LAG_DAYS = 21        # 날짜 D에는 기준일 ≤ D − 21일인 표만 씀 (3주 앞 계획의 예측 시점 규칙)
 BUS_RUNTIME_START_MINUTE = 30    # 'N시 출발'을 N시 30분에 떠난 버스로 따라가며 구간 시간을 더함
 BUS_RUNTIME_MAX_FILL = 0.2       # 그 시간대 기록이 없어 구간 하루 평균으로 채운 구간이 이 비율을 넘으면 그날 값은 버림
+
+# 실시간 사고·정체 알림 (이슈 #42 방법 2, docs/plans/park-next.md Task P-9)
+#   TOPIS 실시간 돌발(AccInfo)·소통(TrafficInfo)을 관제 화면에 알려 줌. 배차·최적화·권고 값은 바꾸지 않음 (needs_review)
+#   준비: bash scripts/build_topis_speed.sh (평소 링크 속도) → bash scripts/build_topis_links.sh (노선 ↔ 링크, 키 필요)
+TOPIS_BASE_URL = "http://openapi.seoul.go.kr:8088"   # 서울 열린데이터광장 Open API (XML만 됨, JSON은 ERROR-301)
+TOPIS_TIMEOUT = 5.0              # 외부 호출 한 번의 제한 시간(초)
+TOPIS_PAGE_ROWS = 1000           # 한 번에 받을 수 있는 최대 행 수
+TOPIS_MAX_CONCURRENCY = 8        # 링크 소통 정보를 동시에 부르는 수
+TOPIS_CACHE_SECONDS = 300        # 같은 실시간 결과를 다시 쓰는 시간 (TOPIS 속도는 5분 단위)
+TOPIS_DIR = "topis"              # INTERIM_DIR 아래 (커밋 제외)
+TOPIS_ROUTE_LINKS = "route_links.parquet"   # 노선 ↔ 링크 대응표 (scripts/build_topis_links.py)
+TOPIS_LINK_SPEED = "link_speed.parquet"     # 링크 × 요일유형 × 시간대 평소 속도 (scripts/build_topis_speed.py)
+TOPIS_LINKS = "links.parquet"               # TOPIS 링크 목록 (같은 스크립트, 링크 대응표의 후보)
+TOPIS_ROUTE_SEGMENTS = "route_link_segments.parquet"  # 노선 링크 ↔ 정류장 구간 (scripts/build_topis_links.py, 지도 소통 띠용)
+TOPIS_SNAPSHOT_DIR = "snapshots"            # TOPIS_DIR 아래. 실시간으로 받을 때마다 가공 결과를 남김 (기록 다시 보기)
+TOPIS_SNAPSHOT_MAX = 2000        # 기록 파일을 이보다 많이 두지 않음 (오래된 것부터 지움)
+TOPIS_SNAPSHOT_LIMIT = 50        # GET /api/bus/traffic/snapshots 기본 개수 (최대 LIST_LIMIT_MAX)
+TOPIS_LINK_NEAR_M = 30           # 링크 꼭짓점이 노선 경로에서 이 거리 안이면 경로 위
+TOPIS_LINK_MIN_SHARE = 0.7       # 꼭짓점의 이 비율 이상이 경로 위인 링크를 그 노선 링크로 봄
+TOPIS_ACC_NEAR_M = 150           # 돌발 지점이 노선 경로에서 이 거리 안이면 "이 노선 경로에 사고"
+TOPIS_LONG_TERM_DAYS = 7         # 해제 예정이 이보다 먼 돌발(장기 공사 등)은 따로 묶음 (평소 운행시간에 이미 들어 있음)
+TOPIS_MIN_COVERAGE = 0.7         # 노선 링크 길이의 이 비율 이상에서 지금·평소 값을 모두 받았을 때만 추가 시간을 계산
+TOPIS_EXTRA_WARN_RATIO = 0.15    # 한 바퀴 추가 시간이 평소 한 바퀴의 15% 이상이면 경고 (143번 233분 → 35분, 정류장당 약 19초)
+#   10분 고정이었을 때는 정류장당 5초만 늦어도 경고라 2026-11-28 토 18시에 5개 노선이 모두 경고 (승용차 기준 +20~37분)
+TOPIS_SEGMENT_MIN_M = 50         # 정류장 구간에 걸친 링크 길이가 이보다 짧으면 그 구간 속도는 보내지 않음
+TOPIS_SLOW_RATIO = 0.67          # 지금 속도가 평소의 이 비율 아래인 링크를 '많이 느린 도로'로 (패널 목록)
+TOPIS_SLOW_LINKS_TOP = 5         # 노선별로 보내는 많이 느린 도로 수
+TOPIS_SPEED_MONTHS = 2           # 평소 속도 = 최근 이 개월 같은 요일유형·시간대의 중앙값
 
 # 검증 구간(BUS_VALID_START ~ 실측 마지막 날)을 둘로 나눔: 앞쪽에서 값을 고르고 뒤쪽에서는 채점만
 BUS_TUNE_END = "2026-09-28"          # 이 날짜까지 튜닝 구간, 다음 날부터 평가 구간

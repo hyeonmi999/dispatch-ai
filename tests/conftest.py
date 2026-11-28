@@ -9,6 +9,18 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["DATA_MODE"] = "sample"
 os.environ["ASYNC_DB_URL"] = ""
+os.environ["SEOUL_OPEN_API_KEY"] = ""      # TOPIS 실시간은 끔 (.env에 키가 있어도 load_dotenv가 덮어쓰지 않음)
+
+
+@pytest.fixture(autouse=True)
+def no_topis_http(monkeypatch):
+    """테스트에서 TOPIS 외부 HTTP가 나가면 실패 (topis._get이 유일한 호출 지점)"""
+    from app.domains.bus import topis
+
+    def blocked(url, timeout):
+        raise AssertionError(f"테스트에서 외부 HTTP를 부름: {topis.mask(url)}")
+
+    monkeypatch.setattr(topis, "_get", blocked)
 
 
 @pytest.fixture(scope="session", autouse=True)

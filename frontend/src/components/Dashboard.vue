@@ -178,7 +178,7 @@
         </template>
 
         <template #map>
-          <MapView :geometries="geometries" :overview="overview" :selected="selected" @select="(r) => (selected = r)" />
+          <MapView :geometries="geometries" :overview="overview" :selected="selected" :traffic="trafficData" :focus-incident="focusAcc" @select="(r) => (selected = r)" @select-incident="(id) => (focusAcc = { id, n: 0, fromMap: true })" />
         </template>
 
         <template #forecast>
@@ -241,6 +241,10 @@
           <DriftPanel />
         </template>
 
+        <template #traffic>
+          <TrafficPanel :selected-route="selected" :focused-incident="focusAcc?.id ?? null" @select-route="(r) => (selected = r)" @loaded="(d) => (trafficData = d)" @focus-incident="(id) => (focusAcc = { id, n: (focusAcc?.n ?? 0) + 1 })" />
+        </template>
+
         <template #documents>
           <DocumentAdminPanel v-if="documentRole === 'admin'" :role="documentRole" />
         </template>
@@ -288,6 +292,7 @@ import MetricsCard from './MetricsCard.vue'
 import OptimizePanel from './OptimizePanel.vue'
 import PanelGrid from './PanelGrid.vue'
 import StatusPanel from './StatusPanel.vue'
+import TrafficPanel from './TrafficPanel.vue'
 import StopChart from './StopChart.vue'
 import WhatIfPanel from './WhatIfPanel.vue'
 
@@ -447,6 +452,9 @@ const stops = ref(null)
 const date = ref(null)
 const hour = ref(7)
 const selected = ref(null)
+// 실시간 돌발·정체 (TrafficPanel이 받은 자료를 지도와 함께 씀) · 지도에서 보여 줄 돌발
+const trafficData = ref(null)
+const focusAcc = ref(null)
 const playing = ref(false)
 let timer = null
 
@@ -539,6 +547,7 @@ const metas = computed(() => ({
   metrics: '검증 구간',
   backtest: '지난 기록으로 채점',
   drift: '예측 vs 나중 실측 · 결정은 담당자',
+  traffic: 'TOPIS 실시간 · 배차는 바꾸지 않음',
 }))
 
 // 기본 날짜: 오늘(예측 범위 안이면), 아니면 실측 마지막 날 이전의 가장 최근 화요일
