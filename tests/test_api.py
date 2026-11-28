@@ -1,3 +1,4 @@
+import pytest
 from app.config import NOT_FOUND_ANSWER
 
 
@@ -75,3 +76,33 @@ def test_advise_all_routes_sorted_by_urgency(client):
     order = {"increase": 0, "increase_limited": 1, "decrease": 2, "keep": 3}
     ranks = [order[i["recommendation"]["action"]] for i in ok]
     assert ranks == sorted(ranks) and all(i["needs_review"] for i in ok)
+
+
+# ==================================================
+# 오류 응답 공통 형식 {"status", "detail"} (오정훈, 계획서 oh-evaluation.md Task E-10)
+# ==================================================
+
+@pytest.mark.parametrize("method, path, body, code, status", [
+    ("get", "/api/bus/routes/9999/info", None, 404, "not_found"),          # 없는 노선 (HTTPException)
+    ("get", "/api/nope/schema", None, 404, "not_found"),                    # 없는 도메인
+    ("get", "/api/no-such-path", None, 404, "not_found"),                   # 없는 주소 (프레임워크가 내는 404)
+    ("post", "/api/bus/guide", {"origin": "없는정류장이름", "destination": "없는정류장이름2", "date": "2026-10-28", "hour": 8}, 422, "validation_error"),
+    ("post", "/api/bus/chat", {"message": "x"}, 422, "validation_error"),   # 요청 형식 오류 (FastAPI 기본 검증)
+    ("post", "/api/bus/documents?role=citizen", None, 403, "forbidden"),
+])
+def test_error_responses_share_status_and_detail(client, method, path, body, code, status):
+    # 재현: HTTPException으로 내는 응답은 {"detail"}뿐이라 규격의 공통 형식과 달랐음
+    if path.startswith("/api/bus/documents"):
+        r = client.post(path, data={"title": "x", "type": "내부자료", "grade": "내부"}, files={"file": ("x.txt", b"x", "text/plain")})
+    else:
+        r = getattr(client, method)(path, **({"json": body} if body else {}))
+    assert r.status_code == code, r.text
+    payload = r.json()
+    assert payload["status"] == status and payload["detail"], payload
+
+
+def test_error_detail_is_kept_as_before(client):
+    # 화면(frontend/src/api.js)은 detail만 읽음: 문장은 문자열 그대로, 형식 오류는 목록 그대로
+    assert "9999" in client.get("/api/bus/routes/9999/info").json()["detail"]
+    detail = client.post("/api/bus/chat", json={"message": "x"}).json()["detail"]
+    assert isinstance(detail, list) and detail[0]["msg"]

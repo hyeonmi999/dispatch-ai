@@ -1,0 +1,352 @@
+{
+ "name": "chat_note_1",
+ "replay": {
+  "source": "rewrite_guard_1.json",
+  "wrong_total": 437,
+  "old_reached_user": 40,
+  "new_reached_user": 0,
+  "by_kind": {
+   "number_change": {
+    "total": 30,
+    "old_passed": 0,
+    "new_passed": 0
+   },
+   "number_delete": {
+    "total": 30,
+    "old_passed": 28,
+    "new_passed": 0
+   },
+   "number_add": {
+    "total": 30,
+    "old_passed": 0,
+    "new_passed": 0
+   },
+   "number_swap": {
+    "total": 30,
+    "old_passed": 0,
+    "new_passed": 0
+   },
+   "unit_change": {
+    "total": 30,
+    "old_passed": 0,
+    "new_passed": 0
+   },
+   "date_change": {
+    "total": 30,
+    "old_passed": 0,
+    "new_passed": 0
+   },
+   "half_day_change": {
+    "total": 30,
+    "old_passed": 0,
+    "new_passed": 0
+   },
+   "modifier_add": {
+    "total": 30,
+    "old_passed": 6,
+    "new_passed": 0
+   },
+   "label_swap": {
+    "total": 30,
+    "old_passed": 6,
+    "new_passed": 0
+   },
+   "negation": {
+    "total": 30,
+    "old_passed": 0,
+    "new_passed": 0
+   },
+   "action_flip": {
+    "total": 18,
+    "old_passed": 0,
+    "new_passed": 0
+   },
+   "keyword_swap": {
+    "total": 20,
+    "old_passed": 0,
+    "new_passed": 0
+   },
+   "level_change": {
+    "total": 30,
+    "old_passed": 0,
+    "new_passed": 0
+   },
+   "level_claim": {
+    "total": 30,
+    "old_passed": 0,
+    "new_passed": 0
+   },
+   "option_change": {
+    "total": 9,
+    "old_passed": 0,
+    "new_passed": 0
+   },
+   "target_change": {
+    "total": 30,
+    "old_passed": 0,
+    "new_passed": 0
+   }
+  },
+  "extra_wrong_total": 15,
+  "extra_new_reached_user": 0,
+  "extra_new_passed": []
+ },
+ "live": {
+  "llm": "qwen",
+  "total": 30,
+  "accepted": 15,
+  "template_kept": 30,
+  "numbers_verified": 30,
+  "distinct_notes": [
+   "현장 상황 및 행사·날씨 등에 따라 달라질 수 있으므로, 담당자께서 확인하시기 바랍니다.",
+   "현장 상황 및 행사·날씨 등에 따라 달라질 수 있으므로, 최종 결정 전에 확인하시기 바랍니다.",
+   "현장 상황 및 행사·날씨 등에 따라 담당자의 판단이 필요합니다.",
+   "현장 상황 및 행사·날씨 등에 따라 차별화된 판단이 필요할 수 있으므로, 담당자께서 직접 현장을 방문하여 확인하시기 바랍니다.",
+   "현장 상황 및 행사·날씨 등에 따라 차별화된 판단이 필요할 수 있으므로, 최종 결정 전에 확인하시기 바랍니다.",
+   "현장에서의 실况 및 행사·날씨 등 추가적인 정보를 확인하시면 좋습니다."
+  ],
+  "seconds": 66,
+  "rows": [
+   {
+    "q": "143번 2026-11-01 8시에 혼잡해?",
+    "intent": "predict",
+    "accepted": false,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": null
+   },
+   {
+    "q": "143번 2026-11-01 8시 증차해야 해?",
+    "intent": "advise",
+    "accepted": true,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": "현장 상황 및 행사·날씨 등에 따라 달라질 수 있으므로, 담당자께서 확인하시기 바랍니다."
+   },
+   {
+    "q": "143번 2026-11-01 14시에 혼잡해?",
+    "intent": "predict",
+    "accepted": false,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": null
+   },
+   {
+    "q": "143번 2026-11-01 14시 증차해야 해?",
+    "intent": "advise",
+    "accepted": true,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": "현장 상황 및 행사·날씨 등에 따라 달라질 수 있으므로, 최종 결정 전에 확인하시기 바랍니다."
+   },
+   {
+    "q": "143번 2026-11-01 18시에 혼잡해?",
+    "intent": "predict",
+    "accepted": false,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": null
+   },
+   {
+    "q": "143번 2026-11-01 18시 증차해야 해?",
+    "intent": "advise",
+    "accepted": true,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": "현장 상황 및 행사·날씨 등에 따라 달라질 수 있으므로, 최종 결정 전에 확인하시기 바랍니다."
+   },
+   {
+    "q": "272번 2026-11-01 8시에 혼잡해?",
+    "intent": "predict",
+    "accepted": false,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": null
+   },
+   {
+    "q": "272번 2026-11-01 8시 증차해야 해?",
+    "intent": "advise",
+    "accepted": true,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": "현장에서의 실况 및 행사·날씨 등 추가적인 정보를 확인하시면 좋습니다."
+   },
+   {
+    "q": "272번 2026-11-01 14시에 혼잡해?",
+    "intent": "predict",
+    "accepted": false,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": null
+   },
+   {
+    "q": "272번 2026-11-01 14시 증차해야 해?",
+    "intent": "advise",
+    "accepted": true,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": "현장 상황 및 행사·날씨 등에 따라 차별화된 판단이 필요할 수 있으므로, 최종 결정 전에 확인하시기 바랍니다."
+   },
+   {
+    "q": "272번 2026-11-01 18시에 혼잡해?",
+    "intent": "predict",
+    "accepted": false,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": null
+   },
+   {
+    "q": "272번 2026-11-01 18시 증차해야 해?",
+    "intent": "advise",
+    "accepted": true,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": "현장 상황 및 행사·날씨 등에 따라 차별화된 판단이 필요할 수 있으므로, 담당자께서 직접 현장을 방문하여 확인하시기 바랍니다."
+   },
+   {
+    "q": "160번 2026-11-01 8시에 혼잡해?",
+    "intent": "predict",
+    "accepted": false,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": null
+   },
+   {
+    "q": "160번 2026-11-01 8시 증차해야 해?",
+    "intent": "advise",
+    "accepted": true,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": "현장 상황 및 행사·날씨 등에 따라 달라질 수 있으므로, 최종 결정 전에 확인하시기 바랍니다."
+   },
+   {
+    "q": "160번 2026-11-01 14시에 혼잡해?",
+    "intent": "predict",
+    "accepted": false,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": null
+   },
+   {
+    "q": "160번 2026-11-01 14시 증차해야 해?",
+    "intent": "advise",
+    "accepted": true,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": "현장 상황 및 행사·날씨 등에 따라 달라질 수 있으므로, 담당자께서 확인하시기 바랍니다."
+   },
+   {
+    "q": "160번 2026-11-01 18시에 혼잡해?",
+    "intent": "predict",
+    "accepted": false,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": null
+   },
+   {
+    "q": "160번 2026-11-01 18시 증차해야 해?",
+    "intent": "advise",
+    "accepted": true,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": "현장 상황 및 행사·날씨 등에 따라 달라질 수 있으므로, 최종 결정 전에 확인하시기 바랍니다."
+   },
+   {
+    "q": "150번 2026-11-01 8시에 혼잡해?",
+    "intent": "predict",
+    "accepted": false,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": null
+   },
+   {
+    "q": "150번 2026-11-01 8시 증차해야 해?",
+    "intent": "advise",
+    "accepted": true,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": "현장 상황 및 행사·날씨 등에 따라 담당자의 판단이 필요합니다."
+   },
+   {
+    "q": "150번 2026-11-01 14시에 혼잡해?",
+    "intent": "predict",
+    "accepted": false,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": null
+   },
+   {
+    "q": "150번 2026-11-01 14시 증차해야 해?",
+    "intent": "advise",
+    "accepted": true,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": "현장 상황 및 행사·날씨 등에 따라 달라질 수 있으므로, 최종 결정 전에 확인하시기 바랍니다."
+   },
+   {
+    "q": "150번 2026-11-01 18시에 혼잡해?",
+    "intent": "predict",
+    "accepted": false,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": null
+   },
+   {
+    "q": "150번 2026-11-01 18시 증차해야 해?",
+    "intent": "advise",
+    "accepted": true,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": "현장 상황 및 행사·날씨 등에 따라 달라질 수 있으므로, 최종 결정 전에 확인하시기 바랍니다."
+   },
+   {
+    "q": "271번 2026-11-01 8시에 혼잡해?",
+    "intent": "predict",
+    "accepted": false,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": null
+   },
+   {
+    "q": "271번 2026-11-01 8시 증차해야 해?",
+    "intent": "advise",
+    "accepted": true,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": "현장 상황 및 행사·날씨 등에 따라 달라질 수 있으므로, 최종 결정 전에 확인하시기 바랍니다."
+   },
+   {
+    "q": "271번 2026-11-01 14시에 혼잡해?",
+    "intent": "predict",
+    "accepted": false,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": null
+   },
+   {
+    "q": "271번 2026-11-01 14시 증차해야 해?",
+    "intent": "advise",
+    "accepted": true,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": "현장 상황 및 행사·날씨 등에 따라 달라질 수 있으므로, 최종 결정 전에 확인하시기 바랍니다."
+   },
+   {
+    "q": "271번 2026-11-01 18시에 혼잡해?",
+    "intent": "predict",
+    "accepted": false,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": null
+   },
+   {
+    "q": "271번 2026-11-01 18시 증차해야 해?",
+    "intent": "advise",
+    "accepted": true,
+    "template_kept": true,
+    "numbers_verified": true,
+    "note": "현장 상황 및 행사·날씨 등에 따라 달라질 수 있으므로, 최종 결정 전에 확인하시기 바랍니다."
+   }
+  ]
+ }
+}

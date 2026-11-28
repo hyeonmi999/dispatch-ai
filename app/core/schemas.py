@@ -86,7 +86,7 @@ class ChatResponse(BaseModel):
     sources: list[ChatSource] = Field(default_factory=list, description="근거 조항")
     numbers_verified: bool | None = Field(None, description="답변 속 숫자가 모두 기능 결과에 있으면 True. 숫자를 대조하지 않는 답(규정·되묻기)은 null")
     llm: str | None = Field(None, description="문장을 쓴 LLM. 문장 틀로만 답했으면 null")
-    llm_rejected: bool = Field(False, description="True면 LLM이 쓴 문장의 숫자가 기능 결과와 달라 버리고 문장 틀로 답함")
+    llm_rejected: bool = Field(False, description="True면 LLM이 덧붙인 한 줄을 버리고 문장 틀 답변만 보냄 (숫자·권고·혼잡을 말한 줄, 또는 LLM 실패)")
     data: dict | None = Field(None, description="길안내 결과 전체 (/api/bus/guide 응답과 같은 형식). 화면이 지도에 그림")
     elapsed_sec: float
     needs_review: bool = Field(True, description="항상 True. 담당자 검토 필요")

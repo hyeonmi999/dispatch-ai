@@ -87,13 +87,6 @@ def _parts(name: str) -> list[str]:
     return [_key(p) for p in name.replace("·", ".").replace(",", ".").split(".") if _key(p)]
 
 
-def _hour_of(clock: str | None) -> int | None:
-    try:
-        return int(str(clock).split(":")[0])
-    except (TypeError, ValueError):
-        return None
-
-
 MINUTES_PER_DAY = 24 * 60
 
 
@@ -420,6 +413,18 @@ class BusGuide:
         offset = self.minutes_from_start(board, start // 60)
         return start + (offset or 0.0)
 
+    def last_bus_arrival(self, board: dict) -> float | None:
+        """그 노선 막차가 이 정류장에 닿는 시각(그날 0시부터 분, 자정을 넘기면 1440 이상)
+        = 기점 막차 시각 + 기점 → 정류장 소요. 막차 시각이 첫차보다 이르면 다음 날 새벽에 끝나는 노선. 모르면 None"""
+        meta = self.route_meta.get(board["route"], {})
+        first, last = _minute_of(meta.get("first_bus")), _minute_of(meta.get("last_bus"))
+        if last is None:
+            return None
+        offset = self.minutes_from_start(board, last // 60)
+        if first is not None and last < first:
+            last += MINUTES_PER_DAY
+        return last + (offset or 0.0)
+
     def _day(self, route: str, date) -> dict:
         try:
             return self.advisor.analyze_day(route, date)
@@ -477,11 +482,14 @@ class BusGuide:
         else:
             # 그 밖의 노선: 노선 기본정보의 평일 배차간격·운행시간만 (혼잡도 예측 없음)
             meta = self.route_meta.get(route, {})
-            first, last = _hour_of(meta.get("first_bus")), _hour_of(meta.get("last_bus"))
-            if first is not None and last is not None:
-                running = first <= hour <= last if first <= last else (hour >= first or hour <= last)
-                if not running:
-                    raise GuideError(f"{route}번은 {hour}시에 운행하지 않습니다")
+            # 운행 여부는 기점의 시(時)가 아니라 **이 정류장에 첫차·막차가 닿는 시각**으로 봄.
+            # (기점 막차 23:00인 노선이 23시 30분에 기점 근처에서 안내되거나, 먼 정류장에 아직 올 막차가 빠지던 문제)
+            last_at = self.last_bus_arrival(board)
+            if first_at is not None and last_at is not None:
+                now = clock_minute % MINUTES_PER_DAY
+                if not any(first_at <= t <= last_at for t in (now, now + MINUTES_PER_DAY)):
+                    raise GuideError(f"{route}번은 {_clock_of(now)}에 이 정류장을 지나는 버스가 없습니다 "
+                                     f"(첫차 {_clock_of(first_at)} · 막차 {_clock_of(last_at)}쯤)")
             interval = meta.get("interval")
             if interval is None or pd.isna(interval) or interval <= 0:
                 raise GuideError(f"{route}번은 배차간격 정보가 없습니다")
