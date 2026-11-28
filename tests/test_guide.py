@@ -150,14 +150,15 @@ class FakeAdapter:
 NOW = dt.datetime(2026, 11, 16, 9, 0)
 
 
-def test_llm_rewrite_is_used_when_numbers_match(monkeypatch):
-    monkeypatch.setattr(agent.llm_module, "generate", lambda *a, **k: "160번은 2026-11-17 15시에 1,234명이 탈 것으로 보여요.")
+def test_llm_note_is_appended_under_template(monkeypatch):
+    # LLM은 답변을 다시 쓰지 않고 확인 사항 한 줄만 덧붙임 (이슈 #21, 자세한 것은 tests/test_chat_note.py)
+    monkeypatch.setattr(agent.llm_module, "generate", lambda *a, **k: "현장 상황을 함께 확인해 주세요.")
     out = agent.run(FakeAdapter(), "160번 내일 15시 몇 명 타?", use_llm=True, now=NOW)
     assert out["llm"] == "qwen" and out["llm_rejected"] is False and out["numbers_verified"] is True
-    assert "보여요" in out["answer"]
+    assert "1,234명" in out["answer"] and out["answer"].endswith("현장 상황을 함께 확인해 주세요.")
 
 
-def test_llm_rewrite_with_invented_number_is_rejected(monkeypatch):
+def test_llm_note_with_invented_number_is_rejected(monkeypatch):
     monkeypatch.setattr(agent.llm_module, "generate", lambda *a, **k: "160번은 15시에 약 1,500명이 탈 것으로 보여요.")
     out = agent.run(FakeAdapter(), "160번 내일 15시 몇 명 타?", use_llm=True, now=NOW)
     assert out["llm"] is None and out["llm_rejected"] is True

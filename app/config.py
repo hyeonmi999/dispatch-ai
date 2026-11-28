@@ -97,6 +97,8 @@ LIST_LIMIT_MAX = 100
 CHAT_MESSAGE_MAX = 500      # 질문 한 건의 최대 글자 수
 CHAT_HISTORY_MAX = 10       # 이어 묻기에 쓰는 이전 대화 개수 상한
 CHAT_HISTORY_ITEM_MAX = 2000  # 이전 대화 한 건의 최대 글자 수
+CHAT_NOTE_MAX = 80          # use_llm일 때 문장 틀 답변 아래에 LLM이 덧붙이는 한 줄의 최대 글자 수
+CHAT_NOTE_MARK = "💬"       # 그 한 줄 앞에 붙는 표시 (문장 틀 답변과 구분)
 
 
 # ==================================================
