@@ -6,7 +6,9 @@ import httpx
 import pandas as pd
 import pytest
 
-from app.config import TOPIS_LINK_SPEED, TOPIS_ROUTE_LINKS
+import numpy as np
+
+from app.config import TOPIS_LINK_SPEED, TOPIS_ROUTE_LINKS, TOPIS_ROUTE_SEGMENTS
 from app.domains.bus import topis, traffic
 from app.domains.bus.traffic import KST, TrafficAlerts, plan_from
 
@@ -183,6 +185,9 @@ def alerts(tmp_path):
     LINKS.assign(route="T").to_parquet(tmp_path / TOPIS_ROUTE_LINKS, index=False)
     pd.DataFrame({"link_id": ["L1", "L2"], "daytype": "saturday", "hour": 14, "speed_kmh": 20.0, "days": 8}) \
         .to_parquet(tmp_path / TOPIS_LINK_SPEED, index=False)
+    # 지도 소통 띠용 링크 ↔ 정류장 구간 표: L1은 1구간, L2는 1·2구간에 반씩
+    pd.DataFrame({"route": "T", "link_id": ["L1", "L2", "L2"], "seq": [1, 1, 2], "share": [1.0, 0.5, 0.5]}) \
+        .to_parquet(tmp_path / TOPIS_ROUTE_SEGMENTS, index=False)
     plan = plan_from([6.0] * 24, 120, 12, "시험 계획")
     a = TrafficAlerts(tmp_path, lambda route: GEO if route == "T" else None, lambda *_: plan,
                       client=FakeClient({"L1": 600, "L2": 600}), clock=lambda: NOW)
@@ -198,6 +203,10 @@ def test_live_builds_alert_saves_snapshot_and_replays(alerts):
     assert route["traffic"]["fleet_short"] is True
     assert any("인가대수 부족 가능" in m for m in route["messages"])
     assert route["messages"][-1].startswith("배차는 바꾸지 않았습니다")
+    # 1,000m 링크를 평소 180초 → 지금 600초: 평소 속도의 30% → 구간 속도 비율 0.3, 두 링크 모두 많이 느린 도로
+    assert route["segments"] == [{"seq": 1, "ratio": 0.3, "length_m": 1500}, {"seq": 2, "ratio": 0.3, "length_m": 500}]
+    assert [s["link_id"] for s in route["slow_links"]] == ["L1", "L2"] and route["slow_links"][0]["extra_seconds"] == 420
+    assert live["ready"]["route_segments"] is True
 
     files = list(alerts.snapshot_dir.glob("*.json"))
     assert len(files) == 1 and SECRET not in files[0].read_text(encoding="utf-8")
@@ -226,6 +235,13 @@ def test_without_tables_only_incidents(tmp_path):
     result = a.live(["T"])
     assert result["routes"][0]["traffic"] is None and result["routes"][0]["incidents"]
     assert any("링크 표가 없어" in w for w in result["warnings"])
+
+
+def test_without_segment_table_warns_and_skips_band(alerts):
+    (alerts.base / TOPIS_ROUTE_SEGMENTS).unlink()
+    result = alerts.live(["T"])
+    assert result["routes"][0]["segments"] == [] and result["routes"][0]["traffic"]["extra_minutes"] is not None
+    assert any("정류장 구간 표가 없어" in w for w in result["warnings"]) and result["ready"]["route_segments"] is False
 
 
 def test_replay_rejects_bad_names(alerts):
@@ -267,7 +283,8 @@ def test_api_replay_snapshot_and_errors(client, bus_adapter):
     body = r.json()
     assert body["source"] == "replay" and body["needs_review"] is True and body["snapshot"] == "20261128_140000"
     assert [i["acc_id"] for i in body["routes"][0]["incidents"]] == ["s1"]
-    assert body["ready"] == {"route_links": False, "link_speed": False, "api_key": False}
+    assert body["ready"] == {"route_links": False, "link_speed": False, "route_segments": False, "api_key": False}
+    assert body["routes"][0]["segments"] == [] and body["routes"][0]["slow_links"] == []
 
     items = client.get("/api/bus/traffic/snapshots").json()["items"]
     assert items == [{"name": "20261128_140000", "fetched_at": NOW.isoformat(), "incidents": 1, "links": 0}]
@@ -299,3 +316,42 @@ def test_match_route_keeps_same_direction_links_only():
     links = pd.DataFrame({"link_id": ["same", "opposite", "far"], "length_m": [700.0] * 3, "road_name": ["시험로"] * 3})
     out = mod.match_route(xy, pd.DataFrame(rows), links)
     assert out["link_id"].tolist() == ["same"] and out["length_m"].tolist() == [700.0]
+
+
+# ==================================================
+# 6. 지도 소통 띠: 링크 → 정류장 구간, 구간 속도 비율, 많이 느린 도로
+# ==================================================
+
+def test_assign_segments_splits_links_and_keeps_direction():
+    segments = [(1, np.array([[0.0, 0.0], [100.0, 0.0]])), (2, np.array([[100.0, 0.0], [200.0, 0.0]]))]
+    links = {
+        "inside": np.array([[10.0, 5.0], [50.0, 5.0], [90.0, 5.0]]),                 # 1구간 안, 같은 방향
+        "across": np.array([[60.0, 5.0], [100.0, 5.0], [140.0, 5.0], [180.0, 5.0]]),  # 1·2구간에 걸침
+        "reverse": np.array([[90.0, 5.0], [10.0, 5.0]]),                              # 반대 방향 차로
+        "far": np.array([[10.0, 200.0], [90.0, 200.0]]),                              # 200m 떨어짐
+    }
+    out = traffic.assign_segments(segments, links)
+    shares = {(r.link_id, r.seq): r.share for r in out.itertuples()}
+    assert shares[("inside", 1)] == 1.0
+    assert shares[("across", 1)] + shares[("across", 2)] == pytest.approx(1.0) and shares[("across", 2)] > shares[("across", 1)]
+    assert not {"reverse", "far"} & set(out["link_id"])
+
+
+def test_segment_speeds_weights_by_length_and_skips_missing():
+    seg_links = pd.DataFrame({"link_id": ["L1", "L2", "L2", "L3", "L4"], "seq": [1, 1, 2, 3, 4], "share": [1.0, 0.5, 0.5, 1.0, 1.0]})
+    lengths = {"L1": 1000.0, "L2": 1000.0, "L3": 1000.0, "L4": 40.0}
+    usual = {"L1": 20.0, "L2": 20.0, "L4": 20.0}                 # L3는 평소 속도 없음
+    live = {"L1": 360.0, "L2": 180.0, "L3": 100.0, "L4": 7.2}    # L1은 평소의 절반 속도
+    out = traffic.segment_speeds(seg_links, lengths, live, usual)
+    # 1구간: 평소 180+90=270초 / 지금 360+90=450초 = 0.6, 2구간: 평소대로 1.0, 3구간(평소 없음)·4구간(40m) 빠짐
+    assert out == [{"seq": 1, "ratio": 0.6, "length_m": 1500}, {"seq": 2, "ratio": 1.0, "length_m": 500}]
+
+
+def test_slow_links_only_below_two_thirds_and_most_delay_first():
+    links = pd.DataFrame({"link_id": ["a", "b", "c", "d"], "length_m": [1000.0, 500.0, 1000.0, 1000.0],
+                          "road_name": ["가로", "나로", "다로", "라로"]})
+    usual = {"a": 20.0, "b": 20.0, "c": 20.0}
+    live = {"a": 600.0, "b": 300.0, "c": 240.0, "d": 900.0}      # a 6km/h, b 6km/h, c 15km/h(75%, 제외), d 평소 없음
+    out = traffic.slow_links(links, live, usual)
+    assert [(s["link_id"], s["road_name"], s["extra_seconds"]) for s in out] == [("a", "가로", 420), ("b", "나로", 210)]
+    assert out[0]["live_kmh"] == 6.0 and out[0]["usual_kmh"] == 20.0
