@@ -9,6 +9,7 @@
 | `POST /api/bus/optimize` | 박성훈 | 챗봇, 발표 | 구현됨 (PR #1). 챗봇 연결됨. 실행 이력 저장(`run_id`, `db_saved`) 추가 |
 | `GET /api/bus/optimize/runs` | 박성훈 | 최적화 화면 | 구현됨 (park-next P-2) |
 | `GET /api/bus/backtest` | 박성훈 | 성능 비교 화면, 발표 | 구현됨 (park-next P-4) |
+| `GET /api/bus/traffic/alerts` · `/traffic/snapshots` | 박성훈 | 관제 화면 (챗봇은 아직) | 구현됨 (park-next P-9) |
 | `POST /api/bus/chat` | 오정훈 | 채팅 화면 | 구현됨 (예측·권고·규정·길안내·노선 정보·시뮬레이션·최적화) |
 | `POST /api/bus/guide` · `GET /api/bus/stops/search` | 오정훈 | 챗봇, 길안내 팝업 | 구현됨 |
 | `GET /api/bus/routes/{route}/info` | 오정훈 | 챗봇 | 구현됨 |
@@ -126,6 +127,35 @@ POST /api/bus/drift/{id}/review
 - **결정**: 담당자가 `approved`(승인) · `held`(보류) · `rejected`(반려)로 남기고 `retrain_review` 테이블에 기록합니다(같은 점검을 다시 결정하면 고침). 승인해도 **서버는 학습을 돌리지 않습니다**. 실행할 순서는 `next_steps`에 있습니다(권고일 때만).
 - 오류: 없는 `id` 404 · DB가 꺼져 결정을 못 남기면 503. 목록은 DB가 꺼져도 판정은 보여 주고 `review`만 `null`입니다.
 - 챗봇에서 설명할 때(오정훈): `reasons`가 판정 이유 문장, `metrics`의 숫자는 파일 그대로입니다.
+
+### 2-4. `GET /api/bus/traffic/alerts` · `GET /api/bus/traffic/snapshots` — 실시간 사고·정체 알림 (이슈 #42 방법 2, park-next P-9)
+
+```
+GET /api/bus/traffic/alerts?mode=live&routes=143,150
+GET /api/bus/traffic/alerts?mode=replay&snapshot=20261128_140000
+응답: {"source": "live", "fetched_at": "2026-11-28T14:00:00+09:00", "snapshot": "20261128_140000", "daytype": "saturday",
+       "routes": [{"route": "143",
+                   "incidents": [{"acc_id": "1112960", "type": "A01", "type_name": "교통사고", "dtype_name": "추돌사고",
+                                  "info": "…", "start": "2026-11-28T13:57:00+09:00", "expected_clear": "2026-11-28T18:00:00+09:00",
+                                  "lat": 37.5, "lng": 127.0, "distance_m": 40, "near_stop": {"seq": 31, "name": "…"}, "long_term": false}],
+                   "long_term": [...incidents와 같은 모양, 해제 예정이 7일보다 먼 것],
+                   "traffic": {"hour": 14, "links_total": 120, "links_used": 110, "coverage": 0.93,
+                               "live_minutes": 186.0, "usual_minutes": 141.0, "extra_minutes": 45.0,
+                               "usual_run": 284, "est_run": 329, "buses_usual": 46, "buses_est": 53, "authorized": 50,
+                               "fleet_short": true, "basis": "운행횟수는 그날 계획 … · 한 바퀴는 11/02 기준 시간대별 운행시간 표"},
+                   "messages": ["143번 경로에 추돌사고, 31번째 정류장(…) 근처", "평소보다 한 바퀴 약 45분 더 걸릴 수 있음 (차량 소통 기준)",
+                                "도로 위 버스 53대 필요 > 인가대수 50대 → 인가대수 부족 가능", "배차는 바꾸지 않았습니다. 담당자 검토 필요"]}],
+       "warnings": [], "ready": {"route_links": true, "link_speed": true, "api_key": true}, "needs_review": true}
+
+GET /api/bus/traffic/snapshots?limit=50
+응답: {"items": [{"name": "20261128_140000", "fetched_at": "2026-11-28T14:00:00+09:00", "incidents": 212, "links": 480}]}
+```
+
+- **배차는 바꾸지 않습니다.** 알림만 하고 `needs_review: true`. 3주 앞 계획(최적화·권고)에는 들어가지 않습니다.
+- `mode=live`: TOPIS(서울 열린데이터광장)에서 받음. 5분(`TOPIS_CACHE_SECONDS`) 안에는 직전 결과를 다시 쓰고, 받을 때마다 기록(`snapshot`)을 남깁니다. `mode=replay`: 받아 둔 기록을 읽음(`snapshot`이 없으면 가장 최근). 키가 없어도 됩니다. 화면은 `source: "replay"`이면 "지금 상황 아님"을 표시합니다.
+- `incidents`: 진행 중(발생 ≤ 받은 시각 ≤ 해제 예정)이고 경로에서 150m(`TOPIS_ACC_NEAR_M`) 안이거나 노선 링크 위인 돌발, 가까운 순.
+- `traffic`: 노선 ↔ 링크 표·평소 링크 속도 표가 없으면 `null`(`warnings`에 이유). `extra_minutes` = 받은 링크의 (지금 − 평소) 차량 통행시간 합, 0 이상. 링크 길이의 70%(`TOPIS_MIN_COVERAGE`) 미만만 받았으면 `null`. `usual_run`은 지금 계획이 가정한 P-7 시간대별 한 바퀴(없으면 고정 운행시간). "평소보다 한 바퀴 약 N분 더" 문장은 `extra_minutes`가 `usual_run`의 15%(`TOPIS_EXTRA_WARN_RATIO`) 이상일 때만. `fleet_short`는 추가 시간을 더한 도로 위 버스 대수가 인가대수를 넘을 때 `true`.
+- 오류: 키 없음·TOPIS 연결 실패·시간 초과 503(`detail`에 이유) · 없는 노선·기록 404 · 잘못된 `mode` 422.
 
 ## 3. `POST /api/bus/chat` — 배차 상담 챗봇 (F-25)
 
