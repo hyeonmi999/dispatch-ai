@@ -168,8 +168,6 @@ html.skin-c.night {
   --ink: #ededed; --ink2: #bdbdbd; --ink3: #9a9a9a; --on: #0a0a0a;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 18px rgba(0, 0, 0, 0.45);
 }
-html.skin-c .accent-pick { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--ink2); }
-html.skin-c .accent-pick select { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px; min-height: 30px; }
 /* c의 포인트색: 바탕으로 칠하는 곳은 fill + on 글자 (파스텔이면 연한 바탕에 검은 글자) */
 html.skin-c .segb button.on, html.skin-c .bbtn[aria-pressed='true'], html.skin-c .sum .tag { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }
 html.skin-c .segb button.mine.on { color: var(--on-accent); }
