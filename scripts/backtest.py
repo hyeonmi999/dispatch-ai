@@ -32,7 +32,10 @@ sys.path.insert(0, str(ROOT))
 
 import pandas as pd  # noqa: E402
 
-from app.config import BACKTEST_RESULT_PATH, BUS_OPT_WEIGHTS, BUS_TUNE_END, CONGESTION_HIGH, MODELS_DIR, PROCESSED_DIR  # noqa: E402
+from app.config import (  # noqa: E402
+    BACKTEST_RESULT_PATH, BUS_OPT_WEIGHTS, BUS_RUNTIME_LAG_DAYS, BUS_RUNTIME_WEEKS, BUS_TUNE_END, CONGESTION_HIGH, MODELS_DIR,
+    PROCESSED_DIR,
+)
 from app.domains.bus.advisor import BusAdvisor  # noqa: E402
 from app.domains.bus.backtest import (  # noqa: E402
     ALL_HOURS, METHOD_LABELS, actual_peaks, current_plan, decide, fleet_check, score_cells, summarize,
@@ -163,6 +166,10 @@ def main():
     print(f"\n노선·시간별 상세 저장: {detail_path.relative_to(ROOT)}")
 
     if dataset.mode == "real":
+        # 운행시간: 출발 시각별 표(이슈 #42)가 있으면 날짜마다 그 3주 전까지의 표, 없으면 노선 기본정보 고정값
+        runtime_note = (f"운행시간은 출발 시각별 한 바퀴 운행시간 표 (OA-21217, 날짜 D에는 기준일 ≤ D − {BUS_RUNTIME_LAG_DAYS}일, "
+                        f"최근 {BUS_RUNTIME_WEEKS}주 같은 요일유형 중앙값, 빈 칸은 고정값)"
+                        if dataset.runtime_table is not None else "운행시간은 노선 기본정보의 고정값 (시간대별 표 없음)")
         out = {
             "tune_window": span(tune), "eval_window": span(evaluation),
             "crowded_threshold": CONGESTION_HIGH,
@@ -179,6 +186,7 @@ def main():
                 "운행횟수는 예측값(승객 수 상한 포함)만으로 정하고, 혼잡도 채점에만 실제 승객을 사용",
                 "혼잡도는 실제 승차 × 구간 환산 비율 ÷ (운행횟수 × 정원). 운행횟수를 바꿔도 승객 수는 그대로라고 가정",
                 "인가대수 초과는 '최근 왕복 운행시간 동안 출발한 버스 수 > 인가대수'인 순간이 있는 노선·일",
+                runtime_note,
                 "새 초과는 현행에는 없던 초과. 현행이 이미 넘는 순간은 현행 값까지 허용",
                 "튜닝 구간 점수(weights_grid)는 가중치를 고르는 데만 쓰고 발표에는 쓰지 않음",
             ],

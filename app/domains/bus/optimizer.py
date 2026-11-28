@@ -13,6 +13,7 @@
 #   ② 버스 대수: 어느 시각이든 "도로 위에 있는 버스" ≤ 인가대수
 #      도로 위 버스 = 최근 왕복 운행시간 동안 출발한 버스 수 (출발한 버스는 한 바퀴 돌 때까지 못 씀).
 #      운행횟수가 계속 x로 같으면 x × 운행시간 ÷ 60과 같은 값입니다.
+#      운행시간은 출발 시각별 표(3주 전까지의 실측, 이슈 #42)가 있으면 그 값, 없으면 노선 기본정보의 고정값.
 #      시간대마다 따로 x × 운행시간 ÷ 60 ≤ 인가대수로 보면 실제 운행 기록의 약 15%가 위반으로 나오지만,
 #      이 방식으로는 거의 나오지 않아 실제와 맞습니다 (docs/decisions.md).
 #   현행 운행횟수는 항상 허용합니다. 첫차·막차 시간대처럼 현행이 ①②를 벗어나 있으면 그 값까지 범위를 넓힙니다.
@@ -97,14 +98,14 @@ def collect_inputs(advisor: BusAdvisor, table: dict, routes: list[str], date, ho
     out = {"routes": {}, "skipped": [], "daytype": None, "is_forecast": False, "date": pd.Timestamp(date).normalize()}
     for route in routes:
         current = [0] * HOURS_PER_DAY
-        cells, info = {}, None
+        cells, info, run = {}, None, None
         for hour in range(HOURS_PER_DAY):
             try:
                 state = advisor.hour_state(route, date, hour)
             except ValueError:
                 continue                              # 운행이 없는 시간대
             current[hour] = max(1, round(state["cur_trips"]))
-            info = state["info"]
+            info, run = state["info"], state.get("run")
             out["daytype"], out["is_forecast"] = state["day"]["daytype"], state["day"]["is_future"]
             if hour not in hours:
                 continue
@@ -132,7 +133,8 @@ def collect_inputs(advisor: BusAdvisor, table: dict, routes: list[str], date, ho
             "current": current, "cells": cells,
             "fleet": int(info.get("buses") or 0),
             "fleet_estimated": bool(info.get("buses_estimated", False)),
-            "run_minutes": int(round(float(info.get("run_minutes") or 0))),
+            # 정수(노선 기본정보 고정값) 또는 출발 시각별 24칸 (이슈 #42 표가 있을 때). fleet.py가 둘 다 받음
+            "run_minutes": run or int(round(float(info.get("run_minutes") or 0))),
         }
     return out
 

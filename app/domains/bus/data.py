@@ -10,11 +10,13 @@
 #   weather.parquet   기상청 ASOS 서울(108) 시간자료
 #   geo/<노선>.json   노선 경로·정류소 좌표 (scripts/fetch_route_geo.py)
 #   route_info        노선 기본정보 (배차간격, 최소/최대 배차, 운행시간)
+#   runtime_table.parquet 기준일별 시간대별 한 바퀴 운행시간 (scripts/build_runtime_table.py, 없어도 동작)
 #
 # wide 형식을 (날짜, 노선, 정류장, 시간) long 형식으로 바꿔 모델 입력으로 씁니다.
 # 원본에서 빈칸은 "그 시간대 0명"이고, 파일에 날짜 자체가 없으면 결측입니다.
 
 import json
+import logging
 from functools import cached_property
 from pathlib import Path
 
@@ -22,8 +24,12 @@ import numpy as np
 import pandas as pd
 
 from app.config import (
-    BUS_FLEET_OVERRIDES, BUS_ROUTES, BUS_SAMPLE_ROUTES, INTERIM_DIR, RAW_DIR, SAMPLE_DIR, resolve_data_mode,
+    BUS_FLEET_OVERRIDES, BUS_ROUTES, BUS_RUNTIME_TABLE, BUS_SAMPLE_ROUTES, INTERIM_DIR, RAW_DIR, SAMPLE_DIR,
+    resolve_data_mode,
 )
+from app.domains.bus import runtime
+
+logger = logging.getLogger(__name__)
 
 ROUTE_INFO_XLSX = RAW_DIR / "서울시버스노선기본정보(20260902).xlsx"
 DAYTYPE_SHEETS = {"weekday": "평일공동배차", "saturday": "토요일공동배차", "holiday": "공휴일공동배차"}
@@ -46,6 +52,7 @@ class BusDataset:
         self.mode = mode or resolve_data_mode()
         self.dir: Path = INTERIM_DIR if self.mode == "real" else SAMPLE_DIR
         self.routes = BUS_ROUTES if self.mode == "real" else BUS_SAMPLE_ROUTES
+        self._run_profiles: dict[tuple, list[int]] = {}
 
     def exists(self) -> bool:
         return all((self.dir / f).exists() for f in ["boarding.parquet", "dispatch.parquet", "weather.parquet"])
@@ -201,3 +208,40 @@ class BusDataset:
         if row.empty:
             row = info[info["route"] == route]
         return row.iloc[0].to_dict() if not row.empty else {}
+
+    # ------------------------------------------------
+    # 4. 시간대별 한 바퀴 운행시간 (이슈 #42)
+    # ------------------------------------------------
+
+    @cached_property
+    def runtime_table(self) -> pd.DataFrame | None:
+        """기준일별 시간대별 운행시간 표. 파일이 없거나 읽지 못하면 None (→ 고정 운행시간)"""
+        path = self.dir / BUS_RUNTIME_TABLE
+        if not path.exists():
+            return None
+        try:
+            table = pd.read_parquet(path)
+            table["asof"] = pd.to_datetime(table["asof"])
+            return table
+        except Exception as e:
+            logger.warning("운행시간 표를 읽지 못했습니다 (%s): %s", path, e)
+            return None
+
+    def run_profile(self, route: str, daytype: str, date, fixed) -> tuple[list[int], pd.Timestamp] | None:
+        """date의 계획에 쓸 기점 출발 시각별 한 바퀴 운행시간(분, 24칸)과 그 표의 기준일
+
+        기준일 ≤ date − 21일인 표만 씁니다(예측 시점 규칙). 빈 칸은 fixed(노선 기본정보 운행시간)로 채웁니다.
+        표·맞는 기준일·그 노선의 값이 없거나 fixed를 모르면 None → 부르는 쪽이 지금처럼 고정 운행시간을 씀.
+        """
+        table = self.runtime_table
+        fixed = float(fixed) if fixed is not None and pd.notna(fixed) else 0.0
+        asof = runtime.usable_asof(table, date)
+        if asof is None or fixed <= 0:
+            return None
+        key = (route, daytype, asof, fixed)
+        if key not in self._run_profiles:
+            values = runtime.profile(table, route, daytype, asof)
+            self._run_profiles[key] = (None if all(v is None for v in values)
+                                       else [int(round(v if v is not None else fixed)) for v in values])
+        minutes = self._run_profiles[key]
+        return (minutes, asof) if minutes is not None else None

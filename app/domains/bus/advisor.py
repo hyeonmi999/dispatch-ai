@@ -26,6 +26,7 @@ import pandas as pd
 from app.config import (
     BUS_CAPACITY,
     BUS_DEPARTURE_STOPS,
+    BUS_RUNTIME_WEEKS,
     CONGESTION_HIGH,
     CONGESTION_LEVELS,
     CONGESTION_LOW,
@@ -193,9 +194,13 @@ class BusAdvisor(Advisor):
         top = seg.loc[seg["congestion"].idxmax()]
         cur_trips = float(hrow["trips"])
         info = self.ds.route_info_for(route, day["daytype"])
+        # 출발 시각별 한 바퀴 운행시간 (3주 전까지의 실측 표, 이슈 #42). 없으면 None → 고정 운행시간
+        run = self.ds.run_profile(route, day["daytype"], day["date"], info.get("run_minutes"))
         return {
             "day": day, "segments": seg, "hourly": hrow, "top": top, "info": info,
             "cur_trips": cur_trips,
+            "run": run[0] if run else None,
+            "run_asof": run[1] if run else None,
             "min_interval": float(info.get("min_interval") or 3),
             "max_interval": float(info.get("max_interval") or 20),
         }
@@ -232,7 +237,7 @@ class BusAdvisor(Advisor):
 
         # 버스 대수: 이 시간대만 바꿨을 때 도로 위 버스가 가장 많은 순간 (배차 최적화와 같은 계산)
         authorized = int(info.get("buses") or 0)
-        run = int(round(run_minutes))
+        run = state["run"] or int(round(run_minutes))
         trips_now = departures_by_hour(day)
 
         def buses_for(trips: float) -> int:
@@ -275,6 +280,10 @@ class BusAdvisor(Advisor):
             f"현재 기점 출발 {cur_trips:.0f}회/시간 (약 {cur_interval:.1f}분 간격), 노선 기준 배차 {min_iv:.0f}~{max_iv:.0f}분",
             f"목표 혼잡도 {CONGESTION_TARGET} 기준 필요 운행 {needed}회/시간",
         ]
+        if state["run"]:
+            rationale.append(f"{hour}시 출발 버스의 한 바퀴 운행시간 약 {state['run'][hour]}분 "
+                             f"({state['run_asof']:%m/%d}까지 최근 {BUS_RUNTIME_WEEKS}주 같은 요일유형 실측 중앙값, "
+                             f"노선 기본정보 {run_minutes:.0f}분) → 필요 버스 대수에 반영")
         if limited_by == "인가대수":
             rationale.append(f"필요한 만큼 늘리면 버스가 인가대수({authorized}대)를 넘어, 그 안에서 가능한 만큼만 권고"
                              if action == "increase" else

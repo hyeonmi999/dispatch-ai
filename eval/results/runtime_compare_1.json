@@ -1,0 +1,272 @@
+{
+  "window": {
+    "start": "2026-09-29",
+    "end": "2026-11-01",
+    "days": 32
+  },
+  "runtime_rule": "날짜 D에는 기준일 ≤ D − 21일인 표, 최근 8주 같은 요일유형 중앙값",
+  "runtime_asof_used": [
+    "2026-09-06",
+    "2026-09-13",
+    "2026-09-20",
+    "2026-09-27",
+    "2026-10-04",
+    "2026-10-11"
+  ],
+  "route_days_with_profile": 160,
+  "weights": {
+    "overload": 10,
+    "trips": 1,
+    "change": 0
+  },
+  "by_route": {
+    "143": {
+      "fleet": 50,
+      "days": 32,
+      "current_max_on_road_fixed_mean": 42.8,
+      "current_max_on_road_timed_mean": 38.1,
+      "current_over_days_fixed": 0,
+      "current_over_days_timed": 0,
+      "fixed_plan_new_over_days_timed": 0,
+      "timed_plan_new_over_days_timed": 0,
+      "peak_hours": {
+        "7": {
+          "run_fixed": 230,
+          "run_timed_median": 243.0,
+          "buses_needed_fixed_mean": 43.0,
+          "buses_needed_timed_mean": 36.6
+        },
+        "8": {
+          "run_fixed": 230,
+          "run_timed_median": 244.0,
+          "buses_needed_fixed_mean": 39.7,
+          "buses_needed_timed_mean": 36.8
+        },
+        "17": {
+          "run_fixed": 230,
+          "run_timed_median": 261.0,
+          "buses_needed_fixed_mean": 31.8,
+          "buses_needed_timed_mean": 37.2
+        },
+        "18": {
+          "run_fixed": 230,
+          "run_timed_median": 243.0,
+          "buses_needed_fixed_mean": 31.9,
+          "buses_needed_timed_mean": 36.6
+        }
+      }
+    },
+    "150": {
+      "fleet": 50,
+      "days": 32,
+      "current_max_on_road_fixed_mean": 36.6,
+      "current_max_on_road_timed_mean": 36.6,
+      "current_over_days_fixed": 0,
+      "current_over_days_timed": 0,
+      "fixed_plan_new_over_days_timed": 0,
+      "timed_plan_new_over_days_timed": 0,
+      "peak_hours": {
+        "7": {
+          "run_fixed": 281,
+          "run_timed_median": 286.0,
+          "buses_needed_fixed_mean": 36.7,
+          "buses_needed_timed_mean": 36.1
+        },
+        "8": {
+          "run_fixed": 281,
+          "run_timed_median": 285.0,
+          "buses_needed_fixed_mean": 36.8,
+          "buses_needed_timed_mean": 36.1
+        },
+        "17": {
+          "run_fixed": 281,
+          "run_timed_median": 288.0,
+          "buses_needed_fixed_mean": 35.8,
+          "buses_needed_timed_mean": 36.6
+        },
+        "18": {
+          "run_fixed": 281,
+          "run_timed_median": 282.0,
+          "buses_needed_fixed_mean": 33.9,
+          "buses_needed_timed_mean": 35.6
+        }
+      }
+    },
+    "160": {
+      "fleet": 49,
+      "days": 32,
+      "current_max_on_road_fixed_mean": 32.4,
+      "current_max_on_road_timed_mean": 33.2,
+      "current_over_days_fixed": 0,
+      "current_over_days_timed": 0,
+      "fixed_plan_new_over_days_timed": 0,
+      "timed_plan_new_over_days_timed": 0,
+      "peak_hours": {
+        "7": {
+          "run_fixed": 261,
+          "run_timed_median": 267.0,
+          "buses_needed_fixed_mean": 32.5,
+          "buses_needed_timed_mean": 32.9
+        },
+        "8": {
+          "run_fixed": 261,
+          "run_timed_median": 267.0,
+          "buses_needed_fixed_mean": 32.6,
+          "buses_needed_timed_mean": 33.0
+        },
+        "17": {
+          "run_fixed": 261,
+          "run_timed_median": 268.0,
+          "buses_needed_fixed_mean": 32.1,
+          "buses_needed_timed_mean": 33.0
+        },
+        "18": {
+          "run_fixed": 261,
+          "run_timed_median": 266.0,
+          "buses_needed_fixed_mean": 32.0,
+          "buses_needed_timed_mean": 32.8
+        }
+      }
+    },
+    "271": {
+      "fleet": 46,
+      "days": 32,
+      "current_max_on_road_fixed_mean": 37.6,
+      "current_max_on_road_timed_mean": 36.4,
+      "current_over_days_fixed": 0,
+      "current_over_days_timed": 0,
+      "fixed_plan_new_over_days_timed": 15,
+      "timed_plan_new_over_days_timed": 0,
+      "peak_hours": {
+        "7": {
+          "run_fixed": 236,
+          "run_timed_median": 238.0,
+          "buses_needed_fixed_mean": 38.1,
+          "buses_needed_timed_mean": 36.1
+        },
+        "8": {
+          "run_fixed": 236,
+          "run_timed_median": 240.0,
+          "buses_needed_fixed_mean": 38.1,
+          "buses_needed_timed_mean": 36.4
+        },
+        "17": {
+          "run_fixed": 236,
+          "run_timed_median": 243.0,
+          "buses_needed_fixed_mean": 33.5,
+          "buses_needed_timed_mean": 35.5
+        },
+        "18": {
+          "run_fixed": 236,
+          "run_timed_median": 238.0,
+          "buses_needed_fixed_mean": 32.8,
+          "buses_needed_timed_mean": 34.7
+        }
+      }
+    },
+    "272": {
+      "fleet": 41,
+      "days": 32,
+      "current_max_on_road_fixed_mean": 38.1,
+      "current_max_on_road_timed_mean": 33.5,
+      "current_over_days_fixed": 0,
+      "current_over_days_timed": 0,
+      "fixed_plan_new_over_days_timed": 0,
+      "timed_plan_new_over_days_timed": 0,
+      "peak_hours": {
+        "7": {
+          "run_fixed": 195,
+          "run_timed_median": 191.0,
+          "buses_needed_fixed_mean": 38.3,
+          "buses_needed_timed_mean": 32.8
+        },
+        "8": {
+          "run_fixed": 195,
+          "run_timed_median": 190.0,
+          "buses_needed_fixed_mean": 38.3,
+          "buses_needed_timed_mean": 32.6
+        },
+        "17": {
+          "run_fixed": 195,
+          "run_timed_median": 202.0,
+          "buses_needed_fixed_mean": 31.4,
+          "buses_needed_timed_mean": 31.0
+        },
+        "18": {
+          "run_fixed": 195,
+          "run_timed_median": 188.0,
+          "buses_needed_fixed_mean": 32.2,
+          "buses_needed_timed_mean": 31.1
+        }
+      }
+    }
+  },
+  "fleet": {
+    "current_measured_fixed": {
+      "route_days": 160,
+      "over_days": 0,
+      "new_over_days": 0
+    },
+    "current_measured_timed": {
+      "route_days": 160,
+      "over_days": 0,
+      "new_over_days": 0
+    },
+    "fixed_plan_measured_fixed": {
+      "route_days": 160,
+      "over_days": 0,
+      "new_over_days": 0
+    },
+    "fixed_plan_measured_timed": {
+      "route_days": 160,
+      "over_days": 15,
+      "new_over_days": 15
+    },
+    "timed_plan_measured_timed": {
+      "route_days": 160,
+      "over_days": 0,
+      "new_over_days": 0
+    }
+  },
+  "plans": {
+    "current": {
+      "cells": 3103,
+      "route_days": 160,
+      "overcrowded_cells": 641,
+      "overcrowded_pct": 20.66,
+      "total_trips": 24806.0,
+      "trips_vs_current_pct": 0.0,
+      "changed_cells": 0,
+      "fleet_over_days": 0,
+      "fleet_over_new_days": 0
+    },
+    "fixed_plan": {
+      "cells": 3103,
+      "route_days": 160,
+      "overcrowded_cells": 266,
+      "overcrowded_pct": 8.57,
+      "total_trips": 25171.0,
+      "trips_vs_current_pct": 1.47,
+      "changed_cells": 1715,
+      "fleet_over_days": 15,
+      "fleet_over_new_days": 15
+    },
+    "timed_plan": {
+      "cells": 3103,
+      "route_days": 160,
+      "overcrowded_cells": 251,
+      "overcrowded_pct": 8.09,
+      "total_trips": 25196.0,
+      "trips_vs_current_pct": 1.57,
+      "changed_cells": 1722,
+      "fleet_over_days": 0,
+      "fleet_over_new_days": 0
+    }
+  },
+  "notes": [
+    "plans의 인가대수 초과(fleet_over_*)는 세 계획 모두 시간대별 운행시간으로 잰 값",
+    "새 초과(new_over) = 현행에는 없던 초과. 현행이 이미 넘는 순간은 현행 값까지 허용 (backtest.py와 같은 기준)",
+    "과밀은 실제 승객 기준 최대 혼잡도 0.8 이상인 노선·시간 비율 (backtest.py와 같은 채점)",
+    "peak_hours의 필요 버스 수는 현행 운행횟수를 그대로 둘 때 그 시각 출발이 영향을 주는 동안의 최대 대수"
+  ]
+}
