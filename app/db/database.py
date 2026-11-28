@@ -132,6 +132,21 @@ class OptimizationRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+
+class RetrainReview(Base):
+    """예측 오차 점검 결과(eval/results/drift/<check_id>.json)에 대한 담당자 결정 (요청 R-3).
+    판정 숫자는 파일에 있고, 여기에는 사람의 결정만 남김. 같은 점검을 다시 결정하면 그 줄을 고침"""
+    __tablename__ = "retrain_review"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    domain: Mapped[str] = mapped_column(String(30), index=True)
+    check_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)   # forward_2026-11-02_2026-11-08
+    verdict: Mapped[str] = mapped_column(String(20), default="")                  # 결정 당시의 판정 (retrain / ok / insufficient)
+    status: Mapped[str] = mapped_column(String(20), default="")                   # approved / held / rejected
+    reviewer: Mapped[str] = mapped_column(String(50), default="")
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
 # ==================================================
 # Engine / Session
 # ==================================================

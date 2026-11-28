@@ -41,6 +41,8 @@ export const api = {
   optimize: (body) => http.post('/bus/optimize', body).then((r) => r.data),
   optimizeRuns: (limit = 10) => http.get('/bus/optimize/runs', { params: { limit } }).then((r) => r.data),
   backtest: () => http.get('/bus/backtest').then((r) => r.data),
+  drift: (limit = 20) => http.get('/bus/drift', { params: { limit } }).then((r) => r.data),
+  reviewDrift: (id, body) => http.post(`/bus/drift/${encodeURIComponent(id)}/review`, body).then((r) => r.data),
   advisoryBatches: (domain) => http.get('/advisories/batches', { params: { domain, limit: 30 } }).then((r) => r.data),
   advisoryBatch: (id) => http.get(`/advisories/batches/${id}`).then((r) => r.data),
   advisory: (id) => http.get(`/advisories/${id}`).then((r) => r.data),

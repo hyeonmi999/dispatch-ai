@@ -16,7 +16,7 @@ def _example_keys(title: str) -> set[str]:
     start = text.index(title)
     open_ = text.index("```", start)
     close = text.index("```", open_ + 3)
-    return set(re.findall(r'"([a-z_]+)":', text[open_ + 3:close]))
+    return set(re.findall(r'"([a-z][a-z0-9_]*)":', text[open_ + 3:close]))
 
 
 def _schema_fields(model: type[BaseModel]) -> set[str]:
@@ -34,6 +34,7 @@ def _schema_fields(model: type[BaseModel]) -> set[str]:
 @pytest.mark.parametrize("title, request_model, response_model", [
     ("## 1. `POST /api/bus/simulate`", S.BusSimulateRequest, S.BusSimulateResponse),
     ("## 2. `POST /api/bus/optimize`", S.BusOptimizeRequest, S.BusOptimizeResponse),
+    ("### 2-3. `GET /api/bus/drift`", S.BusDriftReviewRequest, S.BusDriftList),
 ])
 def test_contract_example_matches_schema(title, request_model, response_model):
     documented = _example_keys(title)

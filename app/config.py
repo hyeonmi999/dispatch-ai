@@ -38,6 +38,7 @@ VECTORSTORE_DIR = ROOT / "vectorstore"
 HF_CACHE_DIR = ROOT / "hf_models"
 EVAL_RESULTS_DIR = ROOT / "eval" / "results"
 BACKTEST_RESULT_PATH = EVAL_RESULTS_DIR / "backtest.json"   # 배차 방식 성능 비교 (scripts/backtest.py가 만듦, F-14)
+DRIFT_RESULTS_DIR = EVAL_RESULTS_DIR / "drift"              # 예측 오차 점검 결과 (scripts/check_drift.py가 만듦, 요청 R-3)
 
 # 모델(Qwen3, bge-m3)을 한 번 받아 두면 Hugging Face Hub 접속 없이 로컬 캐시만 사용
 # (Hub 확인 요청·safetensors 변환 스레드 때문에 시작/종료가 지연되는 문제 방지)
@@ -179,6 +180,20 @@ BUS_OPT_WEIGHTS = {"overload": 10, "trips": 1, "change": 0}
 BUS_OPT_TIME_LIMIT_SEC = 10          # 풀이 시간 제한
 BUS_OPT_SEED = 42
 OPTIMIZE_RUNS_LIMIT = 20               # GET /api/bus/optimize/runs 기본 개수 (최대 LIST_LIMIT_MAX)
+
+# 예측 오차 점검 → 재학습 권고 (요청 R-3, docs/plans/park-next.md Task P-5). 셋 중 하나라도 걸리면 권고, 결정은 담당자
+DRIFT_MAE_RATIO = 1.2               # 주간 정류장·시간 MAE가 평가 MAE(metrics.json stop_hour)의 이 배수를 넘으면
+DRIFT_P90_COVERAGE_MIN = 85.0       # 노선·시간 합계가 P90 상한 이하인 비율(%)이 이보다 낮으면 (평가 구간 합격 범위 88~92%)
+DRIFT_MIN_DAYS = 3                  # 실측이 있는 날이 이보다 적으면 판정 보류
+DRIFT_LIST_LIMIT = 20               # GET /api/bus/drift 기본 개수
+DRIFT_RETRAIN_STEPS = [
+    "학습 구간을 새 실측까지 옮길지 정하기: app/config.py의 BUS_VALID_START·BUS_TUNE_END (옮기면 평가 구간이 바뀌어 성능 비교·오차 설명을 다시 채점해야 함)",
+    "python scripts/train_bus.py --mode real",
+    "python scripts/calibrate_p90.py",
+    "python scripts/backtest.py",
+    "python scripts/explain_prediction_error.py --name <다음 번호>",
+    "서버 재시작",
+]
 
 # 길안내 (app/domains/bus/guide.py)
 GUIDE_WALK_M = 500             # 이 거리 안의 정류장을 출발 후보로 봄 (걸어서 약 7분)
