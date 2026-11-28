@@ -241,6 +241,10 @@
           <DriftPanel />
         </template>
 
+        <template #traffic>
+          <TrafficPanel :selected-route="selected" @select-route="(r) => (selected = r)" />
+        </template>
+
         <template #documents>
           <DocumentAdminPanel v-if="documentRole === 'admin'" :role="documentRole" />
         </template>
@@ -288,6 +292,7 @@ import MetricsCard from './MetricsCard.vue'
 import OptimizePanel from './OptimizePanel.vue'
 import PanelGrid from './PanelGrid.vue'
 import StatusPanel from './StatusPanel.vue'
+import TrafficPanel from './TrafficPanel.vue'
 import StopChart from './StopChart.vue'
 import WhatIfPanel from './WhatIfPanel.vue'
 
@@ -539,6 +544,7 @@ const metas = computed(() => ({
   metrics: '검증 구간',
   backtest: '지난 기록으로 채점',
   drift: '예측 vs 나중 실측 · 결정은 담당자',
+  traffic: 'TOPIS 실시간 · 배차는 바꾸지 않음',
 }))
 
 // 기본 날짜: 오늘(예측 범위 안이면), 아니면 실측 마지막 날 이전의 가장 최근 화요일

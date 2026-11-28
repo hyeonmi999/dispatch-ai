@@ -42,6 +42,9 @@ export const api = {
   optimizeRuns: (limit = 10) => http.get('/bus/optimize/runs', { params: { limit } }).then((r) => r.data),
   backtest: () => http.get('/bus/backtest').then((r) => r.data),
   drift: (limit = 20) => http.get('/bus/drift', { params: { limit } }).then((r) => r.data),
+  // 실시간 사고·정체 (TOPIS). mode: live | replay. 배차는 바꾸지 않음
+  trafficAlerts: (params) => http.get('/bus/traffic/alerts', { params, timeout: 60000 }).then((r) => r.data),
+  trafficSnapshots: (limit = 50) => http.get('/bus/traffic/snapshots', { params: { limit } }).then((r) => r.data),
   reviewDrift: (id, body) => http.post(`/bus/drift/${encodeURIComponent(id)}/review`, body).then((r) => r.data),
   advisoryBatches: (domain) => http.get('/advisories/batches', { params: { domain, limit: 30 } }).then((r) => r.data),
   advisoryBatch: (id) => http.get(`/advisories/batches/${id}`).then((r) => r.data),
