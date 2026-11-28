@@ -4,6 +4,8 @@
 - OA-21219 노선별 정류장별 승차 승객수 (1일 1시간 단위)
 - OA-21220 노선별 정류장별 버스 운행횟수 (1일 1시간 단위)
 - OA-21218 노선별 정류장 구간별 승객수(재차인원) (1일 1시간 단위)
+- OA-21217 노선별 정류장 구간별 평균 운행시간 (1일 1시간 단위, 초) → scripts/build_runtime_table.py
+  기본 실행(--datasets 생략)에는 들어가지 않습니다. 따로 받을 때만 --datasets OA-21217
 
 zip 하나씩 받아서 대상 노선만 걸러 parquet 조각으로 저장하고, 원본 zip은 바로 삭제합니다.
 조각이 이미 있으면 건너뛰므로 중간에 끊겨도 다시 실행하면 이어서 받습니다.
@@ -17,6 +19,8 @@ zip 하나씩 받아서 대상 노선만 걸러 parquet 조각으로 저장하�
         --min-date 20240826 --max-date 20250928 --suffix _history
     # 새로 공개된 주만 기존 parquet에 추가 (주간 파일은 매주 월요일 공개)
     python scripts/download_seoul_bus.py --seqs 261109 --append
+    # 구간 운행시간 (시간대별 한 바퀴 운행시간 표용, 이슈 #42)
+    python scripts/download_seoul_bus.py --datasets OA-21217
 """
 
 import argparse
@@ -49,6 +53,9 @@ MONTHLY_SEQS = ["2509", "2510", "2511", "2512", "2601", "2602", "2603",
                 "2604", "2605", "2606", "2607", "2608"]
 WEEKLY_SEQS = ["260907", "260914", "260921", "260928",
                "261005", "261012", "261019", "261026", "261102", "261109"]
+# OA-21217은 공개 일정이 달라 seq가 다름 (2026-11-28 목록 기준, 261123 = 11/09~11/15 주)
+RUNTIME_SEQS = ["2605", "2606", "2607", "2608", "2609",
+                "261005", "261012", "261019", "261026", "261102", "261109", "261116", "261123"]
 
 DATASETS = {
     "OA-21219": {"name": "boarding", "seqs": MONTHLY_SEQS + WEEKLY_SEQS,
@@ -57,7 +64,11 @@ DATASETS = {
                  "key": ["기준_날짜", "노선_ID", "정류장_ID"]},
     "OA-21218": {"name": "section", "seqs": WEEKLY_SEQS,
                  "key": ["기준_날짜", "노선_ID", "출발_정류장_ID", "도착_정류장_ID"]},
+    # 구간 운행시간: 학습·튜닝 구간(2026-09~)의 3주 앞 계획에 쓰려면 그 8주 전(6월)부터 필요
+    "OA-21217": {"name": "runtime", "seqs": RUNTIME_SEQS,
+                 "key": ["기준_날짜", "노선_ID", "출발_정류장_ID", "도착_정류장_ID"]},
 }
+DEFAULT_DATASETS = ["OA-21219", "OA-21220", "OA-21218"]   # 기본 실행에서 받는 것 (OA-21217은 따로)
 
 ID_COLS = {"기준_날짜", "노선_ID", "정류장_ID", "출발_정류장_ID", "도착_정류장_ID"}
 MIN_DATE = "20250929"  # 2025-10을 포함하는 첫 주(월요일)
@@ -162,7 +173,7 @@ def merge_parts(inf_id, route_ids, seqs, min_date=MIN_DATE, max_date="99999999",
 def main():
     parser = argparse.ArgumentParser(description="서울 버스 승객/운행 데이터 다운로드")
     parser.add_argument("--routes", nargs="+", default=DEFAULT_ROUTES, help="노선번호 (예: 143 272)")
-    parser.add_argument("--datasets", nargs="+", default=list(DATASETS), choices=list(DATASETS))
+    parser.add_argument("--datasets", nargs="+", default=DEFAULT_DATASETS, choices=list(DATASETS))
     parser.add_argument("--seqs", nargs="+", default=None, help="받을 파일 seq (월간 YYMM / 주간 YYMMDD). 기본: 데이터셋별 설정")
     parser.add_argument("--min-date", default=MIN_DATE)
     parser.add_argument("--max-date", default="99999999")

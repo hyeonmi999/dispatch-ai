@@ -163,6 +163,18 @@ CONGESTION_TARGET = 0.70   # 권고 간격 계산 시 목표 혼잡도
 CONGESTION_CUT_MAX = 0.60  # 최적화의 감차 조건: 줄인 뒤에도 상한 기준 혼잡도가 이 값 이하일 때만 줄임
 #   목표(0.7)와 같게 두면 튜닝 구간에서 감차한 918칸 중 30칸이 실제로 과밀이 됨. 0.6이면 607칸 중 3칸 (docs/decisions.md)
 
+# 시간대별 한 바퀴 운행시간 (이슈 #42 방법 1, docs/plans/park-next.md Task P-7)
+#   OA-21217 구간 운행시간(N시 = 그 구간을 지난 시각)으로 기점 출발 시각별 한 바퀴 시간을 만들어
+#   도로 위 버스 대수(fleet.py)에 씀. 표가 없거나 칸이 비면 노선 기본정보의 고정 운행시간
+#   만들기: bash scripts/build_runtime_table.sh  (→ data/interim/runtime_table.parquet)
+BUS_RUNTIME_TABLE = "runtime_table.parquet"   # INTERIM_DIR 아래 (커밋 제외)
+BUS_RUNTIME_TRIPS = "runtime_trip.parquet"    # 하루별 한 바퀴 시간 (표의 원재료)
+BUS_RUNTIME_WEEKS = 8            # 표 한 칸 = 기준일까지 최근 8주, 같은 요일유형·출발 시각의 중앙값
+BUS_RUNTIME_MIN_DAYS = 3         # 중앙값에 쓴 날이 이보다 적으면 그 칸은 비움 (→ 고정 운행시간)
+BUS_RUNTIME_LAG_DAYS = 21        # 날짜 D에는 기준일 ≤ D − 21일인 표만 씀 (3주 앞 계획의 예측 시점 규칙)
+BUS_RUNTIME_START_MINUTE = 30    # 'N시 출발'을 N시 30분에 떠난 버스로 따라가며 구간 시간을 더함
+BUS_RUNTIME_MAX_FILL = 0.2       # 그 시간대 기록이 없어 구간 하루 평균으로 채운 구간이 이 비율을 넘으면 그날 값은 버림
+
 # 검증 구간(BUS_VALID_START ~ 실측 마지막 날)을 둘로 나눔: 앞쪽에서 값을 고르고 뒤쪽에서는 채점만
 BUS_TUNE_END = "2026-09-28"          # 이 날짜까지 튜닝 구간, 다음 날부터 평가 구간
 
