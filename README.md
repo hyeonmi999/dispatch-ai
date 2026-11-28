@@ -219,7 +219,7 @@ python scripts/fetch_network_stops.py        # → data/interim/network/stops.pa
 | 키만 있고 묶음 없음 | ✅ 사고만 | ✅ | ✅ | ✕ → 아래 두 스크립트 실행 | ✕ → 같음 |
 | 예전 묶음(11/28 오후, 구간 표 없음) | 묶음대로 | 묶음대로 | ✅ | ✅ | ✕ → 새 묶음을 받거나 키로 `build_topis_links.sh` |
 
-**키가 없는 PC (팀원)**: 박성훈이 올린 묶음 `dispatch-ai-topis-<날짜>.tar.gz`를 프로젝트 루트에서 풀고 서버를 다시 띄웁니다.
+**키가 없는 PC (팀원)**: [Release `topis-data-20261128`](https://github.com/hyeonmi999/dispatch-ai/releases/tag/topis-data-20261128)의 묶음 `dispatch-ai-topis-20261128.tar.gz`를 받아 프로젝트 루트에서 풀고 서버를 다시 띄웁니다.
 ```bash
 tar -xzf dispatch-ai-topis-20261128.tar.gz   # → data/interim/topis/ (평소 속도·링크 대응표·구간 표·기록)
 ```
