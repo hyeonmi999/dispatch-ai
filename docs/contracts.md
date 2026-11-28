@@ -143,9 +143,12 @@ GET /api/bus/traffic/alerts?mode=replay&snapshot=20261128_140000
                                "live_minutes": 186.0, "usual_minutes": 141.0, "extra_minutes": 45.0,
                                "usual_run": 284, "est_run": 329, "buses_usual": 46, "buses_est": 53, "authorized": 50,
                                "fleet_short": true, "basis": "운행횟수는 그날 계획 … · 한 바퀴는 11/02 기준 시간대별 운행시간 표"},
+                   "segments": [{"seq": 14, "ratio": 0.62, "length_m": 480}],
+                   "slow_links": [{"link_id": "1000019400", "road_name": "창경궁로", "length_m": 560,
+                                   "live_kmh": 7.3, "usual_kmh": 16.5, "extra_seconds": 153}],
                    "messages": ["143번 경로에 추돌사고, 31번째 정류장(…) 근처", "평소보다 한 바퀴 약 45분 더 걸릴 수 있음 (차량 소통 기준)",
                                 "도로 위 버스 53대 필요 > 인가대수 50대 → 인가대수 부족 가능", "배차는 바꾸지 않았습니다. 담당자 검토 필요"]}],
-       "warnings": [], "ready": {"route_links": true, "link_speed": true, "api_key": true}, "needs_review": true}
+       "warnings": [], "ready": {"route_links": true, "link_speed": true, "route_segments": true, "api_key": true}, "needs_review": true}
 
 GET /api/bus/traffic/snapshots?limit=50
 응답: {"items": [{"name": "20261128_140000", "fetched_at": "2026-11-28T14:00:00+09:00", "incidents": 212, "links": 480}]}
@@ -155,6 +158,9 @@ GET /api/bus/traffic/snapshots?limit=50
 - `mode=live`: TOPIS(서울 열린데이터광장)에서 받음. 5분(`TOPIS_CACHE_SECONDS`) 안에는 직전 결과를 다시 쓰고, 받을 때마다 기록(`snapshot`)을 남깁니다. `mode=replay`: 받아 둔 기록을 읽음(`snapshot`이 없으면 가장 최근). 키가 없어도 됩니다. 화면은 `source: "replay"`이면 "지금 상황 아님"을 표시합니다.
 - `incidents`: 진행 중(발생 ≤ 받은 시각 ≤ 해제 예정)이고 경로에서 150m(`TOPIS_ACC_NEAR_M`) 안이거나 노선 링크 위인 돌발, 가까운 순.
 - `traffic`: 노선 ↔ 링크 표·평소 링크 속도 표가 없으면 `null`(`warnings`에 이유). `extra_minutes` = 받은 링크의 (지금 − 평소) 차량 통행시간 합, 0 이상. 링크 길이의 70%(`TOPIS_MIN_COVERAGE`) 미만만 받았으면 `null`. `usual_run`은 지금 계획이 가정한 P-7 시간대별 한 바퀴(없으면 고정 운행시간). "평소보다 한 바퀴 약 N분 더" 문장은 `extra_minutes`가 `usual_run`의 15%(`TOPIS_EXTRA_WARN_RATIO`) 이상일 때만. `fleet_short`는 추가 시간을 더한 도로 위 버스 대수가 인가대수를 넘을 때 `true`.
+- `segments` (2026-11-28 추가, 지도 도로 교통 띠): 정류장 구간(`/routes/{route}/geometry`의 `segments[].seq`, 상·하행 모두)마다 `ratio` = 지금 차량 속도 ÷ 평소 같은 요일유형·시간대 속도. 그 구간에 걸친 링크 길이(× 구간 비율)로 가중하고, 지금·평소 값을 모두 받은 링크 길이가 50m(`TOPIS_SEGMENT_MIN_M`) 미만인 구간은 빠집니다. 링크 ↔ 구간 표(`route_link_segments.parquet`, `scripts/build_topis_links.sh`)가 없으면 빈 목록이고 `warnings`에 이유. 화면은 0.85·0.67·0.5 아래를 노랑·주황·빨강 띠로 그리고, 상·하행 중 더 느린 쪽을 씁니다.
+- `slow_links` (2026-11-28 추가): 지금 속도가 평소의 ⅔(`TOPIS_SLOW_RATIO`) 아래인 노선 링크, 평소보다 더 걸리는 초(`extra_seconds`)가 큰 순으로 최대 5개(`TOPIS_SLOW_LINKS_TOP`). 표가 없으면 빈 목록.
+- `ready.route_segments`: 링크 ↔ 구간 표가 있는지.
 - 오류: 키 없음·TOPIS 연결 실패·시간 초과 503(`detail`에 이유) · 없는 노선·기록 404 · 잘못된 `mode` 422.
 
 ## 3. `POST /api/bus/chat` — 배차 상담 챗봇 (F-25)

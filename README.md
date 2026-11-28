@@ -207,30 +207,33 @@ python scripts/fetch_network_stops.py        # → data/interim/network/stops.pa
 받은 뒤 서버를 다시 띄우면 적용됩니다. 혼잡도는 여전히 5개 노선에만 나오고, 나머지 노선은 배차간격·대략의 시간만 안내합니다.
 
 ### 3-3-2. (선택) 관제 화면의 실시간 돌발·정체 (TOPIS)
-관제 탭의 "실시간 돌발·정체" 패널은 서울 TOPIS의 실시간 사고·공사·행사와 도로 소통으로 "143번 경로에 사고", "평소보다 한 바퀴 약 N분 더"(평소 한 바퀴의 15% 이상일 때), "인가대수 부족 가능"을 알립니다. **배차는 바꾸지 않습니다.** 받은 실시간 값은 기록으로 남아 나중에 "기록 다시 보기"로 같은 화면을 다시 볼 수 있습니다(시연용).
+관제 탭의 "실시간 돌발·정체" 패널은 서울 TOPIS의 실시간 사고·공사·행사와 도로 소통으로 "143번 경로에 사고", "평소보다 한 바퀴 약 N분 더"(평소 한 바퀴의 15% 이상일 때), "인가대수 부족 가능"을 알립니다. 같은 값으로 **노선 지도**에도 노선 선 아래 **도로 교통** 띠(평소 같은 시간 대비 속도: 노랑 85% 아래 · 주황 ⅔ 아래 · 빨강 절반 아래, 평소대로면 띠 없음)와 돌발 표식이 나옵니다. 지도 오른쪽 위 "실시간 표시"에서 끄고 켭니다. **배차는 바꾸지 않습니다.** 받은 실시간 값은 기록으로 남아 나중에 "기록 다시 보기"로 같은 화면을 다시 볼 수 있습니다(시연용).
 
 **키가 없어도 됩니다.** 무엇이 되는지는 갖춘 파일에 따라 다릅니다.
 
-| 갖춘 것 | 실시간 | 기록 다시 보기 | 사고 표시 | 한 바퀴 추가 시간·인가대수 경고 |
-|---|---|---|---|---|
-| 아무것도 없음 | ✕ (패널에 "키가 필요합니다" 안내) | ✕ ("받아 둔 기록이 없습니다") | ✕ | ✕ |
-| 팀 공유 묶음만 풀기 (키 없음) | ✕ | ✅ 묶음에 든 기록 | ✅ | ✅ |
-| 묶음 + `.env`에 `SEOUL_OPEN_API_KEY` | ✅ (받을 때마다 기록도 남음) | ✅ | ✅ | ✅ |
-| 키만 있고 묶음 없음 | ✅ 사고만 | ✅ | ✅ | ✕ → 아래 두 스크립트 실행 |
+| 갖춘 것 | 실시간 | 기록 다시 보기 | 사고 표시 | 한 바퀴 추가 시간·인가대수 경고 | 지도 도로 교통 띠 |
+|---|---|---|---|---|---|
+| 아무것도 없음 | ✕ (패널에 "키가 필요합니다" 안내) | ✕ ("받아 둔 기록이 없습니다") | ✕ | ✕ | ✕ |
+| 팀 공유 묶음만 풀기 (키 없음) | ✕ | ✅ 묶음에 든 기록 | ✅ | ✅ | ✅ |
+| 묶음 + `.env`에 `SEOUL_OPEN_API_KEY` | ✅ (받을 때마다 기록도 남음) | ✅ | ✅ | ✅ | ✅ |
+| 키만 있고 묶음 없음 | ✅ 사고만 | ✅ | ✅ | ✕ → 아래 두 스크립트 실행 | ✕ → 같음 |
+| 예전 묶음(11/28 오후, 구간 표 없음) | 묶음대로 | 묶음대로 | ✅ | ✅ | ✕ → 새 묶음을 받거나 키로 `build_topis_links.sh` |
 
 **키가 없는 PC (팀원)**: 박성훈이 올린 묶음 `dispatch-ai-topis-<날짜>.tar.gz`를 프로젝트 루트에서 풀고 서버를 다시 띄웁니다.
 ```bash
-tar -xzf dispatch-ai-topis-20261128.tar.gz   # → data/interim/topis/ (평소 속도·링크 대응표·기록)
+tar -xzf dispatch-ai-topis-20261128.tar.gz   # → data/interim/topis/ (평소 속도·링크 대응표·구간 표·기록)
 ```
 관제 탭 패널에서 **기록 다시 보기**를 누르면 됩니다. 화면에 "기록 시각 — 지금 상황 아님"이 함께 나옵니다. 평소 속도 표만 새로 만들고 싶으면 키 없이 `bash scripts/build_topis_speed.sh`(TOPIS 자료실 월별 파일, 달마다 약 35MB)를 실행해도 됩니다.
 
 **키가 있는 PC**: 서울 열린데이터광장(data.seoul.go.kr) → 이용 안내 → Open API 소개 → **「인증키 신청 - 일반」**으로 받은 키를 `.env`의 `SEOUL_OPEN_API_KEY`에 넣습니다(공공데이터포털 키와 다른 키, 데이터셋별 신청 없음).
 ```bash
 bash scripts/build_topis_speed.sh     # 평소 링크 속도 (키 없음, 약 30초) → data/interim/topis/link_speed.parquet
-bash scripts/build_topis_links.sh     # 노선 ↔ 링크 대응표 (키 필요, 링크 5,075개 약 1분) → route_links.parquet
+bash scripts/build_topis_links.sh     # 노선 ↔ 링크 대응표 + 링크 ↔ 정류장 구간 표 (키 필요, 링크 5,075개 약 1분) → route_links.parquet, route_link_segments.parquet
+bash scripts/build_topis_links.sh --segments-only   # (키 없이) 받아 둔 꼭짓점으로 구간 표만 다시 만듦 (노선 좌표가 바뀌었을 때)
 bash scripts/record_topis.sh --every 5 --minutes 60   # (선택) 서버 없이 시연용 기록 모으기
 tar -czf dispatch-ai-topis-$(date +%Y%m%d).tar.gz data/interim/topis/link_speed.parquet data/interim/topis/links.parquet \
-    data/interim/topis/route_links.parquet data/interim/topis/route_links_summary.json data/interim/topis/snapshots   # 팀 공유 묶음 (키 없음)
+    data/interim/topis/route_links.parquet data/interim/topis/route_link_segments.parquet data/interim/topis/route_links_summary.json \
+    data/interim/topis/snapshots   # 팀 공유 묶음 (키 없음)
 ```
 Windows는 같은 이름의 `.ps1`을 씁니다. 기록·묶음에는 키가 들어가지 않습니다.
 
