@@ -452,17 +452,35 @@ class BusTrafficRun(BaseModel):
     basis: str | None = Field(None, description="운행횟수·운행시간을 어디서 가져왔는지")
 
 
+class BusTrafficSegment(BaseModel):
+    seq: int = Field(..., description="정류장 구간 순번 (geometry의 segments[].seq)")
+    ratio: float = Field(..., description="지금 차량 속도 ÷ 평소 속도 (1이면 평소대로, 0.5면 절반)")
+    length_m: int = Field(..., description="이 구간에서 값을 받은 링크 길이 합(m)")
+
+
+class BusTrafficSlowLink(BaseModel):
+    link_id: str
+    road_name: str
+    length_m: int
+    live_kmh: float = Field(..., description="지금 차량 속도")
+    usual_kmh: float = Field(..., description="평소 같은 요일유형·시간대 속도")
+    extra_seconds: int = Field(..., description="이 링크에서 평소보다 더 걸리는 시간(초)")
+
+
 class BusTrafficRoute(BaseModel):
     route: str
     incidents: list[BusTrafficIncident] = Field(..., description="경로 위의 진행 중인 돌발 (가까운 순)")
     long_term: list[BusTrafficIncident] = Field(..., description="경로 위의 장기 공사 등 (평소 운행시간에 이미 들어 있음)")
     traffic: BusTrafficRun | None = Field(None, description="정체 추정. 링크·평소 속도 표가 없으면 null")
+    segments: list[BusTrafficSegment] = Field(default_factory=list, description="정류장 구간별 소통 (지도 소통 띠). 표가 없으면 빈 목록")
+    slow_links: list[BusTrafficSlowLink] = Field(default_factory=list, description="평소 속도의 ⅔ 아래인 링크, 더 늦어지는 순 (최대 5개)")
     messages: list[str] = Field(..., description="화면에 보여 줄 알림 문장. 알릴 것이 없으면 빈 목록")
 
 
 class BusTrafficReady(BaseModel):
     route_links: bool = Field(..., description="노선 ↔ 링크 표가 있음")
     link_speed: bool = Field(..., description="평소 링크 속도 표가 있음")
+    route_segments: bool = Field(False, description="노선 링크 ↔ 정류장 구간 표가 있음 (지도 소통 띠)")
     api_key: bool = Field(..., description="SEOUL_OPEN_API_KEY가 있음 (값은 보내지 않음)")
 
 

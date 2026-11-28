@@ -188,6 +188,7 @@ TOPIS_DIR = "topis"              # INTERIM_DIR 아래 (커밋 제외)
 TOPIS_ROUTE_LINKS = "route_links.parquet"   # 노선 ↔ 링크 대응표 (scripts/build_topis_links.py)
 TOPIS_LINK_SPEED = "link_speed.parquet"     # 링크 × 요일유형 × 시간대 평소 속도 (scripts/build_topis_speed.py)
 TOPIS_LINKS = "links.parquet"               # TOPIS 링크 목록 (같은 스크립트, 링크 대응표의 후보)
+TOPIS_ROUTE_SEGMENTS = "route_link_segments.parquet"  # 노선 링크 ↔ 정류장 구간 (scripts/build_topis_links.py, 지도 소통 띠용)
 TOPIS_SNAPSHOT_DIR = "snapshots"            # TOPIS_DIR 아래. 실시간으로 받을 때마다 가공 결과를 남김 (기록 다시 보기)
 TOPIS_SNAPSHOT_MAX = 2000        # 기록 파일을 이보다 많이 두지 않음 (오래된 것부터 지움)
 TOPIS_SNAPSHOT_LIMIT = 50        # GET /api/bus/traffic/snapshots 기본 개수 (최대 LIST_LIMIT_MAX)
@@ -198,6 +199,9 @@ TOPIS_LONG_TERM_DAYS = 7         # 해제 예정이 이보다 먼 돌발(장기 
 TOPIS_MIN_COVERAGE = 0.7         # 노선 링크 길이의 이 비율 이상에서 지금·평소 값을 모두 받았을 때만 추가 시간을 계산
 TOPIS_EXTRA_WARN_RATIO = 0.15    # 한 바퀴 추가 시간이 평소 한 바퀴의 15% 이상이면 경고 (143번 233분 → 35분, 정류장당 약 19초)
 #   10분 고정이었을 때는 정류장당 5초만 늦어도 경고라 2026-11-28 토 18시에 5개 노선이 모두 경고 (승용차 기준 +20~37분)
+TOPIS_SEGMENT_MIN_M = 50         # 정류장 구간에 걸친 링크 길이가 이보다 짧으면 그 구간 속도는 보내지 않음
+TOPIS_SLOW_RATIO = 0.67          # 지금 속도가 평소의 이 비율 아래인 링크를 '많이 느린 도로'로 (패널 목록)
+TOPIS_SLOW_LINKS_TOP = 5         # 노선별로 보내는 많이 느린 도로 수
 TOPIS_SPEED_MONTHS = 2           # 평소 속도 = 최근 이 개월 같은 요일유형·시간대의 중앙값
 
 # 검증 구간(BUS_VALID_START ~ 실측 마지막 날)을 둘로 나눔: 앞쪽에서 값을 고르고 뒤쪽에서는 채점만
