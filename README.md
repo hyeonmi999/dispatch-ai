@@ -206,6 +206,34 @@ python scripts/fetch_network_stops.py        # → data/interim/network/stops.pa
 ```
 받은 뒤 서버를 다시 띄우면 적용됩니다. 혼잡도는 여전히 5개 노선에만 나오고, 나머지 노선은 배차간격·대략의 시간만 안내합니다.
 
+### 3-3-2. (선택) 관제 화면의 실시간 돌발·정체 (TOPIS)
+관제 탭의 "실시간 돌발·정체" 패널은 서울 TOPIS의 실시간 사고·공사·행사와 도로 소통으로 "143번 경로에 사고", "평소보다 한 바퀴 약 N분 더"(평소 한 바퀴의 15% 이상일 때), "인가대수 부족 가능"을 알립니다. **배차는 바꾸지 않습니다.** 받은 실시간 값은 기록으로 남아 나중에 "기록 다시 보기"로 같은 화면을 다시 볼 수 있습니다(시연용).
+
+**키가 없어도 됩니다.** 무엇이 되는지는 갖춘 파일에 따라 다릅니다.
+
+| 갖춘 것 | 실시간 | 기록 다시 보기 | 사고 표시 | 한 바퀴 추가 시간·인가대수 경고 |
+|---|---|---|---|---|
+| 아무것도 없음 | ✕ (패널에 "키가 필요합니다" 안내) | ✕ ("받아 둔 기록이 없습니다") | ✕ | ✕ |
+| 팀 공유 묶음만 풀기 (키 없음) | ✕ | ✅ 묶음에 든 기록 | ✅ | ✅ |
+| 묶음 + `.env`에 `SEOUL_OPEN_API_KEY` | ✅ (받을 때마다 기록도 남음) | ✅ | ✅ | ✅ |
+| 키만 있고 묶음 없음 | ✅ 사고만 | ✅ | ✅ | ✕ → 아래 두 스크립트 실행 |
+
+**키가 없는 PC (팀원)**: 박성훈이 올린 묶음 `dispatch-ai-topis-<날짜>.tar.gz`를 프로젝트 루트에서 풀고 서버를 다시 띄웁니다.
+```bash
+tar -xzf dispatch-ai-topis-20261128.tar.gz   # → data/interim/topis/ (평소 속도·링크 대응표·기록)
+```
+관제 탭 패널에서 **기록 다시 보기**를 누르면 됩니다. 화면에 "기록 시각 — 지금 상황 아님"이 함께 나옵니다. 평소 속도 표만 새로 만들고 싶으면 키 없이 `bash scripts/build_topis_speed.sh`(TOPIS 자료실 월별 파일, 달마다 약 35MB)를 실행해도 됩니다.
+
+**키가 있는 PC**: 서울 열린데이터광장(data.seoul.go.kr) → 이용 안내 → Open API 소개 → **「인증키 신청 - 일반」**으로 받은 키를 `.env`의 `SEOUL_OPEN_API_KEY`에 넣습니다(공공데이터포털 키와 다른 키, 데이터셋별 신청 없음).
+```bash
+bash scripts/build_topis_speed.sh     # 평소 링크 속도 (키 없음, 약 30초) → data/interim/topis/link_speed.parquet
+bash scripts/build_topis_links.sh     # 노선 ↔ 링크 대응표 (키 필요, 링크 5,075개 약 1분) → route_links.parquet
+bash scripts/record_topis.sh --every 5 --minutes 60   # (선택) 서버 없이 시연용 기록 모으기
+tar -czf dispatch-ai-topis-$(date +%Y%m%d).tar.gz data/interim/topis/link_speed.parquet data/interim/topis/links.parquet \
+    data/interim/topis/route_links.parquet data/interim/topis/route_links_summary.json data/interim/topis/snapshots   # 팀 공유 묶음 (키 없음)
+```
+Windows는 같은 이름의 `.ps1`을 씁니다. 기록·묶음에는 키가 들어가지 않습니다.
+
 ### 3-4. 서버 실행
 **스크립트로 한 번에** (MariaDB → API 서버 8000 → 화면 5173). 같은 포트를 쓰는 이전 서버가 있으면 알려 주고 멈춥니다.
 ```bash
@@ -412,6 +440,8 @@ python scripts/backtest.py                   # 배차 방식 성능 비교도 �
 | POST | `/api/bus/advise/all` | 선택 시간대 **전체 노선** 권고 `{"date":"2026-10-28","hour":8}` → 증차 필요 → 별도 대책 → 감차 검토 → 유지 순 (규정 근거는 권고 유형별 1회 조회) |
 | POST | `/api/bus/simulate` | 배차간격 변경 시뮬레이션 `{"route":"143","date":"2026-10-28","hour":8,"interval":5}` → 지금과 바꾼 뒤의 최대 혼잡도·구간별 혼잡도·필요한 버스 대수와 인가대수 초과 여부(`fleet`)·`needs_review`. 승객 수는 그대로라고 가정. 간격이 노선의 최소~최대 배차간격 밖이면 400 |
 | POST | `/api/bus/optimize` | 전 노선 배차 최적화 `{"date":"2026-10-28","hours":[6,7,8,9]}` → 노선·시간별 현행·권고 운행횟수와 증차·감차·유지 구분, 필요 버스 대수, 전후 혼잡도, 더 늘리지 못한 이유(`binding`), `needs_review`. 기본은 붐비는 곳은 늘리고 한가한 곳은 줄이는 설정(감차 권고에는 `cut_notice` 안내)이며, `weights.change`를 1 이상으로 주면 늘리기만 함. 승객 수 상한(P90) 기준으로 판단하며 `python scripts/calibrate_p90.py`를 먼저 실행해야 함 (없으면 503) |
+| GET | `/api/bus/traffic/alerts?mode=live\|replay` | 실시간 사고·정체 알림 (TOPIS). 노선별 경로 위 돌발·한 바퀴 추가 시간·인가대수 부족 가능, `needs_review`. 키가 없으면 실시간 503, 기록 다시 보기는 됨 (3-3-2) |
+| GET | `/api/bus/traffic/snapshots` | 받아 둔 실시간 기록 목록 |
 | GET | `/api/advisories/batches` | 권고 이력 — 시간대별 "전체 노선 권고" 묶음 (권고 유형별 건수, 검토 진행) |
 | GET | `/api/advisories/batches/{id}` | 묶음 1건의 노선별 저장된 권고 (현재 검토 상태 반영) |
 | GET | `/api/advisories` | 개별 권고 이력 (MariaDB) |
