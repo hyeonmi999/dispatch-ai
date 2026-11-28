@@ -17,7 +17,7 @@
 | `role` 값 (열람 역할) | 김주혜 | 챗봇, 법규 질의응답 | 구현됨 (PR #6). `/ask`와 `/chat` 모두 적용 |
 
 공통
-- 에러는 `{"status": "<코드>", "detail": "<설명>"}` 형식입니다.
+- 에러는 `{"status": "<코드>", "detail": "<설명>"}` 형식입니다. `status` 값: 400 `invalid_request`(LLM 설정 오류는 `llm_config_error`) · 403 `forbidden` · 404 `not_found` · 409 `conflict` · 422 `validation_error` · 500 `server_error` · 501 `not_implemented` · 503 `unavailable`. 요청 형식이 틀린 422는 `detail`이 FastAPI 기본 형식의 목록(`[{"loc", "msg", "type"}]`)이고, 그 밖에는 문장입니다 (2026-11-26, `app/main.py`에서 한꺼번에 붙임).
 - 권고·최적화·시뮬레이션·챗봇 응답에는 항상 `needs_review: true`가 있습니다.
 - 날짜는 `YYYY-MM-DD`, 시간대는 0~23 정수입니다.
 

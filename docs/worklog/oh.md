@@ -2,6 +2,34 @@
 
 최근 기록이 위에 있습니다. 형식과 규칙은 [README.md](README.md)를 봅니다.
 
+## 2026-11-26 · 오류 응답에 `status` 붙이기 (E-10)
+
+- **브랜치 / PR**: `feat/oh-error-format`
+- **계획서 Task**: `docs/plans/oh-evaluation.md` Task E-10
+
+**한 일**
+- `HTTPException`으로 내는 오류와 요청 형식 오류에도 규격의 공통 형식 `{"status", "detail"}`이 나가게 `app/main.py`에 처리기 2개를 둠. 기능 점검과 PR #34 리뷰에서 `status`가 빠진 것을 발견했음
+
+**바뀐 것** (남이 영향받는 부분)
+- API·응답 형식: **모든 오류 응답에 `status`가 더해짐** (403 `forbidden` · 404 `not_found` · 409 `conflict` · 422 `validation_error` · 500 `server_error` · 503 `unavailable`). `detail`과 상태 코드는 그대로 (`docs/contracts.md` 공통)
+- DB: 없음
+- 의존성·환경: 없음
+
+**확인한 것**
+- 재현 테스트 7개: 고치기 전 6개 실패 → 통과. `python -m pytest -q` 한 번에 267개 통과 (PC를 다시 시작해 페이징 파일 최대 96GB가 적용된 뒤), `npm run test:api` 4개 통과
+- 화면은 `detail`만 읽는 것을 `frontend/src/api.js`에서 확인
+
+**확인하지 못한 것**
+- 브라우저에서 오류 문구를 눌러 본 확인
+
+**다음 할 일**
+- E-9 (길안내 막차)
+
+**팀원이 알아야 할 것**
+- 각자 API의 오류 응답에 `status`가 하나 더 붙습니다. `detail`을 읽는 코드는 고칠 것이 없습니다
+
+---
+
 ## 2026-11-26 · 검색 개선 실험(E-8), 전체 기능 점검
 
 - **브랜치 / PR**: `feat/oh-retrieval`

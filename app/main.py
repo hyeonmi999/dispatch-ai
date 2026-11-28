@@ -11,8 +11,11 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.routes import router as common_router
 from app.core.domain import DomainNotImplemented, InvalidRequest
@@ -83,6 +86,23 @@ async def invalid_request_handler(request: Request, exc: InvalidRequest):
 @app.exception_handler(LLMConfigError)
 async def llm_config_handler(request: Request, exc: LLMConfigError):
     return JSONResponse(status_code=400, content={"status": "llm_config_error", "detail": str(exc)})
+
+
+# 기능이 HTTPException으로 내는 오류와 요청 형식 오류에도 공통 형식의 status를 붙임 (docs/contracts.md "공통").
+# detail(문장 또는 형식 오류 목록)과 상태 코드는 그대로 둠: 화면은 detail만 읽음
+ERROR_STATUS = {400: "invalid_request", 403: "forbidden", 404: "not_found", 409: "conflict",
+                422: "validation_error", 500: "server_error", 503: "unavailable"}
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error_handler(request: Request, exc: StarletteHTTPException):
+    return JSONResponse(status_code=exc.status_code, headers=exc.headers,
+                        content={"status": ERROR_STATUS.get(exc.status_code, "error"), "detail": exc.detail})
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(status_code=422, content={"status": ERROR_STATUS[422], "detail": jsonable_encoder(exc.errors())})
 
 
 # ==================================================
